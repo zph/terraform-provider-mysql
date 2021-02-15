@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"sort"
 	"strings"
+	"unicode"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
@@ -224,6 +227,19 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 	return ReadGrant(d, meta)
 }
 
+func setToArray(s interface{}) []string {
+	set, ok := s.(*schema.Set)
+	if !ok {
+		return []string{}
+	}
+
+	ret := []string{}
+	for _, elem := range set.List() {
+		ret = append(ret, elem.(string))
+	}
+	return ret
+}
+
 func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 	db := meta.(*MySQLConfiguration).Db
 
@@ -257,7 +273,7 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 
 	for _, grant := range grants {
 		if grant.Database == database && grant.Table == table {
-			privileges = grant.Privileges
+			privileges = makePrivs(setToArray(d.Get("privileges")), grant.Privileges)
 		}
 
 		if grant.Grant {
@@ -380,7 +396,9 @@ func DeleteGrant(d *schema.ResourceData, meta interface{}) error {
 		log.Printf("[DEBUG] SQL: %s", sql)
 		_, err = db.Exec(sql)
 		if err != nil {
-			return fmt.Errorf("error revoking GRANT (%s): %s", sql, err)
+			if !isNonExistingGrant(err) {
+				return fmt.Errorf("error revoking GRANT (%s): %s", sql, err)
+			}
 		}
 	}
 
@@ -396,10 +414,21 @@ func DeleteGrant(d *schema.ResourceData, meta interface{}) error {
 	log.Printf("[DEBUG] SQL: %s", sql)
 	_, err = db.Exec(sql)
 	if err != nil {
-		return fmt.Errorf("error revoking ALL (%s): %s", sql, err)
+		if !isNonExistingGrant(err) {
+			return fmt.Errorf("error revoking ALL (%s): %s", sql, err)
+		}
 	}
 
 	return nil
+}
+
+func isNonExistingGrant(err error) bool {
+	if driverErr, ok := err.(*mysql.MySQLError); ok {
+		if driverErr.Number == nonexistingGrantErrCode {
+			return true
+		}
+	}
+	return false
 }
 
 func ImportGrant(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
@@ -495,4 +524,151 @@ func showGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
 	}
 
 	return grants, nil
+}
+
+func normalizeColumnOrder(perm string) string {
+	re := regexp.MustCompile("^([^(]*)\\((.*)\\)$")
+	// We may get inputs like
+	// 	SELECT(b,a,c)   -> SELECT(a,b,c)
+	// 	DELETE          -> DELETE
+	// if it's without parentheses, return it right away.
+	// Else split what is inside, sort it, concat together and return the result.
+	m := re.FindStringSubmatch(perm)
+	if m == nil || len(m) < 3 {
+		return perm
+	}
+
+	parts := strings.Split(m[2], ",")
+	sort.Strings(parts)
+	for i := range parts {
+		parts[i] = strings.Trim(parts[i], " ")
+	}
+	partsTogether := strings.Join(parts, ", ")
+	return fmt.Sprintf("%s(%s)", m[1], partsTogether)
+}
+
+func normalizeColumnOrderMulti(perm []string) []string {
+	ret := []string{}
+	for _, p := range perm {
+		ret = append(ret, normalizeColumnOrder(p))
+	}
+	return ret
+}
+
+func extractPermTypes(g string) []string {
+	grants := []string{}
+
+	inParentheses := false
+	currentWord := []rune{}
+	for _, b := range g {
+		switch b {
+		case ',':
+			if inParentheses {
+				currentWord = append(currentWord, b)
+			} else {
+				grants = append(grants, string(currentWord))
+				currentWord = []rune{}
+			}
+			break
+		case '(':
+			inParentheses = true
+			currentWord = append(currentWord, b)
+			break
+		case ')':
+			inParentheses = false
+			currentWord = append(currentWord, b)
+			break
+		default:
+			if unicode.IsSpace(b) && len(currentWord) == 0 {
+				break
+			}
+			currentWord = append(currentWord, b)
+		}
+	}
+	grants = append(grants, string(currentWord))
+	return grants
+}
+
+func normalizeColumnOrder(perm string) string {
+	re := regexp.MustCompile("^([^(]*)\\((.*)\\)$")
+	// We may get inputs like
+	// 	SELECT(b,a,c)   -> SELECT(a,b,c)
+	// 	DELETE          -> DELETE
+	// if it's without parentheses, return it right away.
+	// Else split what is inside, sort it, concat together and return the result.
+	m := re.FindStringSubmatch(perm)
+	if m == nil || len(m) < 3 {
+		return perm
+	}
+
+	parts := strings.Split(m[2], ",")
+	sort.Strings(parts)
+	partsTogether := strings.Join(parts, ",")
+	return fmt.Sprintf("%s(%s)", m[1], partsTogether)
+}
+
+func normalizePerms(perms []string) []string {
+	// Spaces and backticks are optional, let's ignore them.
+	re := regexp.MustCompile("[ `]")
+	ret := []string{}
+	for _, perm := range perms {
+		permNorm := re.ReplaceAllString(perm, "")
+		permUcase := strings.ToUpper(permNorm)
+		if permUcase == "ALL" || permUcase == "ALLPRIVILEGES" {
+			permUcase = "ALL PRIVILEGES"
+		}
+		permSortedColumns := normalizeColumnOrder(permUcase)
+		ret = append(ret, permSortedColumns)
+	}
+	return ret
+}
+
+func makePrivs(have, want []string) []string {
+	// This is tricky to prevent diffs that cannot be suppressed easily.
+	// Example:
+	// Have select(`c1`, `c2`), insert (c3,c2)
+	// Want select(c2,c1), insert(c3,c2)
+	// So we want to normalize both and then go from "want" to "have" to
+	// We'll have map want->wantnorm = havenorm->have
+
+	// Also, we need to return all mapped values of "want".
+
+	// After normalize, same indices have the same values, prepare maps.
+	haveNorm := normalizePerms(have)
+	haveNormToHave := map[string]string{}
+	for i := range haveNorm {
+		haveNormToHave[haveNorm[i]] = have[i]
+	}
+
+	wantNorm := normalizePerms(want)
+	wantNormToWant := map[string]string{}
+	for i := range wantNorm {
+		wantNormToWant[want[i]] = wantNorm[i]
+	}
+
+	retSet := []string{}
+	for _, w := range want {
+		suspect := haveNormToHave[wantNormToWant[w]]
+		if suspect == "" {
+			// Nothing found in what we have.
+			retSet = append(retSet, w)
+		} else {
+			retSet = append(retSet, suspect)
+		}
+	}
+
+	return retSet
+}
+
+func setToArray(s interface{}) []string {
+	set, ok := s.(*schema.Set)
+	if !ok {
+		return []string{}
+	}
+
+	ret := []string{}
+	for _, elem := range set.List() {
+		ret = append(ret, elem.(string))
+	}
+	return ret
 }

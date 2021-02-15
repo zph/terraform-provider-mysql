@@ -19,7 +19,6 @@ script:
   - test -d /home/travis/gopath/src/github.com/terraform-providers || mv $(dirname $PWD) /home/travis/gopath/src/github.com/terraform-providers
   - make test
   - make vet
-  - make website-test
   - sudo service mysql stop
   - export MYSQL_HOST=127.0.0.1
   - export MYSQL_PORT=3306

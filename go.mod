@@ -1,7 +1,7 @@
 module github.com/terraform-providers/terraform-provider-mysql
 
 require (
-	github.com/go-sql-driver/mysql v1.4.0
+	github.com/go-sql-driver/mysql v1.5.0
 	github.com/gofrs/uuid v3.2.0+incompatible
 	github.com/hashicorp/go-version v1.2.0
 	github.com/hashicorp/hcl v1.0.0 // indirect

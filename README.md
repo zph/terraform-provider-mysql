@@ -1,15 +1,8 @@
 **This repository is an unofficial fork**
 
----
+Most of the work was done by winebarrel/terraform-provider-mysql.
 
-<!-- archived-provider -->
-Please note: This Terraform provider is archived, per our [provider archiving process](https://terraform.io/docs/internals/archiving.html). What does this mean?
-1. The code repository and all commit history will still be available.
-1. Existing released binaries will remain available on the releases site.
-1. Issues and pull requests are not being monitored.
-1. New releases will not be published.
-
-If anyone from the community or an interested third party is willing to maintain it, they can fork the repository and [publish it](https://www.terraform.io/docs/registry/providers/publishing.html) to the Terraform Registry. If you are interested in maintaining this provider, please reach out to the [Terraform Provider Development Program](https://www.terraform.io/guides/terraform-provider-development-program.html) at *terraform-provider-dev@hashicorp.com*.
+[![Build Status](https://travis-ci.org/terraform-providers/terraform-provider-mysql.svg?branch=master)](https://travis-ci.org/terraform-providers/terraform-provider-mysql)
 
 Terraform Provider
 ==================
@@ -88,7 +81,7 @@ $ # wait for a few seconds to let MySQL stand up, check the logs with: docker lo
 $ export MYSQL_USERNAME=root
 $ export MYSQL_ENDPOINT=localhost:3306
 $ export MYSQL_PASSWORD=my-secret-pw
-$ mysql -h localhost -u root -p -e "INSTALL PLUGIN mysql_no_login SONAME 'mysql_no_login.so';"
+$ mysql -h 127.0.0.1 -u root -p"${MYSQL_PASSWORD}" -e "INSTALL PLUGIN mysql_no_login SONAME 'mysql_no_login.so';"
 $ make testacc
 $ docker rm -f some-mysql
 ```

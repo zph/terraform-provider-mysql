@@ -46,6 +46,86 @@ func TestAccGrant(t *testing.T) {
 	})
 }
 
+func TestAccGrantComplex(t *testing.T) {
+	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccGrantCheckDestroy,
+		Steps: []resource.TestStep{
+			{
+				// Create table first
+				Config: testAccGrantConfig_nogrant(dbName),
+				Check: resource.ComposeTestCheckFunc(
+					prepareTable(dbName),
+				),
+			},
+			{
+				Config: testAccGrantConfig_with_privs(dbName, `"SELECT (c1, c2)"`),
+				Check: resource.ComposeTestCheckFunc(
+					// TODO: grant parsing?
+					//testAccPrivilegeExists("mysql_grant.test", "SELECT (c1, c2)"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
+					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
+					resource.TestCheckResourceAttr("mysql_grant.test", "table", "tbl"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "NONE"),
+				),
+			},
+			{
+				Config: testAccGrantConfig_with_privs(dbName, `"DROP", "SELECT (c1)", "INSERT(c3, c4)", "REFERENCES(c5)"`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
+					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
+					resource.TestCheckResourceAttr("mysql_grant.test", "table", "tbl"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "NONE"),
+				),
+			},
+			{
+				Config: testAccGrantConfig_with_privs(dbName, `"DROP", "SELECT (c1)", "INSERT(c4, c3, c2)"`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
+					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
+					resource.TestCheckResourceAttr("mysql_grant.test", "table", "tbl"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "NONE"),
+				),
+			},
+			{
+				Config: testAccGrantConfig_with_privs(dbName, `"ALL PRIVILEGES"`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
+					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
+					resource.TestCheckResourceAttr("mysql_grant.test", "table", "tbl"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "NONE"),
+				),
+			},
+			{
+				Config: testAccGrantConfig_with_privs(dbName, `"ALL"`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
+					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
+					resource.TestCheckResourceAttr("mysql_grant.test", "table", "tbl"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "NONE"),
+				),
+			},
+			{
+				Config: testAccGrantConfig_with_privs(dbName, `"DROP", "SELECT (c1, c2)", "INSERT(c5)", "REFERENCES(c1)"`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
+					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
+					resource.TestCheckResourceAttr("mysql_grant.test", "table", "tbl"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "NONE"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccGrant_role(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
@@ -118,6 +198,19 @@ func TestAccGrant_roleToUser(t *testing.T) {
 	})
 }
 
+func prepareTable(dbname string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+		if err != nil {
+			return err
+		}
+		if _, err := db.Exec(fmt.Sprintf("CREATE TABLE `%s`.`tbl`(c1 INT, c2 INT, c3 INT,c4 INT,c5 INT);", dbname)); err != nil {
+			return fmt.Errorf("error reading grant: %s", err)
+		}
+		return nil
+	}
+}
+
 func testAccPrivilegeExists(rn string, privilege string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[rn]
@@ -167,7 +260,7 @@ func testAccPrivilegeExists(rn string, privilege string) resource.TestCheckFunc 
 		}
 
 		if !privilegeFound {
-			return fmt.Errorf("grant no found for %s", userOrRole)
+			return fmt.Errorf("grant %s no found for %s", privilege, userOrRole)
 		}
 
 		return nil
@@ -214,6 +307,40 @@ func testAccGrantCheckDestroy(s *terraform.State) error {
 		}
 	}
 	return nil
+}
+
+func testAccGrantConfig_nogrant(dbName string) string {
+	return fmt.Sprintf(`
+resource "mysql_database" "test" {
+  name = "%s"
+}
+
+resource "mysql_user" "test" {
+  user     = "jdoe-%s"
+  host     = "example.com"
+}
+`, dbName, dbName)
+}
+
+func testAccGrantConfig_with_privs(dbName, privs string) string {
+	return fmt.Sprintf(`
+resource "mysql_database" "test" {
+  name = "%s"
+}
+
+resource "mysql_user" "test" {
+  user     = "jdoe-%s"
+  host     = "example.com"
+}
+
+resource "mysql_grant" "test" {
+  user       = "${mysql_user.test.user}"
+  host       = "${mysql_user.test.host}"
+  table      = "tbl"
+  database   = "${mysql_database.test.name}"
+  privileges = [%s]
+}
+`, dbName, dbName, privs)
 }
 
 func testAccGrantConfig_basic(dbName string) string {
