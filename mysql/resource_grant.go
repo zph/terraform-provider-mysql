@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
@@ -241,12 +243,39 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 
 	log.Println("[DEBUG] SQL:", sql)
 
-	_, err = db.Exec(sql)
+	rows, err := db.Query(sql)
 	if err != nil {
 		log.Printf("[WARN] GRANT not found for %s - removing from state", userOrRole)
 		d.SetId("")
 	}
+	defer rows.Close()
 
+	for rows.Next() {
+		grant := ""
+		if err := rows.Scan(&grant); err != nil {
+			log.Fatal(err)
+		}
+
+		hasThem, err := hasPermissions(grant,
+			Perms{
+				User:     d.Get("user").(string),
+				Host:     d.Get("host").(string),
+				DB:       d.Get("database").(string),
+				Table:    d.Get("table").(string),
+				PermType: d.Get("privileges").([]string),
+			})
+		if err != nil {
+			log.Printf("[WARN] Getting perms failed with %s", err)
+			return nil
+		}
+		if hasThem {
+			return nil
+		}
+	}
+
+	// Nothing was found.
+	log.Println("[DEBUG] No grants were found.")
+	d.SetId("")
 	return nil
 }
 
@@ -287,7 +316,9 @@ func DeleteGrant(d *schema.ResourceData, meta interface{}) error {
 		log.Printf("[DEBUG] SQL: %s", sql)
 		_, err = db.Exec(sql)
 		if err != nil {
-			return fmt.Errorf("error revoking GRANT (%s): %s", sql, err)
+			if !isNonExistingGrant(err) {
+				return fmt.Errorf("error revoking GRANT (%s): %s", sql, err)
+			}
 		}
 	}
 
@@ -303,8 +334,93 @@ func DeleteGrant(d *schema.ResourceData, meta interface{}) error {
 	log.Printf("[DEBUG] SQL: %s", sql)
 	_, err = db.Exec(sql)
 	if err != nil {
-		return fmt.Errorf("error revoking ALL (%s): %s", sql, err)
+		if !isNonExistingGrant(err) {
+			return fmt.Errorf("error revoking ALL (%s): %s", sql, err)
+		}
 	}
 
 	return nil
 }
+
+func isNonExistingGrant(err error) bool {
+	if driverErr, ok := err.(*mysql.MySQLError); ok {
+		if driverErr.Number == nonexistingGrantErrCode {
+			return true
+		}
+	}
+	return false
+}
+
+type Perms struct {
+	User     string
+	Host     string
+	DB       string
+	Table    string
+	PermType []string
+}
+
+func parsePermTypes(permTypes string) []string {
+	return normalizePerms(strings.Split(permTypes, ","))
+}
+
+func normalizePerms(perms []string) []string {
+	// Spaces and backticks are optional, let's ignore them.
+	re := regexp.MustCompile("[ `]")
+	ret := []string{}
+	for _, perm := range perms {
+		permNorm := re.ReplaceAllString(perm, "")
+		permUcase := strings.ToUpper(permNorm)
+		if permUcase == "ALL" || permUcase == "ALLPERMISSIONS" {
+			permUcase = "ALL PERMISSIONS"
+		}
+		ret = append(ret, permUcase)
+	}
+	return ret
+}
+
+func parseGrants(grants string) (Perms, error) {
+	// We don't support roles here. Yes, we should have a parser here. Shame on me.
+	re := regexp.MustCompile("^GRANT +(.*) +ON +`?([^`. ]*)`?[.]`?([^`. ]*)`? +TO +'([^']*)'@'([^']*)'")
+	m := re.FindStringSubmatch(grants)
+	if m == nil || len(m) < 6 {
+		return Perms{}, fmt.Errorf("failed parsing grants, maybe you are using roles? Grants: %s, m: %v", grants, m)
+	}
+	return Perms{
+		User:     m[4],
+		Host:     m[5],
+		DB:       m[2],
+		Table:    m[3],
+		PermType: parsePermTypes(m[1]),
+	}, nil
+}
+
+func hasPermissions(grants string, sourcePerms Perms) (bool, error) {
+	realPerms, err := parseGrants(grants)
+	if err != nil {
+		return false, err
+	}
+
+	if sourcePerms.User != realPerms.User || sourcePerms.Host != realPerms.Host ||
+		sourcePerms.DB != realPerms.DB || sourcePerms.Table != realPerms.Table {
+		log.Printf("[DEBUG] Not matching user/db/host - in config %+v, in reality %+v\n", sourcePerms, realPerms)
+		return false, nil
+	}
+	sourcePerms.PermType = normalizePerms(sourcePerms.PermType)
+
+	log.Printf("[DEBUG] Matching user/db/host to check - in config %+v, in reality %+v\n", sourcePerms, realPerms)
+	for _, wantPerm := range sourcePerms.PermType {
+		havePerm := false
+		// n^2, but it's more effective than sorting as there are at most 5 items.
+		for _, realPerm := range realPerms.PermType {
+			if wantPerm == realPerm {
+				havePerm = true
+			}
+		}
+		if !havePerm {
+			// fmt.Printf("Missing perm %s", wantPerm)
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
