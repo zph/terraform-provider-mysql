@@ -6,6 +6,7 @@ import (
 	"log"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/hashicorp/go-version"
@@ -360,8 +361,43 @@ type Perms struct {
 }
 
 func parsePermTypes(permTypes string) []string {
-	return normalizePerms(strings.Split(permTypes, ","))
+	return normalizePerms(extractPermTypes(permTypes))
 }
+
+func extractPermTypes(g string) []string {
+	grants := []string{}
+
+	inParentheses := false
+	currentWord := []rune{}
+	for _, b := range g {
+		switch b {
+		case ',':
+			if inParentheses {
+				currentWord = append(currentWord, b)
+			} else {
+				grants = append(grants, string(currentWord))
+				currentWord = []rune{}
+			}
+			break
+		case '(':
+			inParentheses = true
+			currentWord = append(currentWord, b)
+			break
+		case ')':
+			inParentheses = false
+			currentWord = append(currentWord, b)
+			break
+		default:
+			if unicode.IsSpace(b) && len(currentWord) == 0 {
+				break
+			}
+			currentWord = append(currentWord, b)
+		}
+	}
+	grants = append(grants, string(currentWord))
+	return grants
+}
+
 
 func normalizePerms(perms []string) []string {
 	// Spaces and backticks are optional, let's ignore them.
