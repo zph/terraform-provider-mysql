@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -267,7 +268,7 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 	for rows.Next() {
 		grant := ""
 		if err := rows.Scan(&grant); err != nil {
-			log.Fatal(err)
+			log.Panic(err)
 		}
 
 		hasThem, err := hasPermissions(grant,
@@ -411,6 +412,24 @@ func extractPermTypes(g string) []string {
 	return grants
 }
 
+func normalizeColumnOrder(perm string) string {
+	re := regexp.MustCompile("^([^(]*)\\((.*)\\)$")
+	// We may get inputs like
+	// 	SELECT(b,a,c)   -> SELECT(a,b,c)
+	// 	DELETE          -> DELETE
+	// if it's without parentheses, return it right away.
+	// Else split what is inside, sort it, concat together and return the result.
+	m := re.FindStringSubmatch(perm)
+	if m == nil || len(m) < 3 {
+		return perm
+	}
+
+	parts := strings.Split(m[2], ",")
+	sort.Strings(parts)
+	partsTogether := strings.Join(parts, ",")
+	return fmt.Sprintf("%s(%s)", m[1], partsTogether)
+}
+
 func normalizePerms(perms []string) []string {
 	// Spaces and backticks are optional, let's ignore them.
 	re := regexp.MustCompile("[ `]")
@@ -421,14 +440,15 @@ func normalizePerms(perms []string) []string {
 		if permUcase == "ALL" || permUcase == "ALLPERMISSIONS" {
 			permUcase = "ALL PERMISSIONS"
 		}
-		ret = append(ret, permUcase)
+		permSortedColumns := normalizeColumnOrder(permUcase)
+		ret = append(ret, permSortedColumns)
 	}
 	return ret
 }
 
 func parseGrants(grants string) (Perms, error) {
 	// We don't support roles here. Yes, we should have a parser here. Shame on me.
-	re := regexp.MustCompile("^GRANT +(.*) +ON +`?([^`. ]*)`?[.]`?([^`. ]*)`? +TO +'([^']*)'@'([^']*)'")
+	re := regexp.MustCompile("^GRANT +(.*) +ON +`?([^`. ]*)`?[.]`?([^`. ]*)`? +TO +[`'\"]?([^`'\"]*)[`'\"]?@[`'\"]?([^`'\"]*)[`'\"]?")
 	m := re.FindStringSubmatch(grants)
 	if m == nil || len(m) < 6 {
 		return Perms{}, fmt.Errorf("failed parsing grants, maybe you are using roles? Grants: %s, m: %v", grants, m)
@@ -456,6 +476,7 @@ func hasPermissions(grants string, sourcePerms Perms) (bool, error) {
 	sourcePerms.PermType = normalizePerms(sourcePerms.PermType)
 
 	log.Printf("[DEBUG] Matching user/db/host to check - in config %+v, in reality %+v\n", sourcePerms, realPerms)
+
 	for _, wantPerm := range sourcePerms.PermType {
 		havePerm := false
 		// n^2, but it's more effective than sorting as there are at most 5 items.
