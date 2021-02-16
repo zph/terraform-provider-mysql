@@ -220,6 +220,19 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 	return ReadGrant(d, meta)
 }
 
+func setToArray(s interface{}) []string {
+	set, ok := s.(*schema.Set)
+	if !ok {
+		return []string{}
+	}
+
+	ret := []string{}
+	for _, elem := range set.List() {
+		ret = append(ret, elem.(string))
+	}
+	return ret
+}
+
 func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 	db, err := connectToMySQL(meta.(*MySQLConfiguration))
 	if err != nil {
@@ -263,11 +276,11 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 				Host:     d.Get("host").(string),
 				DB:       d.Get("database").(string),
 				Table:    d.Get("table").(string),
-				PermType: d.Get("privileges").([]string),
+				PermType: setToArray(d.Get("privileges")),
 			})
 		if err != nil {
 			log.Printf("[WARN] Getting perms failed with %s", err)
-			return nil
+			return err
 		}
 		if hasThem {
 			return nil
@@ -398,7 +411,6 @@ func extractPermTypes(g string) []string {
 	return grants
 }
 
-
 func normalizePerms(perms []string) []string {
 	// Spaces and backticks are optional, let's ignore them.
 	re := regexp.MustCompile("[ `]")
@@ -450,6 +462,7 @@ func hasPermissions(grants string, sourcePerms Perms) (bool, error) {
 		for _, realPerm := range realPerms.PermType {
 			if wantPerm == realPerm {
 				havePerm = true
+				break
 			}
 		}
 		if !havePerm {
@@ -459,4 +472,3 @@ func hasPermissions(grants string, sourcePerms Perms) (bool, error) {
 	}
 	return true, nil
 }
-
