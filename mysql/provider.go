@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -31,6 +32,18 @@ type MySQLConfiguration struct {
 	MaxConnLifetime        time.Duration
 	MaxOpenConns           int
 	ConnectRetryTimeoutSec time.Duration
+}
+
+var (
+	connectionCacheMtx sync.Mutex
+	connectionCache    map[string]*sql.DB
+)
+
+func init() {
+	connectionCacheMtx.Lock()
+	defer connectionCacheMtx.Unlock()
+
+	connectionCache = map[string]*sql.DB{}
 }
 
 func Provider() terraform.ResourceProvider {
@@ -234,8 +247,15 @@ func serverVersionString(db *sql.DB) (string, error) {
 }
 
 func connectToMySQL(conf *MySQLConfiguration) (*sql.DB, error) {
+	// This is fine - we'll connect serially, but we don't expect more than
+	// 1 or 2 connections at once.
+	connectionCacheMtx.Lock()
+	defer connectionCacheMtx.Unlock()
 
 	dsn := conf.Config.FormatDSN()
+	if connectionCache[dsn] != nil {
+		return connectionCache[dsn], nil
+	}
 	var db *sql.DB
 	var err error
 
@@ -260,6 +280,7 @@ func connectToMySQL(conf *MySQLConfiguration) (*sql.DB, error) {
 	if retryError != nil {
 		return nil, fmt.Errorf("Could not connect to server: %s", retryError)
 	}
+	connectionCache[dsn] = db
 	db.SetConnMaxLifetime(conf.MaxConnLifetime)
 	db.SetMaxOpenConns(conf.MaxOpenConns)
 	return db, nil
