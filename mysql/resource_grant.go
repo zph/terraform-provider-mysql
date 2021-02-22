@@ -518,8 +518,8 @@ func showGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
 			}
 
 			grant := &MySQLGrant{
-				Roles:      roles,
-				Grant:      reGrant.MatchString(rawGrant),
+				Roles: roles,
+				Grant: reGrant.MatchString(rawGrant),
 			}
 
 			grants = append(grants, grant)
