@@ -227,19 +227,6 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 	return ReadGrant(d, meta)
 }
 
-func setToArray(s interface{}) []string {
-	set, ok := s.(*schema.Set)
-	if !ok {
-		return []string{}
-	}
-
-	ret := []string{}
-	for _, elem := range set.List() {
-		ret = append(ret, elem.(string))
-	}
-	return ret
-}
-
 func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 	db := meta.(*MySQLConfiguration).Db
 
@@ -524,27 +511,6 @@ func showGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
 	}
 
 	return grants, nil
-}
-
-func normalizeColumnOrder(perm string) string {
-	re := regexp.MustCompile("^([^(]*)\\((.*)\\)$")
-	// We may get inputs like
-	// 	SELECT(b,a,c)   -> SELECT(a,b,c)
-	// 	DELETE          -> DELETE
-	// if it's without parentheses, return it right away.
-	// Else split what is inside, sort it, concat together and return the result.
-	m := re.FindStringSubmatch(perm)
-	if m == nil || len(m) < 3 {
-		return perm
-	}
-
-	parts := strings.Split(m[2], ",")
-	sort.Strings(parts)
-	for i := range parts {
-		parts[i] = strings.Trim(parts[i], " ")
-	}
-	partsTogether := strings.Join(parts, ", ")
-	return fmt.Sprintf("%s(%s)", m[1], partsTogether)
 }
 
 func normalizeColumnOrderMulti(perm []string) []string {
