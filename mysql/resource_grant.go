@@ -20,6 +20,7 @@ type MySQLGrant struct {
 	Database   string
 	Table      string
 	Privileges []string
+	Roles      []string
 	Grant      bool
 }
 
@@ -247,11 +248,11 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 	grants, err := showGrants(db, userOrRole)
 
 	if err != nil {
-		log.Printf("[WARN] GRANT not found for %s - removing from state", userOrRole)
+		log.Printf("[WARN] GRANT not found for %s (%s) - removing from state", userOrRole, err)
 		d.SetId("")
 		return nil
 	}
-
+	// TODO: read of grants of roles is not fully supported. Add the support.
 	database := d.Get("database").(string)
 	table := d.Get("table").(string)
 
@@ -475,6 +476,9 @@ func showGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
 
 	defer rows.Close()
 	re := regexp.MustCompile(`^GRANT (.+) ON (.+?)\.(.+?) TO`)
+
+	// Ex: GRANT `app_read`@`%`,`app_write`@`%` TO `rw_user1`@`localhost
+	reRole := regexp.MustCompile(`^GRANT (.+) TO`)
 	reGrant := regexp.MustCompile(`\bGRANT OPTION\b`)
 
 	for rows.Next() {
@@ -486,28 +490,42 @@ func showGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
 			return nil, err
 		}
 
-		m := re.FindStringSubmatch(rawGrant)
+		if m := re.FindStringSubmatch(rawGrant); len(m) == 4 {
+			privsStr := m[1]
+			priv_list := extractPermTypes(privsStr)
+			privileges := make([]string, len(priv_list))
 
-		if len(m) != 4 {
+			for i, priv := range priv_list {
+				privileges[i] = strings.TrimSpace(priv)
+			}
+
+			grant := &MySQLGrant{
+				Database:   strings.ReplaceAll(m[2], "`", ""),
+				Table:      strings.Trim(m[3], "`"),
+				Privileges: privileges,
+				Grant:      reGrant.MatchString(rawGrant),
+			}
+
+			grants = append(grants, grant)
+
+		} else if m := reRole.FindStringSubmatch(rawGrant); len(m) == 2 {
+			roleStr := m[1]
+			rolesStart := strings.Split(roleStr, ",")
+			roles := make([]string, len(rolesStart))
+
+			for i, role := range rolesStart {
+				roles[i] = strings.Trim(role, "`@% ")
+			}
+
+			grant := &MySQLGrant{
+				Roles:      roles,
+				Grant:      reGrant.MatchString(rawGrant),
+			}
+
+			grants = append(grants, grant)
+		} else {
 			return nil, fmt.Errorf("failed to parse grant statement: %s", rawGrant)
 		}
-
-		privsStr := m[1]
-		priv_list := extractPermTypes(privsStr)
-		privileges := make([]string, len(priv_list))
-
-		for i, priv := range priv_list {
-			privileges[i] = strings.TrimSpace(priv)
-		}
-
-		grant := &MySQLGrant{
-			Database:   strings.ReplaceAll(m[2], "`", ""),
-			Table:      strings.Trim(m[3], "`"),
-			Privileges: privileges,
-			Grant:      reGrant.MatchString(rawGrant),
-		}
-
-		grants = append(grants, grant)
 	}
 
 	return grants, nil
