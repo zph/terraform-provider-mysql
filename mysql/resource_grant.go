@@ -257,11 +257,13 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 	table := d.Get("table").(string)
 
 	var privileges []string
+	var roles []string
 	var grantOption bool
 
 	for _, grant := range grants {
 		if grant.Database == database && grant.Table == table {
 			privileges = makePrivs(setToArray(d.Get("privileges")), grant.Privileges)
+			roles = grant.Roles
 		}
 
 		if grant.Grant {
@@ -270,6 +272,7 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	d.Set("privileges", privileges)
+	d.Set("role", roles)
 	d.Set("grant", grantOption)
 
 	return nil
