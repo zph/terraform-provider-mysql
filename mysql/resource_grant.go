@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/hashicorp/go-version"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 const nonexistingGrantErrCode = 1141
@@ -272,7 +272,7 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	d.Set("privileges", privileges)
-	d.Set("role", roles)
+	d.Set("roles", roles)
 	d.Set("grant", grantOption)
 
 	return nil

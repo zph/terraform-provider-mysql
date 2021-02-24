@@ -1,11 +1,12 @@
 package mysql
 
 import (
+	"context"
 	"os"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
 // To run these acceptance tests, you will need access to a MySQL server.
@@ -26,34 +27,37 @@ import (
 // You can run the tests like this:
 //    make testacc TEST=./builtin/providers/mysql
 
-var testAccProviders map[string]terraform.ResourceProvider
+var testAccProviders map[string]*schema.Provider
 var testAccProvider *schema.Provider
 
 func init() {
-	testAccProvider = Provider().(*schema.Provider)
-	testAccProviders = map[string]terraform.ResourceProvider{
+	testAccProvider = Provider()
+	testAccProviders = map[string]*schema.Provider{
 		"mysql": testAccProvider,
 	}
 }
 
 func TestProvider(t *testing.T) {
-	if err := Provider().(*schema.Provider).InternalValidate(); err != nil {
+	if err := Provider().InternalValidate(); err != nil {
 		t.Fatalf("err: %s", err)
 	}
 }
 
 func TestProvider_impl(t *testing.T) {
-	var _ terraform.ResourceProvider = Provider()
+	var _ *schema.Provider = Provider()
 }
 
 func testAccPreCheck(t *testing.T) {
-	for _, name := range []string{"MYSQL_ENDPOINT", "MYSQL_USERNAME"} {
+	ctx := context.Background()
+	for _, name := range []string{"MYSQL_ENDPOINT", "MYSQL_USERNAME", "MYSQL_PASSWORD"} {
 		if v := os.Getenv(name); v == "" {
 			t.Fatal("MYSQL_ENDPOINT, MYSQL_USERNAME and optionally MYSQL_PASSWORD must be set for acceptance tests")
 		}
 	}
 
-	err := testAccProvider.Configure(terraform.NewResourceConfigRaw(nil))
+	//raw := map[string]interface{}{}
+	//err := testAccProvider.Configure(ctx, terraform.NewResourceConfigRaw(raw))
+	err := testAccProvider.Configure(ctx, terraform.NewResourceConfigRaw(nil))
 	if err != nil {
 		t.Fatal(err)
 	}

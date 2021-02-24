@@ -1,7 +1,7 @@
 package mysql
 
 import (
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"testing"
 )
 
@@ -16,7 +16,7 @@ func TestAccUserPassword_basic(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccUserExists("mysql_user.test"),
 					resource.TestCheckResourceAttr("mysql_user_password.test", "user", "jdoe"),
-					resource.TestCheckResourceAttrSet("mysql_user_password.test", "encrypted_password"),
+					resource.TestCheckResourceAttrSet("mysql_user_password.test", "plaintext_password"),
 				),
 			},
 		},
@@ -29,7 +29,7 @@ resource "mysql_user" "test" {
 }
 
 resource "mysql_user_password" "test" {
-  user    = "${mysql_user.test.user}"
-  pgp_key = "keybase:joestump"
+  user               = "${mysql_user.test.user}"
+  plaintext_password = "somepass"
 }
 `

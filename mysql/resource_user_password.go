@@ -4,14 +4,13 @@ import (
 	"fmt"
 
 	"github.com/gofrs/uuid"
-	"github.com/hashicorp/go-version"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/encryption"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func resourceUserPassword() *schema.Resource {
 	return &schema.Resource{
 		Create: SetUserPassword,
+		Update: SetUserPassword,
 		Read:   ReadUserPassword,
 		Delete: DeleteUserPassword,
 		Schema: map[string]*schema.Schema{
@@ -26,18 +25,9 @@ func resourceUserPassword() *schema.Resource {
 				ForceNew: true,
 				Default:  "localhost",
 			},
-			"pgp_key": {
+			"plaintext_password": {
 				Type:     schema.TypeString,
-				ForceNew: true,
-				Required: true,
-			},
-			"key_fingerprint": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-			"encrypted_password": {
-				Type:     schema.TypeString,
-				Computed: true,
+				Optional: true,
 			},
 		},
 	}
@@ -51,36 +41,20 @@ func SetUserPassword(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
-	password := uuid.String()
-	pgpKey := d.Get("pgp_key").(string)
-	encryptionKey, err := encryption.RetrieveGPGKey(pgpKey)
+	password, passOk := d.GetOk("plaintext_password")
+	if !passOk {
+		password = uuid.String()
+		d.Set("plaintext_password", password)
+	}
+
+	stmtSQL, err := getSetPasswordStatement(db)
 	if err != nil {
 		return err
 	}
-	fingerprint, encrypted, err := encryption.EncryptValue(encryptionKey, password, "MySQL Password")
-	if err != nil {
-		return err
-	}
-	d.Set("key_fingerprint", fingerprint)
-	d.Set("encrypted_password", encrypted)
-
-	requiredVersion, _ := version.NewVersion("8.0.0")
-	currentVersion, err := serverVersion(db)
-	if err != nil {
-		return err
-	}
-
-	passSQL := fmt.Sprintf("'%s'", password)
-	if currentVersion.LessThan(requiredVersion) {
-		passSQL = fmt.Sprintf("PASSWORD(%s)", passSQL)
-	}
-
-	sql := fmt.Sprintf("SET PASSWORD FOR '%s'@'%s' = %s",
+	_, err = db.Exec(stmtSQL,
 		d.Get("user").(string),
 		d.Get("host").(string),
-		passSQL)
-
-	_, err = db.Exec(sql)
+		password)
 	if err != nil {
 		return err
 	}

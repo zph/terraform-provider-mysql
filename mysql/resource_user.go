@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"strings"
@@ -8,7 +9,7 @@ import (
 	"errors"
 
 	"github.com/hashicorp/go-version"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func resourceUser() *schema.Resource {
@@ -128,6 +129,21 @@ func CreateUser(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
+func getSetPasswordStatement(db *sql.DB) (string, error) {
+	/* ALTER USER syntax introduced in MySQL 5.7.6 deprecates SET PASSWORD (GH-8230) */
+	serverVersion, err := serverVersion(db)
+	if err != nil {
+		return "", fmt.Errorf("Could not determine server version: %s", err)
+	}
+
+	ver, _ := version.NewVersion("5.7.6")
+	if serverVersion.LessThan(ver) {
+		return "SET PASSWORD FOR ?@? = PASSWORD(?)", nil
+	} else {
+		return "ALTER USER ?@? IDENTIFIED BY ?", nil
+	}
+}
+
 func UpdateUser(d *schema.ResourceData, meta interface{}) error {
 	db := meta.(*MySQLConfiguration).Db
 
@@ -151,29 +167,16 @@ func UpdateUser(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	if newpw != nil {
-		var stmtSQL string
-
-		/* ALTER USER syntax introduced in MySQL 5.7.6 deprecates SET PASSWORD (GH-8230) */
-		serverVersion, err := serverVersion(db)
+		stmtSQL, err := getSetPasswordStatement(db)
 		if err != nil {
-			return fmt.Errorf("Could not determine server version: %s", err)
-		}
-
-		ver, _ := version.NewVersion("5.7.6")
-		if serverVersion.LessThan(ver) {
-			stmtSQL = fmt.Sprintf("SET PASSWORD FOR '%s'@'%s' = PASSWORD('%s')",
-				d.Get("user").(string),
-				d.Get("host").(string),
-				newpw.(string))
-		} else {
-			stmtSQL = fmt.Sprintf("ALTER USER '%s'@'%s' IDENTIFIED BY '%s'",
-				d.Get("user").(string),
-				d.Get("host").(string),
-				newpw.(string))
+			return err
 		}
 
 		log.Println("Executing query:", stmtSQL)
-		_, err = db.Exec(stmtSQL)
+		_, err = db.Exec(stmtSQL,
+			d.Get("user").(string),
+			d.Get("host").(string),
+			newpw.(string))
 		if err != nil {
 			return err
 		}

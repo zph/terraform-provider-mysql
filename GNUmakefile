@@ -13,8 +13,13 @@ test: fmtcheck
 	echo $(TEST) | \
 		xargs -t -n4 go test $(TESTARGS) -timeout=30s -parallel=4
 
-testacc: fmtcheck
-	TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout=30s
+bin/terraform:
+	mkdir "$(CURDIR)/bin"
+	curl https://releases.hashicorp.com/terraform/0.14.7/terraform_0.14.7_linux_amd64.zip > $(CURDIR)/bin/terraform.zip
+	(cd $(CURDIR)/bin/ ; unzip terraform.zip)
+
+testacc: fmtcheck bin/terraform
+	PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout=30s
 
 vet:
 	@echo "go vet ."
