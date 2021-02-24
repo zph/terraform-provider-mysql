@@ -197,6 +197,23 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 
 	mysqlConf.Db = db
 
+	// Set up env so that we won't create users randomly.
+	currentVersion, err := serverVersion(db)
+	if err != nil {
+		return nil, err
+	}
+
+	versionMinInclusive, _ := version.NewVersion("5.7.5")
+	versionMaxExclusive, _ := version.NewVersion("8.0.0")
+	if currentVersion.GreaterThanOrEqual(versionMinInclusive) &&
+		currentVersion.LessThan(versionMaxExclusive) {
+		// CONCAT and setting works even if there is no value.
+		_, err := db.Exec(`SET SESSION sql_mode=CONCAT(@@sql_mode, ',NO_AUTO_CREATE_USER')`)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return mysqlConf, nil
 }
 
