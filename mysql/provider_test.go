@@ -49,7 +49,7 @@ func TestProvider_impl(t *testing.T) {
 
 func testAccPreCheck(t *testing.T) {
 	ctx := context.Background()
-	for _, name := range []string{"MYSQL_ENDPOINT", "MYSQL_USERNAME", "MYSQL_PASSWORD"} {
+	for _, name := range []string{"MYSQL_ENDPOINT", "MYSQL_USERNAME"} {
 		if v := os.Getenv(name); v == "" {
 			t.Fatal("MYSQL_ENDPOINT, MYSQL_USERNAME and optionally MYSQL_PASSWORD must be set for acceptance tests")
 		}
