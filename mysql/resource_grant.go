@@ -252,7 +252,6 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 		d.SetId("")
 		return nil
 	}
-	// TODO: read of grants of roles is not fully supported. Add the support.
 	database := d.Get("database").(string)
 	table := d.Get("table").(string)
 
@@ -263,6 +262,9 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 	for _, grant := range grants {
 		if grant.Database == database && grant.Table == table {
 			privileges = makePrivs(setToArray(d.Get("privileges")), grant.Privileges)
+		}
+		// Granting role is just role without DB & table.
+		if grant.Database == "" && grant.Table == "" {
 			roles = grant.Roles
 		}
 
@@ -488,7 +490,6 @@ func showGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
 		var rawGrant string
 
 		err := rows.Scan(&rawGrant)
-
 		if err != nil {
 			return nil, err
 		}
