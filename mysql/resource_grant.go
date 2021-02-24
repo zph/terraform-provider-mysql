@@ -190,6 +190,20 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
+	grants, err := showGrants(db, userOrRole)
+	for _, grant := range grants {
+		if hasPrivs {
+			if grant.Database == d.Get("database").(string) && grant.Table == d.Get("table").(string) {
+				return fmt.Errorf("user/role %s already has unmanaged grant to %s.%s - import it first", userOrRole, grant.Database, grant.Table)
+			}
+		} else {
+			// Granting role is just role without DB & table.
+			if grant.Database == "" && grant.Table == "" {
+				return fmt.Errorf("user/role %s already has unmanaged grant for roles %v - import it first", userOrRole, grant.Roles)
+			}
+		}
+	}
+
 	database := formatDatabaseName(d.Get("database").(string))
 
 	table := formatTableName(d.Get("table").(string))

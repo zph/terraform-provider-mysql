@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +41,38 @@ func TestAccGrant(t *testing.T) {
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
 					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "SSL"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccBroken(t *testing.T) {
+	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccGrantCheckDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccGrantConfig_basic(dbName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccPrivilege("mysql_grant.test", "SELECT", true),
+					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
+					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
+					resource.TestCheckResourceAttr("mysql_grant.test", "table", "*"),
+				),
+			},
+			{
+				Config:      testAccGrantConfig_broken(dbName),
+				ExpectError: regexp.MustCompile("already has"),
+				Check: resource.ComposeTestCheckFunc(
+					testAccPrivilege("mysql_grant.test", "SELECT", true),
+					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
+					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
+					resource.TestCheckResourceAttr("mysql_grant.test", "table", "*"),
 				),
 			},
 		},
@@ -378,6 +411,32 @@ resource "mysql_grant" "test" {
 `, dbName, dbName)
 }
 
+func testAccGrantConfig_broken(dbName string) string {
+	return fmt.Sprintf(`
+resource "mysql_database" "test" {
+  name = "%s"
+}
+
+resource "mysql_user" "test" {
+  user     = "jdoe-%s"
+  host     = "example.com"
+}
+
+resource "mysql_grant" "test" {
+  user       = "${mysql_user.test.user}"
+  host       = "${mysql_user.test.host}"
+  database   = "${mysql_database.test.name}"
+  privileges = ["UPDATE", "SELECT"]
+}
+
+resource "mysql_grant" "test2" {
+  user       = "${mysql_user.test.user}"
+  host       = "${mysql_user.test.host}"
+  database   = "${mysql_database.test.name}"
+  privileges = ["UPDATE", "SELECT"]
+}
+`, dbName, dbName)
+}
 func testAccGrantConfig_ssl(dbName string) string {
 	return fmt.Sprintf(`
 resource "mysql_database" "test" {
