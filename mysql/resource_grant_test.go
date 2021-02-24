@@ -24,7 +24,7 @@ func TestAccGrant(t *testing.T) {
 			{
 				Config: testAccGrantConfig_basic(dbName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccPrivilegeExists("mysql_grant.test", "SELECT"),
+					testAccPrivilege("mysql_grant.test", "SELECT", true),
 					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
@@ -35,7 +35,7 @@ func TestAccGrant(t *testing.T) {
 			{
 				Config: testAccGrantConfig_ssl(dbName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccPrivilegeExists("mysql_grant.test", "SELECT"),
+					testAccPrivilege("mysql_grant.test", "SELECT", true),
 					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
@@ -63,8 +63,7 @@ func TestAccGrantComplex(t *testing.T) {
 			{
 				Config: testAccGrantConfig_with_privs(dbName, `"SELECT (c1, c2)"`),
 				Check: resource.ComposeTestCheckFunc(
-					// TODO: grant parsing?
-					//testAccPrivilegeExists("mysql_grant.test", "SELECT (c1, c2)"),
+					testAccPrivilege("mysql_grant.test", "SELECT (c1,c2)", true),
 					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
@@ -75,6 +74,10 @@ func TestAccGrantComplex(t *testing.T) {
 			{
 				Config: testAccGrantConfig_with_privs(dbName, `"DROP", "SELECT (c1)", "INSERT(c3, c4)", "REFERENCES(c5)"`),
 				Check: resource.ComposeTestCheckFunc(
+					testAccPrivilege("mysql_grant.test", "INSERT (c3,c4)", true),
+					testAccPrivilege("mysql_grant.test", "SELECT (c1)", true),
+					testAccPrivilege("mysql_grant.test", "SELECT (c1,c2)", false),
+					testAccPrivilege("mysql_grant.test", "REFERENCES (c5)", true),
 					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
@@ -85,6 +88,7 @@ func TestAccGrantComplex(t *testing.T) {
 			{
 				Config: testAccGrantConfig_with_privs(dbName, `"DROP", "SELECT (c1)", "INSERT(c4, c3, c2)"`),
 				Check: resource.ComposeTestCheckFunc(
+					testAccPrivilege("mysql_grant.test", "REFERENCES (c5)", false),
 					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
@@ -95,6 +99,7 @@ func TestAccGrantComplex(t *testing.T) {
 			{
 				Config: testAccGrantConfig_with_privs(dbName, `"ALL PRIVILEGES"`),
 				Check: resource.ComposeTestCheckFunc(
+					testAccPrivilege("mysql_grant.test", "ALL", true),
 					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
@@ -105,6 +110,7 @@ func TestAccGrantComplex(t *testing.T) {
 			{
 				Config: testAccGrantConfig_with_privs(dbName, `"ALL"`),
 				Check: resource.ComposeTestCheckFunc(
+					testAccPrivilege("mysql_grant.test", "ALL", true),
 					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
@@ -115,6 +121,11 @@ func TestAccGrantComplex(t *testing.T) {
 			{
 				Config: testAccGrantConfig_with_privs(dbName, `"DROP", "SELECT (c1, c2)", "INSERT(c5)", "REFERENCES(c1)"`),
 				Check: resource.ComposeTestCheckFunc(
+					testAccPrivilege("mysql_grant.test", "ALL", false),
+					testAccPrivilege("mysql_grant.test", "DROP", true),
+					testAccPrivilege("mysql_grant.test", "SELECT(c1,c2)", true),
+					testAccPrivilege("mysql_grant.test", "INSERT(c5)", true),
+					testAccPrivilege("mysql_grant.test", "REFERENCES(c1)", true),
 					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
@@ -211,7 +222,8 @@ func prepareTable(dbname string) resource.TestCheckFunc {
 	}
 }
 
-func testAccPrivilegeExists(rn string, privilege string) resource.TestCheckFunc {
+// Test privilege - one can condition it exists or that it doesn't exist.
+func testAccPrivilege(rn string, privilege string, expectExists bool) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[rn]
 		if !ok {
@@ -237,32 +249,35 @@ func testAccPrivilegeExists(rn string, privilege string) resource.TestCheckFunc 
 			userOrRole = fmt.Sprintf("'%s'", id[0])
 		}
 
-		stmtSQL := fmt.Sprintf("SHOW GRANTS FOR %s", userOrRole)
-		log.Printf("[DEBUG] SQL: %s", stmtSQL)
-		rows, err := db.Query(stmtSQL)
+		grants, err := showGrants(db, userOrRole)
 		if err != nil {
-			return fmt.Errorf("error reading grant: %s", err)
+			return err
 		}
-		defer rows.Close()
 
-		privilegeFound := false
-		for rows.Next() {
-			var grants string
-			err = rows.Scan(&grants)
-			if err != nil {
-				return fmt.Errorf("failed to read grant for %s: %s", userOrRole, err)
+		privilegeNorm := normalizePerms([]string{privilege})[0]
+
+		haveGrant := false
+
+	Outer:
+		for _, grant := range grants {
+			privs := normalizePerms(grant.Privileges)
+			for _, priv := range privs {
+				if priv == privilegeNorm {
+					haveGrant = true
+					break Outer
+				}
 			}
-			log.Printf("[DEBUG] GRANTS = %s", grants)
-			privIndex := strings.Index(grants, privilege)
-			if privIndex != -1 {
-				privilegeFound = true
+		}
+
+		if expectExists != haveGrant {
+			if haveGrant {
+				return fmt.Errorf("grant %s found but it was not requested for %s", privilege, userOrRole)
+			} else {
+				return fmt.Errorf("grant %s not found for %s", privilege, userOrRole)
 			}
 		}
 
-		if !privilegeFound {
-			return fmt.Errorf("grant %s no found for %s", privilege, userOrRole)
-		}
-
+		// We match expectations.
 		return nil
 	}
 }

@@ -589,8 +589,11 @@ func normalizeColumnOrder(perm string) string {
 	}
 
 	parts := strings.Split(m[2], ",")
+	for i := range parts {
+		parts[i] = strings.Trim(parts[i], "` ")
+	}
 	sort.Strings(parts)
-	partsTogether := strings.Join(parts, ",")
+	partsTogether := strings.Join(parts, ", ")
 	return fmt.Sprintf("%s(%s)", m[1], partsTogether)
 }
 
