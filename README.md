@@ -2,7 +2,7 @@
 
 Most of the work was done by winebarrel/terraform-provider-mysql.
 
-[![Build Status](https://travis-ci.org/terraform-providers/terraform-provider-mysql.svg?branch=master)](https://travis-ci.org/terraform-providers/terraform-provider-mysql)
+[![Build Status](https://www.travis-ci.com/petoju/terraform-provider-mysql.svg?branch=master)](https://www.travis-ci.com/petoju/terraform-provider-mysql)
 
 Terraform Provider
 ==================
