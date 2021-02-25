@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/gofrs/uuid"
+	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
@@ -66,7 +67,26 @@ func SetUserPassword(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
+func canReadPassword(meta interface{}) (bool, error) {
+	db := meta.(*MySQLConfiguration).Db
+	serverVersion, err := serverVersion(db)
+	if err != nil {
+		return false, fmt.Errorf("Could not determine server version: %s", err)
+	}
+
+	ver, _ := version.NewVersion("8.0.0")
+	return serverVersion.LessThan(ver), nil
+}
+
 func ReadUserPassword(d *schema.ResourceData, meta interface{}) error {
+	canRead, err := canReadPassword(meta)
+	if err != nil {
+		return err
+	}
+	if !canRead {
+		return nil
+	}
+
 	db := meta.(*MySQLConfiguration).Db
 
 	results, err := db.Query(`SELECT IF(PASSWORD(?) = authentication_string,'OK','FAIL') result, plugin FROM mysql.user WHERE user = ? AND host = ?`,
