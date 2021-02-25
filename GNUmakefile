@@ -2,6 +2,7 @@ TEST?=$$(go list ./... |grep -v 'vendor')
 GOFMT_FILES?=$$(find . -name '*.go' |grep -v vendor)
 WEBSITE_REPO=github.com/hashicorp/terraform-website
 PKG_NAME=mysql
+TERRAFORM_VERSION=0.14.7
 
 default: build
 
@@ -15,7 +16,7 @@ test: fmtcheck
 
 bin/terraform:
 	mkdir "$(CURDIR)/bin"
-	curl https://releases.hashicorp.com/terraform/0.14.7/terraform_0.14.7_linux_amd64.zip > $(CURDIR)/bin/terraform.zip
+	curl https://releases.hashicorp.com/terraform/$(TERRAFORM_VERSION)/terraform_$(TERRAFORM_VERSION)_linux_amd64.zip > $(CURDIR)/bin/terraform.zip
 	(cd $(CURDIR)/bin/ ; unzip terraform.zip)
 
 testacc: fmtcheck bin/terraform
