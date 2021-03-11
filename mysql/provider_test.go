@@ -55,9 +55,21 @@ func testAccPreCheck(t *testing.T) {
 		}
 	}
 
-	//raw := map[string]interface{}{}
-	//err := testAccProvider.Configure(ctx, terraform.NewResourceConfigRaw(raw))
 	err := testAccProvider.Configure(ctx, terraform.NewResourceConfigRaw(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProviderConfigure(t *testing.T) {
+	ctx := context.Background()
+
+	raw := map[string]interface{}{
+		"conn_params": map[string]interface{}{
+			"sql_log_bin": 0,
+		},
+	}
+	err := testAccProvider.Configure(ctx, terraform.NewResourceConfigRaw(raw))
 	if err != nil {
 		t.Fatal(err)
 	}

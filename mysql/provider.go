@@ -23,6 +23,7 @@ import (
 const (
 	cleartextPasswords = "cleartext"
 	nativePasswords    = "native"
+	unknownVarErrCode  = 1193
 )
 
 type MySQLConfiguration struct {
@@ -152,13 +153,12 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 		proto = "unix"
 	}
 
-	for k, v := range d.Get("conn_params").(map[string]interface{}) {
-		temp, ok := v.(string)
+	for k, vint := range d.Get("conn_params").(map[string]interface{}) {
+		v, ok := vint.(string)
 		if !ok {
-			fmt.Errorf("Cannot convert connection parameters to string")
-		} else {
-			conn_params[k] = temp
+			return nil, fmt.Errorf("Cannot convert connection parameters to string")
 		}
+		conn_params[k] = v
 	}
 
 	conf := mysql.Config{
@@ -196,11 +196,18 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	}
 
 	mysqlConf.Db = db
+	if err := afterConnect(d, db); err != nil {
+		return nil, fmt.Errorf("Failed running after connect command: %v", err)
+	}
 
+	return mysqlConf, nil
+}
+
+func afterConnect(d *schema.ResourceData, db *sql.DB) error {
 	// Set up env so that we won't create users randomly.
 	currentVersion, err := serverVersion(db)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("Failed getting server version: %v", err)
 	}
 
 	versionMinInclusive, _ := version.NewVersion("5.7.5")
@@ -210,11 +217,11 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 		// CONCAT and setting works even if there is no value.
 		_, err := db.Exec(`SET SESSION sql_mode=CONCAT(@@sql_mode, ',NO_AUTO_CREATE_USER')`)
 		if err != nil {
-			return nil, err
+			return fmt.Errorf("Failed setting SQL mode: %v", err)
 		}
 	}
 
-	return mysqlConf, nil
+	return nil
 }
 
 var identQuoteReplacer = strings.NewReplacer("`", "``")
@@ -265,7 +272,7 @@ func serverVersionString(db *sql.DB) (string, error) {
 
 func connectToMySQL(conf *MySQLConfiguration) (*sql.DB, error) {
 	// This is fine - we'll connect serially, but we don't expect more than
-	// 1 or 2 connections at once.
+	// 1 or 2 connections starting at once.
 	connectionCacheMtx.Lock()
 	defer connectionCacheMtx.Unlock()
 
@@ -283,11 +290,18 @@ func connectToMySQL(conf *MySQLConfiguration) (*sql.DB, error) {
 	retryError := resource.Retry(conf.ConnectRetryTimeoutSec, func() *resource.RetryError {
 		db, err = sql.Open("mysql", dsn)
 		if err != nil {
+			if mysqlErrorNumber(err) == unknownVarErrCode {
+				return resource.NonRetryableError(err)
+			}
 			return resource.RetryableError(err)
 		}
 
 		err = db.Ping()
 		if err != nil {
+			if mysqlErrorNumber(err) == unknownVarErrCode {
+				return resource.NonRetryableError(err)
+			}
+
 			return resource.RetryableError(err)
 		}
 
@@ -301,4 +315,16 @@ func connectToMySQL(conf *MySQLConfiguration) (*sql.DB, error) {
 	db.SetConnMaxLifetime(conf.MaxConnLifetime)
 	db.SetMaxOpenConns(conf.MaxOpenConns)
 	return db, nil
+}
+
+// 0 == not mysql error or not error at all.
+func mysqlErrorNumber(err error) uint16 {
+	if err == nil {
+		return 0
+	}
+	me, ok := err.(*mysql.MySQLError)
+	if !ok {
+		return 0
+	}
+	return me.Number
 }
