@@ -3,6 +3,7 @@ GOFMT_FILES?=$$(find . -name '*.go' |grep -v vendor)
 WEBSITE_REPO=github.com/hashicorp/terraform-website
 PKG_NAME=mysql
 TERRAFORM_VERSION=0.14.7
+TEST_USER=root
 TEST_PASSWORD=my-secret-pw
 
 default: build
@@ -30,9 +31,9 @@ testversion%:
 
 testversion:
 	-docker run --rm --name test-mysql$(MYSQL_VERSION) -e MYSQL_ROOT_PASSWORD="$(TEST_PASSWORD)" -d -p $(MYSQL_PORT):3306 mysql:$(MYSQL_VERSION)
-	@while ! mysql -h 127.0.0.1 -P $(MYSQL_PORT) -p"$(TEST_PASSWORD)" -u root -e 'SELECT 1'; do echo 'Waiting for MySQL...'; sleep 1; done
-	-mysql -h 127.0.0.1 -u root -P $(MYSQL_PORT) -p"$(TEST_PASSWORD)" -e "INSTALL PLUGIN mysql_no_login SONAME 'mysql_no_login.so';"
-	MYSQL_PASSWORD="$(TEST_PASSWORD)" MYSQL_ENDPOINT=127.0.0.1:$(MYSQL_PORT) $(MAKE) testacc
+	@while ! mysql -h 127.0.0.1 -P $(MYSQL_PORT) -u "$(TEST_USER)" -p"$(TEST_PASSWORD)" -e 'SELECT 1'; do echo 'Waiting for MySQL...'; sleep 1; done
+	-mysql -h 127.0.0.1 -P $(MYSQL_PORT) -u "$(TEST_USER)" -p"$(TEST_PASSWORD)" -e "INSTALL PLUGIN mysql_no_login SONAME 'mysql_no_login.so';"
+	MYSQL_USERNAME="$(TEST_USER)" MYSQL_PASSWORD="$(TEST_PASSWORD)" MYSQL_ENDPOINT=127.0.0.1:$(MYSQL_PORT) $(MAKE) testacc
 	docker rm -f test-mysql$(MYSQL_VERSION)
 
 vet:
