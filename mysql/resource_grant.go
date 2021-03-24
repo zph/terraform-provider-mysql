@@ -192,6 +192,10 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 
 	grants, err := showGrants(db, userOrRole)
 	for _, grant := range grants {
+		if len(grant.Privileges) == 0 {
+			continue
+		}
+
 		if hasPrivs {
 			if grant.Database == d.Get("database").(string) && grant.Table == d.Get("table").(string) {
 				return fmt.Errorf("user/role %s already has unmanaged grant to %s.%s - import it first", userOrRole, grant.Database, grant.Table)
@@ -524,7 +528,9 @@ func showGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
 				Grant:      reGrant.MatchString(rawGrant),
 			}
 
-			grants = append(grants, grant)
+			if len(privileges) > 0 {
+				grants = append(grants, grant)
+			}
 
 		} else if m := reRole.FindStringSubmatch(rawGrant); len(m) == 2 {
 			roleStr := m[1]
@@ -553,6 +559,16 @@ func normalizeColumnOrderMulti(perm []string) []string {
 	ret := []string{}
 	for _, p := range perm {
 		ret = append(ret, normalizeColumnOrder(p))
+	}
+	return ret
+}
+
+func removeUselessPerms(grants []string) []string {
+	ret := []string{}
+	for _, grant := range grants {
+		if grant != "USAGE" {
+			ret = append(ret, grant)
+		}
 	}
 	return ret
 }
@@ -588,7 +604,7 @@ func extractPermTypes(g string) []string {
 		}
 	}
 	grants = append(grants, string(currentWord))
-	return grants
+	return removeUselessPerms(grants)
 }
 
 func normalizeColumnOrder(perm string) string {
@@ -623,6 +639,7 @@ func normalizePerms(perms []string) []string {
 			permUcase = "ALL PRIVILEGES"
 		}
 		permSortedColumns := normalizeColumnOrder(permUcase)
+
 		ret = append(ret, permSortedColumns)
 	}
 	return ret

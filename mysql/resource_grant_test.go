@@ -367,7 +367,13 @@ resource "mysql_user" "test" {
   user     = "jdoe-%s"
   host     = "example.com"
 }
-`, dbName, dbName)
+
+resource "mysql_user" "test_global" {
+  user     = "jdoe-%s"
+  host     = "%%"
+}
+
+`, dbName, dbName, dbName)
 }
 
 func testAccGrantConfig_with_privs(dbName, privs string) string {
@@ -381,6 +387,19 @@ resource "mysql_user" "test" {
   host     = "example.com"
 }
 
+resource "mysql_user" "test_global" {
+  user     = "jdoe-%s"
+  host     = "%%"
+}
+
+resource "mysql_grant" "test_global" {
+  user       = "${mysql_user.test_global.user}"
+  host       = "${mysql_user.test_global.host}"
+  table      = "*"
+  database   = "*"
+  privileges = ["SHOW DATABASES"]
+}
+
 resource "mysql_grant" "test" {
   user       = "${mysql_user.test.user}"
   host       = "${mysql_user.test.host}"
@@ -388,7 +407,7 @@ resource "mysql_grant" "test" {
   database   = "${mysql_database.test.name}"
   privileges = [%s]
 }
-`, dbName, dbName, privs)
+`, dbName, dbName, dbName, privs)
 }
 
 func testAccGrantConfig_basic(dbName string) string {
