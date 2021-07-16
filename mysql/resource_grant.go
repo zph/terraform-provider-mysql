@@ -114,7 +114,13 @@ func flattenList(list []interface{}, template string) string {
 
 func formatDatabaseName(database string) string {
 	if strings.Compare(database, "*") != 0 && !strings.HasSuffix(database, "`") {
-		return fmt.Sprintf("`%s`", database)
+		reProcedure := regexp.MustCompile(`(?i)^(function|procedure) (.*)$`)
+		if reProcedure.MatchString(database) {
+			// This is only a hack - user can specify function / procedure as database.
+			database = reProcedure.ReplaceAllString(database, "$1 `${2}`")
+		} else {
+			database = fmt.Sprintf("`%s`", database)
+		}
 	}
 
 	return database
