@@ -79,6 +79,38 @@ func TestAccBroken(t *testing.T) {
 	})
 }
 
+func TestAccDifferentHosts(t *testing.T) {
+	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccGrantCheckDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccGrantConfig_extraHost(dbName, false),
+				Check: resource.ComposeTestCheckFunc(
+					testAccPrivilege("mysql_grant.test_all", "SELECT", true),
+					resource.TestCheckResourceAttr("mysql_grant.test_all", "user", fmt.Sprintf("jdoe-%s", dbName)),
+					resource.TestCheckResourceAttr("mysql_grant.test_all", "host", "%"),
+					resource.TestCheckResourceAttr("mysql_grant.test_all", "table", "*"),
+				),
+			},
+			{
+				Config: testAccGrantConfig_extraHost(dbName, true),
+				Check: resource.ComposeTestCheckFunc(
+					testAccPrivilege("mysql_grant.test", "SELECT", true),
+					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
+					resource.TestCheckResourceAttr("mysql_grant.test", "host", "10.1.2.3"),
+					resource.TestCheckResourceAttr("mysql_grant.test", "table", "*"),
+					resource.TestCheckResourceAttr("mysql_grant.test_all", "user", fmt.Sprintf("jdoe-%s", dbName)),
+					resource.TestCheckResourceAttr("mysql_grant.test_all", "host", "%"),
+					resource.TestCheckResourceAttr("mysql_grant.test_all", "table", "*"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccGrantComplex(t *testing.T) {
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
@@ -428,6 +460,56 @@ resource "mysql_grant" "test" {
   privileges = ["UPDATE", "SELECT"]
 }
 `, dbName, dbName)
+}
+
+func testAccGrantConfig_extraHost(dbName string, extraHost bool) string {
+	extra := ""
+	if extraHost {
+		extra = fmt.Sprintf(`
+resource "mysql_grant" "test_bet" {
+  user       = "${mysql_user.test_bet.user}"
+  host       = "${mysql_user.test_bet.host}"
+  database   = "mysql"
+  privileges = ["DELETE"]
+}
+		`)
+	}
+
+	return fmt.Sprintf(`
+resource "mysql_database" "test" {
+  name = "%s"
+}
+
+resource "mysql_user" "test_all" {
+  user     = "jdoe-%s"
+  host     = "%%"
+}
+
+resource "mysql_user" "test" {
+  user       = "jdoe-%s"
+  host       = "10.1.2.3"
+}
+
+resource "mysql_user" "test_bet" {
+  user       = "jdoe-%s"
+  host       = "10.1.%%.%%"
+}
+
+resource "mysql_grant" "test_all" {
+  user       = "${mysql_user.test_all.user}"
+  host       = "${mysql_user.test_all.host}"
+  database   = "mysql"
+  privileges = ["UPDATE", "SELECT"]
+}
+
+resource "mysql_grant" "test" {
+  user       = "${mysql_user.test.user}"
+  host       = "${mysql_user.test.host}"
+  database   = "mysql"
+  privileges = ["SELECT", "INSERT"]
+}
+%s
+`, dbName, dbName, dbName, dbName, extra)
 }
 
 func testAccGrantConfig_broken(dbName string) string {

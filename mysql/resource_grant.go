@@ -504,7 +504,7 @@ func showGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
 	}
 
 	defer rows.Close()
-	re := regexp.MustCompile(`^GRANT (.+) ON (.+?)\.(.+?) TO`)
+	re := regexp.MustCompile(`^GRANT (.+) ON (.+?)\.(.+?) TO ([^ ]+)`)
 
 	// Ex: GRANT `app_read`@`%`,`app_write`@`%` TO `rw_user1`@`localhost
 	reRole := regexp.MustCompile(`^GRANT (.+) TO`)
@@ -518,13 +518,19 @@ func showGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
 			return nil, err
 		}
 
-		if m := re.FindStringSubmatch(rawGrant); len(m) == 4 {
+		if m := re.FindStringSubmatch(rawGrant); len(m) == 5 {
 			privsStr := m[1]
 			priv_list := extractPermTypes(privsStr)
 			privileges := make([]string, len(priv_list))
 
 			for i, priv := range priv_list {
 				privileges[i] = strings.TrimSpace(priv)
+			}
+			grantUserHost := m[4]
+			if stripQuotes(grantUserHost) != stripQuotes(user) {
+				// Percona returns also grants for % if we requested IP.
+				// Skip them as we don't want terraform to consider it.
+				continue
 			}
 
 			grant := &MySQLGrant{
@@ -567,6 +573,12 @@ func normalizeColumnOrderMulti(perm []string) []string {
 		ret = append(ret, normalizeColumnOrder(p))
 	}
 	return ret
+}
+
+func stripQuotes(user string) string {
+	withoutQuotes := strings.ReplaceAll(user, "'", "")
+	withoutBackticks := strings.ReplaceAll(withoutQuotes, "`", "")
+	return withoutBackticks
 }
 
 func removeUselessPerms(grants []string) []string {
