@@ -527,7 +527,7 @@ func showGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
 				privileges[i] = strings.TrimSpace(priv)
 			}
 			grantUserHost := m[4]
-			if stripQuotes(grantUserHost) != stripQuotes(user) {
+			if normalizeUserHost(grantUserHost) != normalizeUserHost(user) {
 				// Percona returns also grants for % if we requested IP.
 				// Skip them as we don't want terraform to consider it.
 				continue
@@ -575,8 +575,11 @@ func normalizeColumnOrderMulti(perm []string) []string {
 	return ret
 }
 
-func stripQuotes(user string) string {
-	withoutQuotes := strings.ReplaceAll(user, "'", "")
+func normalizeUserHost(userHost string) string {
+	if !strings.Contains(userHost, "@") {
+		userHost = fmt.Sprint(userHost, "@%")
+	}
+	withoutQuotes := strings.ReplaceAll(userHost, "'", "")
 	withoutBackticks := strings.ReplaceAll(withoutQuotes, "`", "")
 	return withoutBackticks
 }
