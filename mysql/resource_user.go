@@ -78,11 +78,11 @@ func CreateUser(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	if len(auth) > 0 {
-		switch auth {
-		case "AWSAuthenticationPlugin":
+		if auth == "AWSAuthenticationPlugin" {
 			authStm = " IDENTIFIED WITH AWSAuthenticationPlugin as 'RDS'"
-		case "mysql_no_login":
-			authStm = " IDENTIFIED WITH mysql_no_login"
+		} else {
+			// mysql_no_login, auth_pam, ...
+			authStm = " IDENTIFIED WITH " + auth
 		}
 	}
 
