@@ -14,7 +14,7 @@ build: fmtcheck
 test: fmtcheck
 	go test -i $(TEST) || exit 1
 	echo $(TEST) | \
-		xargs -t -n4 go test $(TESTARGS) -timeout=30s -parallel=4
+		xargs -t -n4 go test $(TESTARGS) -timeout=60s -parallel=4
 
 bin/terraform:
 	mkdir "$(CURDIR)/bin"
@@ -22,7 +22,7 @@ bin/terraform:
 	(cd $(CURDIR)/bin/ ; unzip terraform.zip)
 
 testacc: fmtcheck bin/terraform
-	PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout=30s
+	PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout=60s
 
 acceptance: testversion5.6 testversion5.7 testversion8.0 testpercona5.7 testpercona8.0
 
