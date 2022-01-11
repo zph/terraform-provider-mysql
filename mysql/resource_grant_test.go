@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
@@ -41,6 +41,35 @@ func TestAccGrant(t *testing.T) {
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
 					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "SSL"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccGrantWithGrantOption(t *testing.T) {
+	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccGrantCheckDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccGrantConfig_basic(dbName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccPrivilege("mysql_grant.test", "SELECT", true),
+				),
+			},
+			{
+				Config: testAccGrantConfig_basicWithGrant(dbName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccPrivilege("mysql_grant.test", "SELECT", true),
+				),
+			},
+			{
+				Config: testAccGrantConfig_basic(dbName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccPrivilege("mysql_grant.test", "SELECT", true),
 				),
 			},
 		},
@@ -233,6 +262,18 @@ func TestAccGrant_role(t *testing.T) {
 					resource.TestCheckResourceAttr("mysql_grant.test", "role", roleName),
 				),
 			},
+			{
+				Config: testAccGrantConfig_roleWithGrantOption(dbName, roleName),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mysql_grant.test", "role", roleName),
+				),
+			},
+			{
+				Config: testAccGrantConfig_role(dbName, roleName),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mysql_grant.test", "role", roleName),
+				),
+			},
 		},
 	})
 }
@@ -372,10 +413,8 @@ func testAccGrantCheckDestroy(s *terraform.State) error {
 		log.Printf("[DEBUG] SQL: %s", stmtSQL)
 		rows, err := db.Query(stmtSQL)
 		if err != nil {
-			if mysqlErr, ok := err.(*mysql.MySQLError); ok {
-				if mysqlErr.Number == nonexistingGrantErrCode {
-					return nil
-				}
+			if isNonExistingGrant(err) {
+				return nil
 			}
 
 			return fmt.Errorf("error reading grant: %s", err)
@@ -458,6 +497,27 @@ resource "mysql_grant" "test" {
   host       = "${mysql_user.test.host}"
   database   = "${mysql_database.test.name}"
   privileges = ["UPDATE", "SELECT"]
+}
+`, dbName, dbName)
+}
+
+func testAccGrantConfig_basicWithGrant(dbName string) string {
+	return fmt.Sprintf(`
+resource "mysql_database" "test" {
+  name = "%s"
+}
+
+resource "mysql_user" "test" {
+  user     = "jdoe-%s"
+  host     = "example.com"
+}
+
+resource "mysql_grant" "test" {
+  user       = "${mysql_user.test.user}"
+  host       = "${mysql_user.test.host}"
+  database   = "${mysql_database.test.name}"
+  privileges = ["UPDATE", "SELECT"]
+  grant      = "true"
 }
 `, dbName, dbName)
 }
@@ -573,6 +633,25 @@ resource "mysql_grant" "test" {
   role       = "${mysql_role.test.name}"
   database   = "${mysql_database.test.name}"
   privileges = ["SELECT", "UPDATE"]
+}
+`, dbName, roleName)
+}
+
+func testAccGrantConfig_roleWithGrantOption(dbName string, roleName string) string {
+	return fmt.Sprintf(`
+resource "mysql_database" "test" {
+  name = "%s"
+}
+
+resource "mysql_role" "test" {
+  name = "%s"
+}
+
+resource "mysql_grant" "test" {
+  role       = "${mysql_role.test.name}"
+  database   = "${mysql_database.test.name}"
+  privileges = ["SELECT", "UPDATE"]
+  grant      = "true"
 }
 `, dbName, roleName)
 }

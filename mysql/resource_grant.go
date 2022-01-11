@@ -14,8 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-const nonexistingGrantErrCode = 1141
-
 type MySQLGrant struct {
 	Database   string
 	Table      string
@@ -232,8 +230,12 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 		stmtSQL += fmt.Sprintf(" REQUIRE %s", d.Get("tls_option").(string))
 	}
 
-	if !hasRoles && !isRole && d.Get("grant").(bool) {
-		stmtSQL += " WITH GRANT OPTION"
+	if d.Get("grant").(bool) {
+		if rolesGranted == 0 {
+			stmtSQL += " WITH GRANT OPTION"
+		}
+		// TODO: consider WITH ADMIN OPTION here.
+		// However, there is no obvious way to revoke it, so not adding it here.
 	}
 
 	log.Println("Executing statement:", stmtSQL)
@@ -391,7 +393,7 @@ func DeleteGrant(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
-	userOrRole, isRole, err := userOrRole(
+	userOrRole, _, err := userOrRole(
 		d.Get("user").(string),
 		d.Get("host").(string),
 		d.Get("role").(string),
@@ -401,10 +403,12 @@ func DeleteGrant(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	roles := d.Get("roles").(*schema.Set)
+	rolesCount := len(roles.List())
+
 	privileges := d.Get("privileges").(*schema.Set)
 
 	var sql string
-	if !isRole && len(roles.List()) == 0 {
+	if rolesCount == 0 {
 		sql = fmt.Sprintf("REVOKE GRANT OPTION ON %s.%s FROM %s",
 			database,
 			table,
@@ -441,7 +445,11 @@ func DeleteGrant(d *schema.ResourceData, meta interface{}) error {
 
 func isNonExistingGrant(err error) bool {
 	if driverErr, ok := err.(*mysql.MySQLError); ok {
-		if driverErr.Number == nonexistingGrantErrCode {
+		// 1141 = ER_NONEXISTING_GRANT
+		// 1147 = ER_NONEXISTING_TABLE_GRANT
+		// 1403 = ER_NONEXISTING_PROC_GRANT
+
+		if driverErr.Number == 1141 || driverErr.Number == 1147 || driverErr.Number == 1403 {
 			return true
 		}
 	}
