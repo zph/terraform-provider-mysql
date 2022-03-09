@@ -526,6 +526,11 @@ func showGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
 			return nil, err
 		}
 
+		if strings.HasPrefix(rawGrant, "REVOKE") {
+			log.Printf("[WARN] Partial revokes are not fully supported and lead to unexpected behavior. Consult documentation https://dev.mysql.com/doc/refman/8.0/en/partial-revokes.html on how to disable them for safe and reliable terraform. Relevant partial revoke: %s\n", rawGrant)
+			continue
+		}
+
 		if m := re.FindStringSubmatch(rawGrant); len(m) == 5 {
 			privsStr := m[1]
 			priv_list := extractPermTypes(privsStr)
