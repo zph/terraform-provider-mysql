@@ -34,13 +34,13 @@ func resourceDatabase() *schema.Resource {
 			"default_character_set": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Default:  "utf8",
+				Default:  "utf8mb4",
 			},
 
 			"default_collation": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Default:  "utf8_general_ci",
+				Default:  "utf8mb4_general_ci",
 			},
 		},
 	}
