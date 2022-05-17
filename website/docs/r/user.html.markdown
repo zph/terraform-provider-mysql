@@ -13,7 +13,7 @@ server.
 
 ~> **Note:** The password for the user is provided in plain text, and is
 obscured by an unsalted hash in the state
-[Read more about sensitive data in state](/docs/state/sensitive-data.html).
+[Read more about sensitive data in state](https://www.terraform.io/language/state/sensitive-data).
 Care is required when using this resource, to avoid disclosing the password.
 
 ## Example Usage
