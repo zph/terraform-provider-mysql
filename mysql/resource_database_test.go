@@ -32,9 +32,9 @@ func TestAccDatabase_collationChange(t *testing.T) {
 	dbName := "terraform_acceptance_test"
 
 	charset1 := "latin1"
-	charset2 := "utf8"
+	charset2 := "utf8mb4"
 	collation1 := "latin1_bin"
-	collation2 := "utf8_general_ci"
+	collation2 := "utf8mb4_general_ci"
 
 	resourceName := "mysql_database.test"
 
@@ -73,7 +73,7 @@ func TestAccDatabase_collationChange(t *testing.T) {
 }
 
 func testAccDatabaseCheck_basic(rn string, name string) resource.TestCheckFunc {
-	return testAccDatabaseCheck_full(rn, name, "utf8", "utf8_bin")
+	return testAccDatabaseCheck_full(rn, name, "utf8mb4", "utf8mb4_bin")
 }
 
 func testAccDatabaseCheck_full(rn string, name string, charset string, collation string) resource.TestCheckFunc {
@@ -133,7 +133,7 @@ func testAccDatabaseCheckDestroy(name string) resource.TestCheckFunc {
 }
 
 func testAccDatabaseConfig_basic(name string) string {
-	return testAccDatabaseConfig_full(name, "utf8", "utf8_bin")
+	return testAccDatabaseConfig_full(name, "utf8mb4", "utf8mb4_bin")
 }
 
 func testAccDatabaseConfig_full(name string, charset string, collation string) string {
