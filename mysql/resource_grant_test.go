@@ -355,7 +355,7 @@ func testAccPrivilege(rn string, privilege string, expectExists bool) resource.T
 			userOrRole = fmt.Sprintf("'%s'", id[0])
 		}
 
-		grants, err := showGrants(db, userOrRole)
+		grants, err := showUserGrants(db, userOrRole)
 		if err != nil {
 			return err
 		}
