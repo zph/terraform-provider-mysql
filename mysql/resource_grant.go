@@ -214,8 +214,11 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 		}
 	}
 
+	// DB and table have to be wrappedsin backticks in some cases.
+	databaseWrapped := formatDatabaseName(database)
+	tableWrapped := formatTableName(table)
 	if (!isRole || hasPrivs) && rolesGranted == 0 {
-		grantOn = fmt.Sprintf(" ON %s.%s", database, table)
+		grantOn = fmt.Sprintf(" ON %s.%s", databaseWrapped, tableWrapped)
 	}
 
 	stmtSQL := fmt.Sprintf("GRANT %s%s TO %s",
@@ -242,9 +245,9 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("Error running SQL (%s): %s", stmtSQL, err)
 	}
 
-	id := fmt.Sprintf("%s@%s:%s", user, host, database)
+	id := fmt.Sprintf("%s@%s:%s", user, host, databaseWrapped)
 	if isRole {
-		id = fmt.Sprintf("%s:%s", role, database)
+		id = fmt.Sprintf("%s:%s", role, databaseWrapped)
 	}
 
 	d.SetId(id)
