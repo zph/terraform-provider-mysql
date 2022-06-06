@@ -84,3 +84,13 @@ The following arguments are supported:
 ## Attributes Reference
 
 No further attributes are exported.
+
+## Import
+
+Grants can be imported using user, host, database and table.
+For grants without explicit database or tables, leave these fields empty.
+
+```
+$ terraform import mysql_grant.example user@host@database@table
+$ terraform import mysql_grant.without_db user@host@@
+```

@@ -197,6 +197,10 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 	table := d.Get("table").(string)
 
 	grants, err := showGrants(db, userOrRole, database, table)
+	if err != nil {
+		return err
+	}
+
 	for _, grant := range grants {
 		if len(grant.Privileges) == 0 {
 			continue
@@ -262,7 +266,6 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 	if err != nil {
 		return err
 	}
-
 	userOrRole, _, err := userOrRole(
 		d.Get("user").(string),
 		d.Get("host").(string),
@@ -273,8 +276,17 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 	}
 	database := d.Get("database").(string)
 	table := d.Get("table").(string)
+	rolesSet := d.Get("roles").(*schema.Set)
+	rolesCount := len(rolesSet.List())
 
-	grants, err := showGrants(db, userOrRole, database, table)
+	var grants []*MySQLGrant
+	if rolesCount != 0 {
+		// For some reason, role can have still database / table, that
+		// makes no sense. Remove them when reading.
+		database = ""
+		table = ""
+	}
+	grants, err = showGrants(db, userOrRole, database, table)
 
 	if err != nil {
 		log.Printf("[WARN] GRANT not found for %s (%s) - removing from state", userOrRole, err)
