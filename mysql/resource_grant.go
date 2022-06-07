@@ -536,6 +536,11 @@ func showUserGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
 	sql := fmt.Sprintf("SHOW GRANTS FOR %s", user)
 	rows, err := db.Query(sql)
 
+	if driverErr, ok := err.(*mysql.MySQLError); ok {
+		if driverErr.Number == mySQLErrorNoSuchGrant {
+			return []*MySQLGrant{}, nil
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
