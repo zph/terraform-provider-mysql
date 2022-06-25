@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -63,5 +64,22 @@ func testAccPreCheck(t *testing.T) {
 	err := testAccProvider.Configure(ctx, terraform.NewResourceConfigRaw(raw))
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func testAccPreCheckSkipTiDB(t *testing.T) {
+	testAccPreCheck(t)
+	db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+	if err != nil {
+		return
+	}
+
+	currentVersionString, err := serverVersionString(db)
+	if err != nil {
+		return
+	}
+
+	if strings.Contains(currentVersionString, "TiDB") {
+		t.Skip("Skip on TiDB")
 	}
 }
