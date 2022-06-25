@@ -15,7 +15,7 @@ func resourceGlobalVariable() *schema.Resource {
 		Update: UpdateGlobalVariable,
 		Delete: DeleteGlobalVariable,
 		Importer: &schema.ResourceImporter{
-			State: ImportGlobalVariable,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 		Schema: map[string]*schema.Schema{
 			"name": {
@@ -37,7 +37,7 @@ func CreateGlobalVariable(d *schema.ResourceData, meta interface{}) error {
 	name := d.Get("name").(string)
 	value := d.Get("value").(string)
 
-	sql := fmt.Sprintf("SET GLOBAL %s = %s", quoteIdentifier(name), quoteIdentifier(value))
+	sql := fmt.Sprintf("SET GLOBAL %s = %s", quoteIdentifier(name), value)
 	log.Printf("[DEBUG] SQL: %s", sql)
 
 	_, err := db.Exec(sql)
@@ -55,7 +55,7 @@ func ReadGlobalVariable(d *schema.ResourceData, meta interface{}) error {
 
 	stmt, err := db.Prepare("SHOW GLOBAL VARIABLES WHERE VARIABLE_NAME = ?")
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("error during prepare statement for global variable: %s", err)
 	}
 
 	var name, value string
@@ -63,7 +63,7 @@ func ReadGlobalVariable(d *schema.ResourceData, meta interface{}) error {
 
 	if err != nil && err != sql.ErrNoRows {
 		d.SetId("")
-		return fmt.Errorf("Error during show global variables: %s", err)
+		return fmt.Errorf("error during show global variables: %s", err)
 	}
 
 	d.Set("name", name)
@@ -78,7 +78,7 @@ func UpdateGlobalVariable(d *schema.ResourceData, meta interface{}) error {
 	name := d.Get("name").(string)
 	value := d.Get("value").(string)
 
-	sql := fmt.Sprintf("SET GLOBAL %s = %s", quoteIdentifier(name), quoteIdentifier(value))
+	sql := fmt.Sprintf("SET GLOBAL %s = %s", quoteIdentifier(name), value)
 	log.Printf("[DEBUG] SQL: %s", sql)
 
 	_, err := db.Exec(sql)
@@ -103,14 +103,4 @@ func DeleteGlobalVariable(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	return nil
-}
-
-func ImportGlobalVariable(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
-	err := ReadGlobalVariable(d, meta)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return []*schema.ResourceData{d}, nil
 }
