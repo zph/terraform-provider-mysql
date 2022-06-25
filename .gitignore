@@ -21,9 +21,13 @@ website/node_modules
 *~
 .*.swp
 .idea
+/.vscode
 *.iml
 *.test
 *.iml
+
+# goreleaser
+/dist
 
 website/vendor
 
