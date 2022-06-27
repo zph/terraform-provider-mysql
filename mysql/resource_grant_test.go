@@ -143,7 +143,7 @@ func TestAccDifferentHosts(t *testing.T) {
 func TestAccGrantComplex(t *testing.T) {
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
+		PreCheck:     func() { testAccPreCheckSkipTiDB(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccGrantCheckDestroy,
 		Steps: []resource.TestStep{

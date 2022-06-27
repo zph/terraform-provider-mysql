@@ -14,7 +14,7 @@ import (
 func TestAccDatabase(t *testing.T) {
 	dbName := "terraform_acceptance_test"
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
+		PreCheck:     func() { testAccPreCheckSkipTiDB(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccDatabaseCheckDestroy(dbName),
 		Steps: []resource.TestStep{
@@ -39,7 +39,7 @@ func TestAccDatabase_collationChange(t *testing.T) {
 	resourceName := "mysql_database.test"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
+		PreCheck:     func() { testAccPreCheckSkipTiDB(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccDatabaseCheckDestroy(dbName),
 		Steps: []resource.TestStep{
