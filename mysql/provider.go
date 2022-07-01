@@ -24,6 +24,7 @@ const (
 	cleartextPasswords = "cleartext"
 	nativePasswords    = "native"
 	unknownVarErrCode  = 1193
+	unknownUserErrCode = 1396
 )
 
 type MySQLConfiguration struct {

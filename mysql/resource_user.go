@@ -57,6 +57,12 @@ func resourceUser() *schema.Resource {
 				ForceNew:      true,
 				ConflictsWith: []string{"plaintext_password", "password"},
 			},
+			"auth_string_hashed": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				DiffSuppressFunc: HashedStringSuppressFunc,
+				ConflictsWith:    []string{"plaintext_password", "password"},
+			},
 
 			"tls_option": {
 				Type:     schema.TypeString,
@@ -83,6 +89,12 @@ func CreateUser(d *schema.ResourceData, meta interface{}) error {
 		} else {
 			// mysql_no_login, auth_pam, ...
 			authStm = " IDENTIFIED WITH " + auth
+		}
+	}
+	if v, ok := d.GetOk("auth_string_hashed"); ok {
+		hashed = v.(string)
+		if hashed != "" {
+			authStm = fmt.Sprintf("%s AS '%s'", authStm, hashed)
 		}
 	}
 
@@ -153,6 +165,26 @@ func UpdateUser(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	if len(auth) > 0 {
+		if d.HasChange("tls_option") || d.HasChange("auth_plugin") || d.HasChange("auth_string_hashed") {
+			var stmtSQL string
+
+			authString := ""
+			if d.Get("auth_string_hashed").(string) != "" {
+				authString = fmt.Sprintf("IDENTIFIED WITH %s AS '%s'")
+			}
+			stmtSQL = fmt.Sprintf("ALTER USER '%s'@'%s' %s  REQUIRE %s",
+				d.Get("user").(string),
+				d.Get("host").(string),
+				authString,
+				d.Get("tls_option").(string))
+
+			log.Println("Executing query:", stmtSQL)
+			_, err := db.Exec(stmtSQL)
+			if err != nil {
+				return err
+			}
+		}
+
 		// nothing to change, return
 		return nil
 	}
@@ -208,34 +240,43 @@ func UpdateUser(d *schema.ResourceData, meta interface{}) error {
 
 func ReadUser(d *schema.ResourceData, meta interface{}) error {
 	db := meta.(*MySQLConfiguration).Db
+	stmt := "SHOW CREATE USER ?@?"
 
-	stmtSQL := fmt.Sprintf("SELECT USER FROM mysql.user WHERE USER='%s'",
-		d.Get("user").(string))
-
-	log.Println("Executing statement:", stmtSQL)
-
-	rows, err := db.Query(stmtSQL)
+	var createUserStmt string
+	err := db.QueryRow(stmt, d.Get("user").(string), d.Get("host").(string)).Scan(&createUserStmt)
 	if err != nil {
+		if mysqlErrorNumber(err) == unknownUserErrCode {
+			d.SetId("")
+			return nil
+		}
 		return err
 	}
-	defer rows.Close()
 
-	if !rows.Next() && rows.Err() == nil {
-		d.SetId("")
+	// CREATE USER 'some_app'@'%' IDENTIFIED WITH 'mysql_native_password' AS '*0something' REQUIRE NONE PASSWORD EXPIRE DEFAULT ACCOUNT UNLOCK
+	re := regexp.MustCompile(`^CREATE USER '([^']*)'@'([^']*)' IDENTIFIED WITH '([^']*)' AS '([^']*)' REQUIRE ([^ ]*)`)
+	if m := re.FindStringSubmatch(createUserStmt); len(m) == 6 {
+		d.Set("user", m[1])
+		d.Set("host", m[2])
+		d.Set("auth_plugin", m[3])
+		d.Set("auth_string_hashed", m[4])
+		d.Set("tls_option", m[5])
+	} else {
+		return fmt.Errorf("Create user couldn't be parsed - it is %s", createUserStmt)
 	}
-	return rows.Err()
+	return nil
 }
 
 func DeleteUser(d *schema.ResourceData, meta interface{}) error {
 	db := meta.(*MySQLConfiguration).Db
 
-	stmtSQL := fmt.Sprintf("DROP USER '%s'@'%s'",
-		d.Get("user").(string),
-		d.Get("host").(string))
+	stmtSQL := fmt.Sprintf("DROP USER ?@?")
 
 	log.Println("Executing statement:", stmtSQL)
 
-	_, err := db.Exec(stmtSQL)
+	_, err := db.Exec(stmtSQL,
+		d.Get("user").(string),
+		d.Get("host").(string))
+
 	if err == nil {
 		d.SetId("")
 	}
@@ -251,23 +292,17 @@ func ImportUser(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceDat
 
 	user := userHost[0]
 	host := userHost[1]
-
-	db := meta.(*MySQLConfiguration).Db
-
-	var count int
-	err := db.QueryRow("SELECT COUNT(1) FROM mysql.user WHERE user = ? AND host = ?", user, host).Scan(&count)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if count == 0 {
-		return nil, fmt.Errorf("user '%s' not found", d.Id())
-	}
-
 	d.Set("user", user)
 	d.Set("host", host)
-	d.Set("tls_option", "NONE")
+	err := ReadUser(d, meta)
 
 	return []*schema.ResourceData{d}, nil
+}
+
+func HashedStringSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	if new == "" {
+		return true
+	}
+
+	return false
 }
