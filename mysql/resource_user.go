@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 
 	"errors"
@@ -52,15 +53,16 @@ func resourceUser() *schema.Resource {
 			},
 
 			"auth_plugin": {
-				Type:          schema.TypeString,
-				Optional:      true,
-				ForceNew:      true,
-				ConflictsWith: []string{"plaintext_password", "password"},
+				Type:             schema.TypeString,
+				Optional:         true,
+				ForceNew:         true,
+				DiffSuppressFunc: NewEmptyStringSuppressFunc,
+				ConflictsWith:    []string{"plaintext_password", "password"},
 			},
 			"auth_string_hashed": {
 				Type:             schema.TypeString,
 				Optional:         true,
-				DiffSuppressFunc: HashedStringSuppressFunc,
+				DiffSuppressFunc: NewEmptyStringSuppressFunc,
 				ConflictsWith:    []string{"plaintext_password", "password"},
 			},
 
@@ -92,7 +94,7 @@ func CreateUser(d *schema.ResourceData, meta interface{}) error {
 		}
 	}
 	if v, ok := d.GetOk("auth_string_hashed"); ok {
-		hashed = v.(string)
+		hashed := v.(string)
 		if hashed != "" {
 			authStm = fmt.Sprintf("%s AS '%s'", authStm, hashed)
 		}
@@ -170,7 +172,7 @@ func UpdateUser(d *schema.ResourceData, meta interface{}) error {
 
 			authString := ""
 			if d.Get("auth_string_hashed").(string) != "" {
-				authString = fmt.Sprintf("IDENTIFIED WITH %s AS '%s'")
+				authString = fmt.Sprintf("IDENTIFIED WITH %s AS '%s'", d.Get("auth_plugin"), d.Get("auth_string_hashed"))
 			}
 			stmtSQL = fmt.Sprintf("ALTER USER '%s'@'%s' %s  REQUIRE %s",
 				d.Get("user").(string),
@@ -251,9 +253,8 @@ func ReadUser(d *schema.ResourceData, meta interface{}) error {
 		}
 		return err
 	}
-
 	// CREATE USER 'some_app'@'%' IDENTIFIED WITH 'mysql_native_password' AS '*0something' REQUIRE NONE PASSWORD EXPIRE DEFAULT ACCOUNT UNLOCK
-	re := regexp.MustCompile(`^CREATE USER '([^']*)'@'([^']*)' IDENTIFIED WITH '([^']*)' AS '([^']*)' REQUIRE ([^ ]*)`)
+	re := regexp.MustCompile(`^CREATE USER '([^']*)'@'([^']*)' IDENTIFIED WITH '([^']*)' (?:AS '([^']*)' )?REQUIRE ([^ ]*)`)
 	if m := re.FindStringSubmatch(createUserStmt); len(m) == 6 {
 		d.Set("user", m[1])
 		d.Set("host", m[2])
@@ -296,10 +297,10 @@ func ImportUser(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceDat
 	d.Set("host", host)
 	err := ReadUser(d, meta)
 
-	return []*schema.ResourceData{d}, nil
+	return []*schema.ResourceData{d}, err
 }
 
-func HashedStringSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+func NewEmptyStringSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
 	if new == "" {
 		return true
 	}

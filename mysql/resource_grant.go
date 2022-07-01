@@ -92,10 +92,11 @@ func resourceGrant() *schema.Resource {
 			},
 
 			"tls_option": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
-				Default:  "NONE",
+				Type:       schema.TypeString,
+				Optional:   true,
+				ForceNew:   true,
+				Deprecated: "Please use tls_option in mysql_user.",
+				Default:    "NONE",
 			},
 		},
 	}
