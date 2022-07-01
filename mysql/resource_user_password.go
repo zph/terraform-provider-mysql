@@ -49,7 +49,7 @@ func SetUserPassword(d *schema.ResourceData, meta interface{}) error {
 		d.Set("plaintext_password", password)
 	}
 
-	stmtSQL, err := getSetPasswordStatement(db)
+	stmtSQL, err := getSetPasswordStatement(meta)
 	if err != nil {
 		return err
 	}
@@ -68,12 +68,7 @@ func SetUserPassword(d *schema.ResourceData, meta interface{}) error {
 }
 
 func canReadPassword(meta interface{}) (bool, error) {
-	db := meta.(*MySQLConfiguration).Db
-	serverVersion, err := serverVersion(db)
-	if err != nil {
-		return false, fmt.Errorf("Could not determine server version: %s", err)
-	}
-
+	serverVersion := meta.(*MySQLConfiguration).Version
 	ver, _ := version.NewVersion("8.0.0")
 	return serverVersion.LessThan(ver), nil
 }

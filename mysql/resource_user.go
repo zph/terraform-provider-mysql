@@ -1,7 +1,6 @@
 package mysql
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"regexp"
@@ -69,7 +68,6 @@ func resourceUser() *schema.Resource {
 			"tls_option": {
 				Type:     schema.TypeString,
 				Optional: true,
-				ForceNew: true,
 				Default:  "NONE",
 			},
 		},
@@ -122,17 +120,13 @@ func CreateUser(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	requiredVersion, _ := version.NewVersion("5.7.0")
-	currentVersion, err := serverVersion(db)
-	if err != nil {
-		return err
-	}
 
-	if currentVersion.GreaterThan(requiredVersion) && d.Get("tls_option").(string) != "" {
+	if meta.(*MySQLConfiguration).Version.GreaterThan(requiredVersion) && d.Get("tls_option").(string) != "" {
 		stmtSQL += fmt.Sprintf(" REQUIRE %s", d.Get("tls_option").(string))
 	}
 
 	log.Println("Executing statement:", stmtSQL)
-	_, err = db.Exec(stmtSQL)
+	_, err := db.Exec(stmtSQL)
 	if err != nil {
 		return err
 	}
@@ -143,15 +137,10 @@ func CreateUser(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func getSetPasswordStatement(db *sql.DB) (string, error) {
+func getSetPasswordStatement(meta interface{}) (string, error) {
 	/* ALTER USER syntax introduced in MySQL 5.7.6 deprecates SET PASSWORD (GH-8230) */
-	serverVersion, err := serverVersion(db)
-	if err != nil {
-		return "", fmt.Errorf("Could not determine server version: %s", err)
-	}
-
 	ver, _ := version.NewVersion("5.7.6")
-	if serverVersion.LessThan(ver) {
+	if meta.(*MySQLConfiguration).Version.LessThan(ver) {
 		return "SET PASSWORD FOR ?@? = PASSWORD(?)", nil
 	} else {
 		return "ALTER USER ?@? IDENTIFIED BY ?", nil
@@ -159,13 +148,13 @@ func getSetPasswordStatement(db *sql.DB) (string, error) {
 }
 
 func UpdateUser(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+	mysqlConf := meta.(*MySQLConfiguration)
+	db := mysqlConf.Db
 
 	var auth string
 	if v, ok := d.GetOk("auth_plugin"); ok {
 		auth = v.(string)
 	}
-
 	if len(auth) > 0 {
 		if d.HasChange("tls_option") || d.HasChange("auth_plugin") || d.HasChange("auth_string_hashed") {
 			var stmtSQL string
@@ -201,7 +190,7 @@ func UpdateUser(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	if newpw != nil {
-		stmtSQL, err := getSetPasswordStatement(db)
+		stmtSQL, err := getSetPasswordStatement(meta)
 		if err != nil {
 			return err
 		}
@@ -217,12 +206,7 @@ func UpdateUser(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	requiredVersion, _ := version.NewVersion("5.7.0")
-	currentVersion, err := serverVersion(db)
-	if err != nil {
-		return err
-	}
-
-	if d.HasChange("tls_option") && currentVersion.GreaterThan(requiredVersion) {
+	if d.HasChange("tls_option") && mysqlConf.Version.GreaterThan(requiredVersion) {
 		var stmtSQL string
 
 		stmtSQL = fmt.Sprintf("ALTER USER '%s'@'%s'  REQUIRE %s",
@@ -242,27 +226,53 @@ func UpdateUser(d *schema.ResourceData, meta interface{}) error {
 
 func ReadUser(d *schema.ResourceData, meta interface{}) error {
 	db := meta.(*MySQLConfiguration).Db
-	stmt := "SHOW CREATE USER ?@?"
+	currentVersion := meta.(*MySQLConfiguration).Version
+	requiredVersion, _ := version.NewVersion("5.7.0")
+	if currentVersion.GreaterThan(requiredVersion) {
+		stmt := "SHOW CREATE USER ?@?"
 
-	var createUserStmt string
-	err := db.QueryRow(stmt, d.Get("user").(string), d.Get("host").(string)).Scan(&createUserStmt)
-	if err != nil {
-		if mysqlErrorNumber(err) == unknownUserErrCode {
-			d.SetId("")
-			return nil
+		var createUserStmt string
+		err := db.QueryRow(stmt, d.Get("user").(string), d.Get("host").(string)).Scan(&createUserStmt)
+		if err != nil {
+			if mysqlErrorNumber(err) == unknownUserErrCode {
+				d.SetId("")
+				return nil
+			}
+			return err
 		}
-		return err
-	}
-	// CREATE USER 'some_app'@'%' IDENTIFIED WITH 'mysql_native_password' AS '*0something' REQUIRE NONE PASSWORD EXPIRE DEFAULT ACCOUNT UNLOCK
-	re := regexp.MustCompile(`^CREATE USER '([^']*)'@'([^']*)' IDENTIFIED WITH '([^']*)' (?:AS '([^']*)' )?REQUIRE ([^ ]*)`)
-	if m := re.FindStringSubmatch(createUserStmt); len(m) == 6 {
-		d.Set("user", m[1])
-		d.Set("host", m[2])
-		d.Set("auth_plugin", m[3])
-		d.Set("auth_string_hashed", m[4])
-		d.Set("tls_option", m[5])
+
+		// Examples of create user:
+		// CREATE USER 'some_app'@'%' IDENTIFIED WITH 'mysql_native_password' AS '*0something' REQUIRE NONE PASSWORD EXPIRE DEFAULT ACCOUNT UNLOCK
+		// CREATE USER `jdoe-tf-test-47`@`example.com` IDENTIFIED WITH 'caching_sha2_password' REQUIRE NONE PASSWORD EXPIRE DEFAULT ACCOUNT UNLOCK PASSWORD HISTORY DEFAULT PASSWORD REUSE INTERVAL DEFAULT PASSWORD REQUIRE CURRENT DEFAULT
+		// CREATE USER `jdoe`@`example.com` IDENTIFIED WITH 'caching_sha2_password' AS '$A$005$i`xay#fG/\' TrbkNA82' REQUIRE NONE PASSWORD
+		re := regexp.MustCompile("^CREATE USER ['`]([^'`]*)['`]@['`]([^'`]*)['`] IDENTIFIED WITH ['`]([^'`]*)['`] (?:AS '((?:.*?[^\\\\])?)' )?REQUIRE ([^ ]*)")
+		if m := re.FindStringSubmatch(createUserStmt); len(m) == 6 {
+			d.Set("user", m[1])
+			d.Set("host", m[2])
+			d.Set("auth_plugin", m[3])
+			d.Set("auth_string_hashed", m[4])
+			d.Set("tls_option", m[5])
+		} else {
+			return fmt.Errorf("Create user couldn't be parsed - it is %s", createUserStmt)
+		}
+		return nil
 	} else {
-		return fmt.Errorf("Create user couldn't be parsed - it is %s", createUserStmt)
+		// Worse user detection, only for compat with MySQL 5.6
+		stmtSQL := fmt.Sprintf("SELECT USER FROM mysql.user WHERE USER='%s'",
+			d.Get("user").(string))
+
+		log.Println("Executing statement:", stmtSQL)
+
+		rows, err := db.Query(stmtSQL)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		if !rows.Next() && rows.Err() == nil {
+			d.SetId("")
+			return rows.Err()
+		}
 	}
 	return nil
 }
