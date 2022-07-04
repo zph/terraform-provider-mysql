@@ -58,10 +58,12 @@ func resourceUser() *schema.Resource {
 				DiffSuppressFunc: NewEmptyStringSuppressFunc,
 				ConflictsWith:    []string{"plaintext_password", "password"},
 			},
+
 			"auth_string_hashed": {
 				Type:             schema.TypeString,
 				Optional:         true,
 				DiffSuppressFunc: NewEmptyStringSuppressFunc,
+				RequiredWith:     []string{"auth_plugin"},
 				ConflictsWith:    []string{"plaintext_password", "password"},
 			},
 
