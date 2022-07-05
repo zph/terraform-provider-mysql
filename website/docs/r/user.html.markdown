@@ -36,6 +36,17 @@ resource "mysql_user" "nologin" {
 }
 ```
 
+## Example Usage with an Authentication Plugin and hashed password
+
+```hcl
+resource "mysql_user" "nologin" {
+  user               = "nologin"
+  host               = "example.com"
+  auth_plugin        = "mysql_native_password"
+  auth_string_hashed = "*2470C0C06DEE42FD1618BB99005ADCA2EC9D1E19"
+}
+```
+
 ## Argument Reference
 
 The following arguments are supported:
@@ -45,6 +56,7 @@ The following arguments are supported:
 * `plaintext_password` - (Optional) The password for the user. This must be provided in plain text, so the data source for it must be secured. An _unsalted_ hash of the provided password is stored in state. Conflicts with `auth_plugin`.
 * `password` - (Optional) Deprecated alias of `plaintext_password`, whose value is *stored as plaintext in state*. Prefer to use `plaintext_password` instead, which stores the password as an unsalted hash. Conflicts with `auth_plugin`.
 * `auth_plugin` - (Optional) Use an [authentication plugin][ref-auth-plugins] to authenticate the user instead of using password authentication.  Description of the fields allowed in the block below. Conflicts with `password` and `plaintext_password`.  
+* `auth_string_hashed` - (Optional) Use an already hashed string as a parameter to `auth_plugin`. This can be used with passwords as well as with other auth strings.
 * `tls_option` - (Optional) An TLS-Option for the `CREATE USER` or `ALTER USER` statement. The value is suffixed to `REQUIRE`. A value of 'SSL' will generate a `CREATE USER ... REQUIRE SSL` statement. See the [MYSQL `CREATE USER` documentation](https://dev.mysql.com/doc/refman/5.7/en/create-user.html) for more. Ignored if MySQL version is under 5.7.0.
 
 [ref-auth-plugins]: https://dev.mysql.com/doc/refman/5.7/en/authentication-plugins.html
@@ -64,6 +76,7 @@ The `auth_plugin` value supports:
 
 [ref-mysql-no-login]: https://dev.mysql.com/doc/refman/5.7/en/no-login-pluggable-authentication.html
 
+* any other auth plugin supported by MySQL.
 ## Attributes Reference
 
 The following attributes are exported:

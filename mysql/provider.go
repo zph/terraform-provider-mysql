@@ -24,6 +24,7 @@ const (
 	cleartextPasswords = "cleartext"
 	nativePasswords    = "native"
 	unknownVarErrCode  = 1193
+	unknownUserErrCode = 1396
 )
 
 type MySQLConfiguration struct {
@@ -32,6 +33,7 @@ type MySQLConfiguration struct {
 	MaxConnLifetime        time.Duration
 	MaxOpenConns           int
 	ConnectRetryTimeoutSec time.Duration
+	Version                *version.Version
 }
 
 var (
@@ -197,24 +199,26 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	}
 
 	mysqlConf.Db = db
-	if err := afterConnect(d, db); err != nil {
+	if err := afterConnect(mysqlConf, db); err != nil {
 		return nil, fmt.Errorf("Failed running after connect command: %v", err)
 	}
 
 	return mysqlConf, nil
 }
 
-func afterConnect(d *schema.ResourceData, db *sql.DB) error {
+func afterConnect(mysqlConf *MySQLConfiguration, db *sql.DB) error {
 	// Set up env so that we won't create users randomly.
 	currentVersion, err := serverVersion(db)
 	if err != nil {
 		return fmt.Errorf("Failed getting server version: %v", err)
 	}
 
+	mysqlConf.Version = currentVersion
+
 	versionMinInclusive, _ := version.NewVersion("5.7.5")
 	versionMaxExclusive, _ := version.NewVersion("8.0.0")
-	if currentVersion.GreaterThanOrEqual(versionMinInclusive) &&
-		currentVersion.LessThan(versionMaxExclusive) {
+	if mysqlConf.Version.GreaterThanOrEqual(versionMinInclusive) &&
+		mysqlConf.Version.LessThan(versionMaxExclusive) {
 		// CONCAT and setting works even if there is no value.
 		_, err := db.Exec(`SET SESSION sql_mode=CONCAT(@@sql_mode, ',NO_AUTO_CREATE_USER')`)
 		if err != nil {
