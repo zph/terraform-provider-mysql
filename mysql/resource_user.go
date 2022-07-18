@@ -62,6 +62,7 @@ func resourceUser() *schema.Resource {
 			"auth_string_hashed": {
 				Type:             schema.TypeString,
 				Optional:         true,
+				Sensitive:        true,
 				DiffSuppressFunc: NewEmptyStringSuppressFunc,
 				RequiredWith:     []string{"auth_plugin"},
 				ConflictsWith:    []string{"plaintext_password", "password"},
