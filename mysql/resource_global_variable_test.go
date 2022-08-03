@@ -14,7 +14,7 @@ func TestAccGlobalVar_basic(t *testing.T) {
 	resourceName := "mysql_global_variable.test"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckSkipMariaDB(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccGlobalVarCheckDestroy(varName),
 		Steps: []resource.TestStep{

@@ -83,3 +83,20 @@ func testAccPreCheckSkipTiDB(t *testing.T) {
 		t.Skip("Skip on TiDB")
 	}
 }
+
+func testAccPreCheckSkipMariaDB(t *testing.T) {
+	testAccPreCheck(t)
+	db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+	if err != nil {
+		return
+	}
+
+	currentVersionString, err := serverVersionString(db)
+	if err != nil {
+		return
+	}
+
+	if strings.Contains(currentVersionString, "MariaDB") {
+		t.Skip("Skip on MariaDB")
+	}
+}
