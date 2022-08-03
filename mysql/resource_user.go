@@ -255,10 +255,16 @@ func ReadUser(d *schema.ResourceData, meta interface{}) error {
 			d.Set("auth_plugin", m[3])
 			d.Set("auth_string_hashed", m[4])
 			d.Set("tls_option", m[5])
-		} else {
-			return fmt.Errorf("Create user couldn't be parsed - it is %s", createUserStmt)
+			return nil
 		}
-		return nil
+
+		// Try 2 - just whether the user is there.
+		re2 := regexp.MustCompile("^CREATE USER")
+		if m := re2.FindStringSubmatch(createUserStmt); m != nil {
+			// Ok, we have at least something - it's probably in MariaDB.
+			return nil
+		}
+		return fmt.Errorf("Create user couldn't be parsed - it is %s", createUserStmt)
 	} else {
 		// Worse user detection, only for compat with MySQL 5.6
 		stmtSQL := fmt.Sprintf("SELECT USER FROM mysql.user WHERE USER='%s'",
