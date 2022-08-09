@@ -30,17 +30,15 @@ func TestAccGrant(t *testing.T) {
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
 					resource.TestCheckResourceAttr("mysql_grant.test", "table", "*"),
-					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "NONE"),
 				),
 			},
 			{
-				Config: testAccGrantConfig_ssl(dbName),
+				Config: testAccGrantConfig_basic(dbName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccPrivilege("mysql_grant.test", "SELECT", true),
 					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
-					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "SSL"),
 				),
 			},
 		},
@@ -162,7 +160,6 @@ func TestAccGrantComplex(t *testing.T) {
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
 					resource.TestCheckResourceAttr("mysql_grant.test", "table", "tbl"),
-					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "NONE"),
 				),
 			},
 			{
@@ -176,7 +173,6 @@ func TestAccGrantComplex(t *testing.T) {
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
 					resource.TestCheckResourceAttr("mysql_grant.test", "table", "tbl"),
-					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "NONE"),
 				),
 			},
 			{
@@ -187,7 +183,6 @@ func TestAccGrantComplex(t *testing.T) {
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
 					resource.TestCheckResourceAttr("mysql_grant.test", "table", "tbl"),
-					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "NONE"),
 				),
 			},
 			{
@@ -198,7 +193,6 @@ func TestAccGrantComplex(t *testing.T) {
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
 					resource.TestCheckResourceAttr("mysql_grant.test", "table", "tbl"),
-					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "NONE"),
 				),
 			},
 			{
@@ -209,7 +203,6 @@ func TestAccGrantComplex(t *testing.T) {
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
 					resource.TestCheckResourceAttr("mysql_grant.test", "table", "tbl"),
-					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "NONE"),
 				),
 			},
 			{
@@ -224,7 +217,6 @@ func TestAccGrantComplex(t *testing.T) {
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
 					resource.TestCheckResourceAttr("mysql_grant.test", "table", "tbl"),
-					resource.TestCheckResourceAttr("mysql_grant.test", "tls_option", "NONE"),
 				),
 			},
 		},
@@ -598,27 +590,6 @@ resource "mysql_grant" "test2" {
 }
 `, dbName, dbName)
 }
-func testAccGrantConfig_ssl(dbName string) string {
-	return fmt.Sprintf(`
-resource "mysql_database" "test" {
-  name = "%s"
-}
-
-resource "mysql_user" "test" {
-  user     = "jdoe-%s"
-  host     = "example.com"
-}
-
-resource "mysql_grant" "test" {
-  user       = "${mysql_user.test.user}"
-  host       = "${mysql_user.test.host}"
-  database   = "${mysql_database.test.name}"
-  privileges = ["UPDATE", "SELECT"]
-  tls_option = "SSL"
-}
-`, dbName, dbName)
-}
-
 func testAccGrantConfig_role(dbName string, roleName string) string {
 	return fmt.Sprintf(`
 resource "mysql_database" "test" {

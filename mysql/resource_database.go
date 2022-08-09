@@ -77,7 +77,8 @@ func UpdateDatabase(d *schema.ResourceData, meta interface{}) error {
 }
 
 func ReadDatabase(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+	mysqlConf := meta.(*MySQLConfiguration)
+	db := mysqlConf.Db
 
 	// This is kinda flimsy-feeling, since it depends on the formatting
 	// of the SHOW CREATE DATABASE output... but this data doesn't seem
@@ -111,10 +112,6 @@ func ReadDatabase(d *schema.ResourceData, meta interface{}) error {
 		var empty interface{}
 
 		requiredVersion, _ := version.NewVersion("8.0.0")
-		currentVersion, err := serverVersion(db)
-		if err != nil {
-			return err
-		}
 
 		serverVersionString, err := serverVersionString(db)
 		if err != nil {
@@ -123,7 +120,7 @@ func ReadDatabase(d *schema.ResourceData, meta interface{}) error {
 
 		// MySQL 8 returns more data in a row.
 		var res error
-		if !strings.Contains(serverVersionString, "MariaDB") && currentVersion.GreaterThan(requiredVersion) {
+		if !strings.Contains(serverVersionString, "MariaDB") && mysqlConf.Version.GreaterThan(requiredVersion) {
 			res = db.QueryRow(stmtSQL, defaultCharset).Scan(&defaultCollation, &empty, &empty, &empty, &empty, &empty, &empty)
 		} else {
 			res = db.QueryRow(stmtSQL, defaultCharset).Scan(&defaultCollation, &empty, &empty, &empty, &empty, &empty)

@@ -92,10 +92,11 @@ func resourceGrant() *schema.Resource {
 			},
 
 			"tls_option": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
-				Default:  "NONE",
+				Type:       schema.TypeString,
+				Optional:   true,
+				ForceNew:   true,
+				Deprecated: "Please use tls_option in mysql_user.",
+				Default:    "NONE",
 			},
 		},
 	}
@@ -145,11 +146,8 @@ func userOrRole(user string, host string, role string, hasRoles bool) (string, b
 	}
 }
 
-func supportsRoles(db *sql.DB) (bool, error) {
-	currentVersion, err := serverVersion(db)
-	if err != nil {
-		return false, err
-	}
+func supportsRoles(meta interface{}) (bool, error) {
+	currentVersion := meta.(*MySQLConfiguration).Version
 
 	requiredVersion, _ := version.NewVersion("8.0.0")
 	hasRoles := currentVersion.GreaterThan(requiredVersion)
@@ -159,7 +157,7 @@ func supportsRoles(db *sql.DB) (bool, error) {
 func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 	db := meta.(*MySQLConfiguration).Db
 
-	hasRoles, err := supportsRoles(db)
+	hasRoles, err := supportsRoles(meta)
 	if err != nil {
 		return err
 	}
@@ -262,7 +260,7 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 	db := meta.(*MySQLConfiguration).Db
 
-	hasRoles, err := supportsRoles(db)
+	hasRoles, err := supportsRoles(meta)
 	if err != nil {
 		return err
 	}
@@ -322,7 +320,7 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 func UpdateGrant(d *schema.ResourceData, meta interface{}) error {
 	db := meta.(*MySQLConfiguration).Db
 
-	hasRoles, err := supportsRoles(db)
+	hasRoles, err := supportsRoles(meta)
 
 	if err != nil {
 		return err
@@ -401,7 +399,7 @@ func DeleteGrant(d *schema.ResourceData, meta interface{}) error {
 
 	table := formatTableName(d.Get("table").(string))
 
-	hasRoles, err := supportsRoles(db)
+	hasRoles, err := supportsRoles(meta)
 	if err != nil {
 		return err
 	}

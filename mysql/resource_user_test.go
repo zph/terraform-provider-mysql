@@ -12,7 +12,7 @@ import (
 
 func TestAccUser_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckSkipMariaDB(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccUserCheckDestroy,
 		Steps: []resource.TestStep{
@@ -52,10 +52,28 @@ func TestAccUser_basic(t *testing.T) {
 
 func TestAccUser_auth(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheckSkipTiDB(t) },
+		PreCheck:     func() { testAccPreCheckSkipTiDB(t); testAccPreCheckSkipMariaDB(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccUserCheckDestroy,
 		Steps: []resource.TestStep{
+			{
+				Config: testAccUserConfig_auth_iam_plugin,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserAuthExists("mysql_user.test"),
+					resource.TestCheckResourceAttr("mysql_user.test", "user", "jdoe"),
+					resource.TestCheckResourceAttr("mysql_user.test", "host", "example.com"),
+					resource.TestCheckResourceAttr("mysql_user.test", "auth_plugin", "mysql_no_login"),
+				),
+			},
+			{
+				Config: testAccUserConfig_auth_native,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserAuthExists("mysql_user.test"),
+					resource.TestCheckResourceAttr("mysql_user.test", "user", "jdoe"),
+					resource.TestCheckResourceAttr("mysql_user.test", "host", "example.com"),
+					resource.TestCheckResourceAttr("mysql_user.test", "auth_plugin", "mysql_native_password"),
+				),
+			},
 			{
 				Config: testAccUserConfig_auth_iam_plugin,
 				Check: resource.ComposeTestCheckFunc(
@@ -230,5 +248,16 @@ resource "mysql_user" "test" {
     user        = "jdoe"
     host        = "example.com"
     auth_plugin = "mysql_no_login"
+}
+`
+
+const testAccUserConfig_auth_native = `
+resource "mysql_user" "test" {
+    user        = "jdoe"
+    host        = "example.com"
+    auth_plugin = "mysql_native_password"
+
+    # Hash of "password"
+    auth_string_hashed = "*2470C0C06DEE42FD1618BB99005ADCA2EC9D1E19"
 }
 `
