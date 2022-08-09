@@ -53,11 +53,11 @@ testtidb%:
 	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=34$(shell echo "$*" | tr -d '.') testtidb
 
 testtidb:
-	-docker run --rm --name test-tidb$(MYSQL_VERSION) -d -p $(MYSQL_PORT):4000 pingcap/tidb:v$(MYSQL_VERSION)
+	@sh -c "'$(CURDIR)/scripts/tidb-test-cluster.sh' --init --port $(MYSQL_PORT)"
 	@echo 'Waiting for TiDB...'
 	@while ! mysql -h 127.0.0.1 -P $(MYSQL_PORT) -u "$(TEST_USER)" -e 'SELECT 1' >/dev/null 2>&1; do printf '.'; sleep 1; done ; echo ; echo "Connected!"
 	MYSQL_USERNAME="$(TEST_USER)" MYSQL_PASSWORD="" MYSQL_ENDPOINT=127.0.0.1:$(MYSQL_PORT) $(MAKE) testacc
-	docker rm -f test-tidb$(MYSQL_VERSION)
+	@sh -c "'$(CURDIR)/scripts/tidb-test-cluster.sh' --destroy"
 
 testmariadb%:
 	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=36$(shell echo "$*" | tr -d '.') testmariadb
@@ -68,8 +68,6 @@ testmariadb:
 	@while ! mysql -h 127.0.0.1 -P $(MYSQL_PORT) -u "$(TEST_USER)" -p"$(TEST_PASSWORD)" -e 'SELECT 1' >/dev/null 2>&1; do printf '.'; sleep 1; done ; echo ; echo "Connected!"
 	MYSQL_USERNAME="$(TEST_USER)" MYSQL_PASSWORD="$(TEST_PASSWORD)" MYSQL_ENDPOINT=127.0.0.1:$(MYSQL_PORT) $(MAKE) testacc
 	docker rm -f test-mariadb$(MYSQL_VERSION)
-
-
 
 vet:
 	@echo "go vet ."

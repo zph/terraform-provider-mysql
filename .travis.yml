@@ -5,7 +5,7 @@ sudo: required
 language: go
 
 go:
-  - "1.17.x"
+  - "1.18.x"
 
 env:
   - DB=mysql:5.6 DB_EXTRA=''
