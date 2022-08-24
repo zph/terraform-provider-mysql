@@ -53,7 +53,7 @@ testtidb%:
 	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=34$(shell echo "$*" | tr -d '.') testtidb
 
 testtidb:
-	@sh -c "'$(CURDIR)/scripts/tidb-test-cluster.sh' --init --port $(MYSQL_PORT)"
+	@sh -c "'$(CURDIR)/scripts/tidb-test-cluster.sh' --init --port $(MYSQL_PORT) --version $(MYSQL_VERSION)"
 	@echo 'Waiting for TiDB...'
 	@while ! mysql -h 127.0.0.1 -P $(MYSQL_PORT) -u "$(TEST_USER)" -e 'SELECT 1' >/dev/null 2>&1; do printf '.'; sleep 1; done ; echo ; echo "Connected!"
 	MYSQL_USERNAME="$(TEST_USER)" MYSQL_PASSWORD="" MYSQL_ENDPOINT=127.0.0.1:$(MYSQL_PORT) $(MAKE) testacc
