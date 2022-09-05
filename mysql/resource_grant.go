@@ -229,7 +229,7 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 		userOrRole)
 
 	// MySQL 8+ doesn't allow REQUIRE on a GRANT statement.
-	if !hasRoles && d.Get("tls_option").(string) != "" {
+	if !hasRoles && d.Get("tls_option").(string) != "" && strings.ToLower(d.Get("tls_option").(string)) != "none" {
 		stmtSQL += fmt.Sprintf(" REQUIRE %s", d.Get("tls_option").(string))
 	}
 
