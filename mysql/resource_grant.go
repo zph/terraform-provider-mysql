@@ -149,7 +149,7 @@ func userOrRole(user string, host string, role string, hasRoles bool) (string, b
 }
 
 func supportsRoles(meta interface{}) (bool, error) {
-	currentVersion := meta.(*MySQLConfiguration).Version
+	currentVersion := getVersionFromMeta(meta)
 
 	requiredVersion, _ := version.NewVersion("8.0.0")
 	hasRoles := currentVersion.GreaterThan(requiredVersion)
