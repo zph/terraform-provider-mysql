@@ -1,7 +1,9 @@
 package mysql
 
 import (
+	"context"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -10,7 +12,7 @@ import (
 
 func dataSourceTables() *schema.Resource {
 	return &schema.Resource{
-		Read: ShowTables,
+		ReadContext: ShowTables,
 		Schema: map[string]*schema.Schema{
 			"database": {
 				Type:     schema.TypeString,
@@ -29,8 +31,8 @@ func dataSourceTables() *schema.Resource {
 	}
 }
 
-func ShowTables(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func ShowTables(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	database := d.Get("database").(string)
 	pattern := d.Get("pattern").(string)
@@ -43,32 +45,25 @@ func ShowTables(d *schema.ResourceData, meta interface{}) error {
 
 	log.Printf("[DEBUG] SQL: %s", sql)
 
-	rows, err := db.Query(sql)
-
+	rows, err := db.QueryContext(ctx, sql)
 	if err != nil {
-		return err
+		return diag.Errorf("failed querying for tables: %v", err)
 	}
-
 	defer rows.Close()
 
 	var tables []string
-
 	for rows.Next() {
 		var table string
 
-		err := rows.Scan(&table)
-
-		if err != nil {
-			return err
+		if err := rows.Scan(&table); err != nil {
+			return diag.Errorf("failed scanning MySQL rows: %v", err)
 		}
 
 		tables = append(tables, table)
 	}
 
-	err = d.Set("tables", tables)
-
-	if err != nil {
-		return err
+	if err := d.Set("tables", tables); err != nil {
+		return diag.Errorf("failed setting tables field: %v", err)
 	}
 
 	d.SetId(resource.UniqueId())

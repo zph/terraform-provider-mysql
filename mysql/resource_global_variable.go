@@ -1,8 +1,10 @@
 package mysql
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 	"regexp"
 	"strconv"
@@ -12,10 +14,10 @@ import (
 
 func resourceGlobalVariable() *schema.Resource {
 	return &schema.Resource{
-		Create: CreateOrUpdateGlobalVariable,
-		Read:   ReadGlobalVariable,
-		Update: CreateOrUpdateGlobalVariable,
-		Delete: DeleteGlobalVariable,
+		CreateContext: CreateOrUpdateGlobalVariable,
+		ReadContext:   ReadGlobalVariable,
+		UpdateContext: CreateOrUpdateGlobalVariable,
+		DeleteContext: DeleteGlobalVariable,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
@@ -41,10 +43,10 @@ func resourceGlobalVariable() *schema.Resource {
 	}
 }
 
-func CreateOrUpdateGlobalVariable(d *schema.ResourceData, meta interface{}) error {
+func CreateOrUpdateGlobalVariable(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var sql string
 
-	db := meta.(*MySQLConfiguration).Db
+	db := getDatabaseFromMeta(meta)
 	name := d.Get("name").(string)
 	value := d.Get("value").(string)
 
@@ -59,22 +61,22 @@ func CreateOrUpdateGlobalVariable(d *schema.ResourceData, meta interface{}) erro
 
 	log.Printf("[DEBUG] SQL: %s", sql)
 
-	_, err := db.Exec(sql)
+	_, err := db.ExecContext(ctx, sql)
 	if err != nil {
-		return fmt.Errorf("error setting value: %s", err)
+		return diag.Errorf("error setting value: %s", err)
 	}
 
 	d.SetId(name)
 
-	return ReadGlobalVariable(d, meta)
+	return ReadGlobalVariable(ctx, d, meta)
 }
 
-func ReadGlobalVariable(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func ReadGlobalVariable(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	stmt, err := db.Prepare("SHOW GLOBAL VARIABLES WHERE VARIABLE_NAME = ?")
 	if err != nil {
-		return fmt.Errorf("error during prepare statement for global variable: %s", err)
+		return diag.Errorf("error during prepare statement for global variable: %s", err)
 	}
 
 	var name, value string
@@ -82,7 +84,7 @@ func ReadGlobalVariable(d *schema.ResourceData, meta interface{}) error {
 
 	if err != nil && err != sql.ErrNoRows {
 		d.SetId("")
-		return fmt.Errorf("error during show global variables: %s", err)
+		return diag.Errorf("error during show global variables: %s", err)
 	}
 
 	d.Set("name", name)
@@ -91,14 +93,14 @@ func ReadGlobalVariable(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func DeleteGlobalVariable(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func DeleteGlobalVariable(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 	name := d.Get("name").(string)
 
 	sql := fmt.Sprintf("SET GLOBAL %s = DEFAULT", quoteIdentifier(name))
 	log.Printf("[DEBUG] SQL: %s", sql)
 
-	_, err := db.Exec(sql)
+	_, err := db.ExecContext(ctx, sql)
 	if err != nil {
 		log.Printf("[WARN] Variable_name (%s) not found; removing from state", d.Id())
 		d.SetId("")

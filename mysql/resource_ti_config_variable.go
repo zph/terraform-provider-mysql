@@ -1,9 +1,11 @@
 package mysql
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 	"regexp"
 	"strings"
@@ -16,10 +18,10 @@ import (
 
 func resourceTiConfigVariable() *schema.Resource {
 	return &schema.Resource{
-		Create: CreateOrUpdateConfigVariable,
-		Read:   ReadConfigVariable,
-		Update: CreateOrUpdateConfigVariable,
-		Delete: DeleteConfigVariable,
+		CreateContext: CreateOrUpdateConfigVariable,
+		ReadContext:   ReadConfigVariable,
+		UpdateContext: CreateOrUpdateConfigVariable,
+		DeleteContext: DeleteConfigVariable,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
@@ -55,8 +57,8 @@ func resourceTiConfigVariable() *schema.Resource {
 	}
 }
 
-func CreateOrUpdateConfigVariable(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func CreateOrUpdateConfigVariable(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	varName := d.Get("name").(string)
 	varValue := d.Get("value").(string)
@@ -76,15 +78,15 @@ func CreateOrUpdateConfigVariable(d *schema.ResourceData, meta interface{}) erro
 
 	log.Printf("[DEBUG] SQL: %s\n", configQuery)
 
-	_, err := db.Exec(configQuery)
+	_, err := db.ExecContext(ctx, configQuery)
 	if err != nil {
-		return fmt.Errorf("error setting value: %s", err)
+		return diag.Errorf("error setting value: %s", err)
 	}
 
-	db.QueryRow("SHOW WARNINGS").Scan(&warnLevel, &warnCode, &warnMessage)
+	db.QueryRowContext(ctx, "SHOW WARNINGS").Scan(&warnLevel, &warnCode, &warnMessage)
 
 	if warnCode != 0 {
-		return fmt.Errorf("error setting value: %s -> %s Error: %s", varName, varValue, warnMessage)
+		return diag.Errorf("error setting value: %s -> %s Error: %s", varName, varValue, warnMessage)
 	}
 
 	newId := fmt.Sprintf("%s#%s", varInstanceType, varName)
@@ -97,13 +99,13 @@ func CreateOrUpdateConfigVariable(d *schema.ResourceData, meta interface{}) erro
 	return nil
 }
 
-func ReadConfigVariable(d *schema.ResourceData, meta interface{}) error {
+func ReadConfigVariable(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var resType, resInstance, resName, resValue string
 
-	db := meta.(*MySQLConfiguration).Db
+	db := getDatabaseFromMeta(meta)
 	match, _ := regexp.MatchString("^(pd|tikv)#(.*)$", d.Id())
 	if !match {
-		return fmt.Errorf("error parsing TiDB component (tikv or pd) type from ID.  \n Acceptable format is <pd|tikv>#<config_variable>#<optional_instance>")
+		return diag.Errorf("error parsing TiDB component (tikv or pd) type from ID.  \n Acceptable format is <pd|tikv>#<config_variable>#<optional_instance>")
 	}
 
 	indexParts := strings.Split(d.Id(), "#")
@@ -120,7 +122,7 @@ func ReadConfigVariable(d *schema.ResourceData, meta interface{}) error {
 	err := db.QueryRow(configQuery).Scan(&resType, &resInstance, &resName, &resValue)
 	if err != nil && err != sql.ErrNoRows {
 		d.SetId("")
-		return fmt.Errorf("error during show config variables: %s", err)
+		return diag.Errorf("error during show config variables: %s", err)
 	}
 
 	d.Set("name", resName)
@@ -133,7 +135,7 @@ func ReadConfigVariable(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func DeleteConfigVariable(d *schema.ResourceData, meta interface{}) error {
+func DeleteConfigVariable(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	varName := d.Get("name").(string)
 	varInstanceType := d.Get("type").(string)
 	defCfg := &defaultConfig{}
@@ -141,7 +143,7 @@ func DeleteConfigVariable(d *schema.ResourceData, meta interface{}) error {
 	var err error
 
 	if err := defaults.Set(defCfg); err != nil {
-		return fmt.Errorf("error during destroy config variables: %s", err)
+		return diag.Errorf("error during destroy config variables: %s", err)
 	}
 
 	switch varInstanceType {
@@ -150,11 +152,11 @@ func DeleteConfigVariable(d *schema.ResourceData, meta interface{}) error {
 	case "tikv":
 		jsonCfg, err = json.MarshalIndent(&defCfg.TiKv, "", "    ")
 	default:
-		return fmt.Errorf("error during destory config variables: %s is not allowed type", varInstanceType)
+		return diag.Errorf("error during destory config variables: %s is not allowed type", varInstanceType)
 	}
 
 	if err != nil {
-		return fmt.Errorf("error during destroy config variables: %s", err)
+		return diag.Errorf("error during destroy config variables: %s", err)
 	}
 
 	log.Printf("[DEBUG] JSON CFG: %s", jsonCfg)
@@ -169,5 +171,5 @@ func DeleteConfigVariable(d *schema.ResourceData, meta interface{}) error {
 
 	d.Set("value", defaultValue.String())
 
-	return CreateOrUpdateConfigVariable(d, meta)
+	return CreateOrUpdateConfigVariable(ctx, d, meta)
 }

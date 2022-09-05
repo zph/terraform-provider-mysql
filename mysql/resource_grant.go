@@ -1,8 +1,10 @@
 package mysql
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 	"regexp"
 	"sort"
@@ -24,12 +26,12 @@ type MySQLGrant struct {
 
 func resourceGrant() *schema.Resource {
 	return &schema.Resource{
-		Create: CreateGrant,
-		Update: UpdateGrant,
-		Read:   ReadGrant,
-		Delete: DeleteGrant,
+		CreateContext: CreateGrant,
+		UpdateContext: UpdateGrant,
+		ReadContext:   ReadGrant,
+		DeleteContext: DeleteGrant,
 		Importer: &schema.ResourceImporter{
-			State: ImportGrant,
+			StateContext: ImportGrant,
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -154,12 +156,12 @@ func supportsRoles(meta interface{}) (bool, error) {
 	return hasRoles, nil
 }
 
-func CreateGrant(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func CreateGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	hasRoles, err := supportsRoles(meta)
 	if err != nil {
-		return err
+		return diag.Errorf("failed getting role support: %v", err)
 	}
 
 	var (
@@ -174,13 +176,13 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 		hasPrivs = true
 	} else if attr, ok := d.GetOk("roles"); ok {
 		if !hasRoles {
-			return fmt.Errorf("Roles are only supported on MySQL 8 and above")
+			return diag.Errorf("Roles are only supported on MySQL 8 and above")
 		}
 		listOfRoles := attr.(*schema.Set).List()
 		rolesGranted = len(listOfRoles)
 		privilegesOrRoles = flattenList(listOfRoles, "'%s'")
 	} else {
-		return fmt.Errorf("One of privileges or roles is required")
+		return diag.Errorf("One of privileges or roles is required")
 	}
 
 	user := d.Get("user").(string)
@@ -189,14 +191,14 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 
 	userOrRole, isRole, err := userOrRole(user, host, role, hasRoles)
 	if err != nil {
-		return err
+		return diag.Errorf("failed getting whether it's user or a role: %v", err)
 	}
 	database := d.Get("database").(string)
 	table := d.Get("table").(string)
 
-	grants, err := showGrants(db, userOrRole, database, table)
+	grants, err := showGrants(ctx, db, userOrRole, database, table)
 	if err != nil {
-		return err
+		return diag.Errorf("failed showing grants: %v", err)
 	}
 
 	for _, grant := range grants {
@@ -206,12 +208,12 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 
 		if hasPrivs {
 			if grant.Database == database && grant.Table == table {
-				return fmt.Errorf("user/role %s already has unmanaged grant to %s.%s - import it first", userOrRole, grant.Database, grant.Table)
+				return diag.Errorf("user/role %s already has unmanaged grant to %s.%s - import it first", userOrRole, grant.Database, grant.Table)
 			}
 		} else {
 			// Granting role is just role without DB & table.
 			if grant.Database == "" && grant.Table == "" {
-				return fmt.Errorf("user/role %s already has unmanaged grant for roles %v - import it first", userOrRole, grant.Roles)
+				return diag.Errorf("user/role %s already has unmanaged grant for roles %v - import it first", userOrRole, grant.Roles)
 			}
 		}
 	}
@@ -242,9 +244,9 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	log.Println("Executing statement:", stmtSQL)
-	_, err = db.Exec(stmtSQL)
+	_, err = db.ExecContext(ctx, stmtSQL)
 	if err != nil {
-		return fmt.Errorf("Error running SQL (%s): %s", stmtSQL, err)
+		return diag.Errorf("Error running SQL (%s): %s", stmtSQL, err)
 	}
 
 	id := fmt.Sprintf("%s@%s:%s", user, host, databaseWrapped)
@@ -254,15 +256,15 @@ func CreateGrant(d *schema.ResourceData, meta interface{}) error {
 
 	d.SetId(id)
 
-	return ReadGrant(d, meta)
+	return ReadGrant(ctx, d, meta)
 }
 
-func ReadGrant(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func ReadGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	hasRoles, err := supportsRoles(meta)
 	if err != nil {
-		return err
+		return diag.Errorf("failed getting role support: %v", err)
 	}
 	userOrRole, _, err := userOrRole(
 		d.Get("user").(string),
@@ -270,7 +272,7 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 		d.Get("role").(string),
 		hasRoles)
 	if err != nil {
-		return err
+		return diag.Errorf("failed getting user or role: %v", err)
 	}
 	database := d.Get("database").(string)
 	table := d.Get("table").(string)
@@ -284,7 +286,7 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 		database = ""
 		table = ""
 	}
-	grants, err = showGrants(db, userOrRole, database, table)
+	grants, err = showGrants(ctx, db, userOrRole, database, table)
 
 	if err != nil {
 		log.Printf("[WARN] GRANT not found for %s (%s) - removing from state", userOrRole, err)
@@ -317,13 +319,13 @@ func ReadGrant(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func UpdateGrant(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func UpdateGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	hasRoles, err := supportsRoles(meta)
 
 	if err != nil {
-		return err
+		return diag.Errorf("failed getting role support: %v", err)
 	}
 
 	userOrRole, _, err := userOrRole(
@@ -333,24 +335,23 @@ func UpdateGrant(d *schema.ResourceData, meta interface{}) error {
 		hasRoles)
 
 	if err != nil {
-		return err
+		return diag.Errorf("failed getting user or role: %v", err)
 	}
 
 	database := d.Get("database").(string)
 	table := d.Get("table").(string)
 
 	if d.HasChange("privileges") {
-		err = updatePrivileges(d, db, userOrRole, database, table)
-
+		err = updatePrivileges(ctx, d, db, userOrRole, database, table)
 		if err != nil {
-			return err
+			return diag.Errorf("failed updating privileges: %v", err)
 		}
 	}
 
 	return nil
 }
 
-func updatePrivileges(d *schema.ResourceData, db *sql.DB, user string, database string, table string) error {
+func updatePrivileges(ctx context.Context, d *schema.ResourceData, db *sql.DB, user string, database string, table string) error {
 	oldPrivsIf, newPrivsIf := d.GetChange("privileges")
 	oldPrivs := oldPrivsIf.(*schema.Set)
 	newPrivs := newPrivsIf.(*schema.Set)
@@ -368,7 +369,7 @@ func updatePrivileges(d *schema.ResourceData, db *sql.DB, user string, database 
 
 		log.Printf("[DEBUG] SQL: %s", sql)
 
-		if _, err := db.Exec(sql); err != nil {
+		if _, err := db.ExecContext(ctx, sql); err != nil {
 			return err
 		}
 	}
@@ -384,7 +385,7 @@ func updatePrivileges(d *schema.ResourceData, db *sql.DB, user string, database 
 
 		log.Printf("[DEBUG] SQL: %s", sql)
 
-		if _, err := db.Exec(sql); err != nil {
+		if _, err := db.ExecContext(ctx, sql); err != nil {
 			return err
 		}
 	}
@@ -392,8 +393,8 @@ func updatePrivileges(d *schema.ResourceData, db *sql.DB, user string, database 
 	return nil
 }
 
-func DeleteGrant(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func DeleteGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	database := formatDatabaseName(d.Get("database").(string))
 
@@ -401,7 +402,7 @@ func DeleteGrant(d *schema.ResourceData, meta interface{}) error {
 
 	hasRoles, err := supportsRoles(meta)
 	if err != nil {
-		return err
+		return diag.Errorf("failed getting role support: %v", err)
 	}
 
 	userOrRole, _, err := userOrRole(
@@ -410,7 +411,7 @@ func DeleteGrant(d *schema.ResourceData, meta interface{}) error {
 		d.Get("role").(string),
 		hasRoles)
 	if err != nil {
-		return err
+		return diag.Errorf("failed getting user or role: %v", err)
 	}
 
 	roles := d.Get("roles").(*schema.Set)
@@ -426,10 +427,10 @@ func DeleteGrant(d *schema.ResourceData, meta interface{}) error {
 			userOrRole)
 
 		log.Printf("[DEBUG] SQL: %s", sql)
-		_, err = db.Exec(sql)
+		_, err = db.ExecContext(ctx, sql)
 		if err != nil {
 			if !isNonExistingGrant(err) {
-				return fmt.Errorf("error revoking GRANT (%s): %s", sql, err)
+				return diag.Errorf("error revoking GRANT (%s): %s", sql, err)
 			}
 		}
 	}
@@ -444,10 +445,10 @@ func DeleteGrant(d *schema.ResourceData, meta interface{}) error {
 
 	sql = fmt.Sprintf("REVOKE %s FROM %s", whatToRevoke, userOrRole)
 	log.Printf("[DEBUG] SQL: %s", sql)
-	_, err = db.Exec(sql)
+	_, err = db.ExecContext(ctx, sql)
 	if err != nil {
 		if !isNonExistingGrant(err) {
-			return fmt.Errorf("error revoking ALL (%s): %s", sql, err)
+			return diag.Errorf("error revoking ALL (%s): %s", sql, err)
 		}
 	}
 
@@ -467,7 +468,7 @@ func isNonExistingGrant(err error) bool {
 	return false
 }
 
-func ImportGrant(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func ImportGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	userHostDatabaseTable := strings.SplitN(d.Id(), "@", 4)
 
 	if len(userHostDatabaseTable) != 4 {
@@ -479,9 +480,9 @@ func ImportGrant(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceDa
 	database := userHostDatabaseTable[2]
 	table := userHostDatabaseTable[3]
 
-	db := meta.(*MySQLConfiguration).Db
+	db := getDatabaseFromMeta(meta)
 
-	grants, err := showGrants(db, fmt.Sprintf("'%s'@'%s'", user, host), database, table)
+	grants, err := showGrants(ctx, db, fmt.Sprintf("'%s'@'%s'", user, host), database, table)
 
 	if err != nil {
 		return nil, err
@@ -514,8 +515,8 @@ func restoreGrant(user string, host string, grant *MySQLGrant) *schema.ResourceD
 	return d
 }
 
-func showGrants(db *sql.DB, user, database, table string) ([]*MySQLGrant, error) {
-	allGrants, err := showUserGrants(db, user)
+func showGrants(ctx context.Context, db *sql.DB, user, database, table string) ([]*MySQLGrant, error) {
+	allGrants, err := showUserGrants(ctx, db, user)
 	if err != nil {
 		return nil, err
 	}
@@ -528,11 +529,11 @@ func showGrants(db *sql.DB, user, database, table string) ([]*MySQLGrant, error)
 	return grants, err
 }
 
-func showUserGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
+func showUserGrants(ctx context.Context, db *sql.DB, user string) ([]*MySQLGrant, error) {
 	grants := []*MySQLGrant{}
 
 	sql := fmt.Sprintf("SHOW GRANTS FOR %s", user)
-	rows, err := db.Query(sql)
+	rows, err := db.QueryContext(ctx, sql)
 
 	if isNonExistingGrant(err) {
 		return []*MySQLGrant{}, nil
@@ -609,14 +610,6 @@ func showUserGrants(db *sql.DB, user string) ([]*MySQLGrant, error) {
 	}
 
 	return grants, nil
-}
-
-func normalizeColumnOrderMulti(perm []string) []string {
-	ret := []string{}
-	for _, p := range perm {
-		ret = append(ret, normalizeColumnOrder(p))
-	}
-	return ret
 }
 
 func normalizeUserHost(userHost string) string {

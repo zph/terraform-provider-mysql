@@ -1,6 +1,8 @@
 package mysql
 
 import (
+	"context"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -8,9 +10,9 @@ import (
 
 func resourceSql() *schema.Resource {
 	return &schema.Resource{
-		Create: CreateSql,
-		Read:   ReadSql,
-		Delete: DeleteSql,
+		CreateContext: CreateSql,
+		ReadContext:   ReadSql,
+		DeleteContext: DeleteSql,
 
 		Schema: map[string]*schema.Schema{
 			"name": {
@@ -32,17 +34,17 @@ func resourceSql() *schema.Resource {
 	}
 }
 
-func CreateSql(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func CreateSql(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 	name := d.Get("name").(string)
-	create_sql := d.Get("create_sql").(string)
+	createSql := d.Get("create_sql").(string)
 
-	log.Println("Executing SQL", create_sql)
+	log.Println("Executing SQL", createSql)
 
-	_, err := db.Exec(create_sql)
+	_, err := db.ExecContext(ctx, createSql)
 
 	if err != nil {
-		return err
+		return diag.Errorf("couldn't exec SQL: %v", err)
 	}
 
 	d.SetId(name)
@@ -50,21 +52,22 @@ func CreateSql(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func ReadSql(d *schema.ResourceData, meta interface{}) error {
+func ReadSql(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	return nil
 }
 
-func DeleteSql(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
-	delete_sql := d.Get("delete_sql").(string)
+func DeleteSql(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
+	deleteSql := d.Get("delete_sql").(string)
 
-	log.Println("Executing SQL:", delete_sql)
+	log.Println("Executing SQL:", deleteSql)
 
-	_, err := db.Exec(delete_sql)
+	_, err := db.ExecContext(ctx, deleteSql)
 
-	if err == nil {
-		d.SetId("")
+	if err != nil {
+		return diag.Errorf("failed to run delete SQL: %v", err)
 	}
 
-	return err
+	d.SetId("")
+	return nil
 }
