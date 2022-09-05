@@ -124,7 +124,7 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 
 	requiredVersion, _ := version.NewVersion("5.7.0")
 
-	if meta.(*MySQLConfiguration).Version.GreaterThan(requiredVersion) && d.Get("tls_option").(string) != "" {
+	if getVersionFromMeta(meta).GreaterThan(requiredVersion) && d.Get("tls_option").(string) != "" {
 		stmtSQL += fmt.Sprintf(" REQUIRE %s", d.Get("tls_option").(string))
 	}
 
@@ -143,7 +143,7 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 func getSetPasswordStatement(meta interface{}) (string, error) {
 	/* ALTER USER syntax introduced in MySQL 5.7.6 deprecates SET PASSWORD (GH-8230) */
 	ver, _ := version.NewVersion("5.7.6")
-	if meta.(*MySQLConfiguration).Version.LessThan(ver) {
+	if getVersionFromMeta(meta).LessThan(ver) {
 		return "SET PASSWORD FOR ?@? = PASSWORD(?)", nil
 	} else {
 		return "ALTER USER ?@? IDENTIFIED BY ?", nil

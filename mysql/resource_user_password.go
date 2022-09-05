@@ -70,7 +70,7 @@ func SetUserPassword(ctx context.Context, d *schema.ResourceData, meta interface
 }
 
 func canReadPassword(meta interface{}) (bool, error) {
-	serverVersion := meta.(*MySQLConfiguration).Version
+	serverVersion := getVersionFromMeta(meta)
 	ver, _ := version.NewVersion("8.0.0")
 	return serverVersion.LessThan(ver), nil
 }
