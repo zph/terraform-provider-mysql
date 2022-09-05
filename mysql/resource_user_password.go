@@ -1,7 +1,9 @@
 package mysql
 
 import (
+	"context"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 
 	"github.com/gofrs/uuid"
@@ -11,10 +13,10 @@ import (
 
 func resourceUserPassword() *schema.Resource {
 	return &schema.Resource{
-		Create: SetUserPassword,
-		Update: SetUserPassword,
-		Read:   ReadUserPassword,
-		Delete: DeleteUserPassword,
+		CreateContext: SetUserPassword,
+		UpdateContext: SetUserPassword,
+		ReadContext:   ReadUserPassword,
+		DeleteContext: DeleteUserPassword,
 		Schema: map[string]*schema.Schema{
 			"user": {
 				Type:     schema.TypeString,
@@ -35,12 +37,12 @@ func resourceUserPassword() *schema.Resource {
 	}
 }
 
-func SetUserPassword(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func SetUserPassword(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	uuid, err := uuid.NewV4()
 	if err != nil {
-		return err
+		return diag.Errorf("failed getting UUID: %v", err)
 	}
 
 	password, passOk := d.GetOk("plaintext_password")
@@ -51,14 +53,14 @@ func SetUserPassword(d *schema.ResourceData, meta interface{}) error {
 
 	stmtSQL, err := getSetPasswordStatement(meta)
 	if err != nil {
-		return err
+		return diag.Errorf("failed getting password statement: %v", err)
 	}
-	_, err = db.Exec(stmtSQL,
+	_, err = db.ExecContext(ctx, stmtSQL,
 		d.Get("user").(string),
 		d.Get("host").(string),
 		password)
 	if err != nil {
-		return err
+		return diag.Errorf("failed executing change statement: %v", err)
 	}
 	user := fmt.Sprintf("%s@%s",
 		d.Get("user").(string),
@@ -73,25 +75,25 @@ func canReadPassword(meta interface{}) (bool, error) {
 	return serverVersion.LessThan(ver), nil
 }
 
-func ReadUserPassword(d *schema.ResourceData, meta interface{}) error {
+func ReadUserPassword(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	canRead, err := canReadPassword(meta)
 	if err != nil {
-		return err
+		return diag.Errorf("cannot get whether we can read password: %v", err)
 	}
 	if !canRead {
 		return nil
 	}
 
-	db := meta.(*MySQLConfiguration).Db
+	db := getDatabaseFromMeta(meta)
 
-	results, err := db.Query(`SELECT IF(PASSWORD(?) = authentication_string,'OK','FAIL') result, plugin FROM mysql.user WHERE user = ? AND host = ?`,
+	results, err := db.QueryContext(ctx, `SELECT IF(PASSWORD(?) = authentication_string,'OK','FAIL') result, plugin FROM mysql.user WHERE user = ? AND host = ?`,
 		d.Get("plaintext_password").(string),
 		d.Get("user").(string),
 		d.Get("host").(string),
 	)
 	if err != nil {
 		// For now, we expect we are root.
-		return err
+		return diag.Errorf("querying auth string failed: %v", err)
 	}
 
 	for results.Next() {
@@ -99,7 +101,7 @@ func ReadUserPassword(d *schema.ResourceData, meta interface{}) error {
 		var correct string
 		err = results.Scan(&plugin, &correct)
 		if err != nil {
-			return err
+			return diag.Errorf("failed reading results: %v", err)
 		}
 
 		if plugin != "mysql_native_password" {
@@ -116,7 +118,7 @@ func ReadUserPassword(d *schema.ResourceData, meta interface{}) error {
 			return nil
 		}
 
-		return fmt.Errorf("Unexpected result of query: correct: %v; plugin: %v", correct, plugin)
+		return diag.Errorf("Unexpected result of query: correct: %v; plugin: %v", correct, plugin)
 	}
 
 	// User doesn't exist. Password is certainly wrong in mysql, destroy the resource.
@@ -125,7 +127,7 @@ func ReadUserPassword(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func DeleteUserPassword(d *schema.ResourceData, meta interface{}) error {
+func DeleteUserPassword(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// We don't need to do anything on the MySQL side here. Just need TF
 	// to remove from the state file.
 	return nil

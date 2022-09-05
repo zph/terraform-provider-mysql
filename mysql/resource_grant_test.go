@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -350,7 +351,7 @@ func testAccPrivilege(rn string, privilege string, expectExists bool) resource.T
 			userOrRole = fmt.Sprintf("'%s'", id[0])
 		}
 
-		grants, err := showUserGrants(db, userOrRole)
+		grants, err := showUserGrants(context.Background(), db, userOrRole)
 		if err != nil {
 			return err
 		}

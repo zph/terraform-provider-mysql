@@ -1,8 +1,10 @@
 package mysql
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 	"strings"
 
@@ -17,12 +19,12 @@ const unknownDatabaseErrCode = 1049
 
 func resourceDatabase() *schema.Resource {
 	return &schema.Resource{
-		Create: CreateDatabase,
-		Update: UpdateDatabase,
-		Read:   ReadDatabase,
-		Delete: DeleteDatabase,
+		CreateContext: CreateDatabase,
+		UpdateContext: UpdateDatabase,
+		ReadContext:   ReadDatabase,
+		DeleteContext: DeleteDatabase,
 		Importer: &schema.ResourceImporter{
-			State: ImportDatabase,
+			StateContext: ImportDatabase,
 		},
 		Schema: map[string]*schema.Schema{
 			"name": {
@@ -46,39 +48,38 @@ func resourceDatabase() *schema.Resource {
 	}
 }
 
-func CreateDatabase(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func CreateDatabase(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	stmtSQL := databaseConfigSQL("CREATE", d)
 	log.Println("Executing statement:", stmtSQL)
 
-	_, err := db.Exec(stmtSQL)
+	_, err := db.ExecContext(ctx, stmtSQL)
 	if err != nil {
-		return err
+		return diag.Errorf("failed running SQL to create DB: %v", err)
 	}
 
 	d.SetId(d.Get("name").(string))
 
-	return ReadDatabase(d, meta)
+	return ReadDatabase(ctx, d, meta)
 }
 
-func UpdateDatabase(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func UpdateDatabase(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	stmtSQL := databaseConfigSQL("ALTER", d)
 	log.Println("Executing statement:", stmtSQL)
 
-	_, err := db.Exec(stmtSQL)
+	_, err := db.ExecContext(ctx, stmtSQL)
 	if err != nil {
-		return err
+		return diag.Errorf("failed updating DB: %v", err)
 	}
 
-	return ReadDatabase(d, meta)
+	return ReadDatabase(ctx, d, meta)
 }
 
-func ReadDatabase(d *schema.ResourceData, meta interface{}) error {
-	mysqlConf := meta.(*MySQLConfiguration)
-	db := mysqlConf.Db
+func ReadDatabase(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	// This is kinda flimsy-feeling, since it depends on the formatting
 	// of the SHOW CREATE DATABASE output... but this data doesn't seem
@@ -98,7 +99,7 @@ func ReadDatabase(d *schema.ResourceData, meta interface{}) error {
 				return nil
 			}
 		}
-		return fmt.Errorf("Error during show create database: %s", err)
+		return diag.Errorf("Error during show create database: %s", err)
 	}
 
 	defaultCharset := extractIdentAfter(createSQL, defaultCharacterSetKeyword)
@@ -115,12 +116,12 @@ func ReadDatabase(d *schema.ResourceData, meta interface{}) error {
 
 		serverVersionString, err := serverVersionString(db)
 		if err != nil {
-			return err
+			return diag.Errorf("could not get error version string: %v", err)
 		}
 
 		// MySQL 8 returns more data in a row.
 		var res error
-		if !strings.Contains(serverVersionString, "MariaDB") && mysqlConf.Version.GreaterThan(requiredVersion) {
+		if !strings.Contains(serverVersionString, "MariaDB") && getVersionFromMeta(meta).GreaterThan(requiredVersion) {
 			res = db.QueryRow(stmtSQL, defaultCharset).Scan(&defaultCollation, &empty, &empty, &empty, &empty, &empty, &empty)
 		} else {
 			res = db.QueryRow(stmtSQL, defaultCharset).Scan(&defaultCollation, &empty, &empty, &empty, &empty, &empty)
@@ -128,10 +129,10 @@ func ReadDatabase(d *schema.ResourceData, meta interface{}) error {
 
 		if res != nil {
 			if res == sql.ErrNoRows {
-				return fmt.Errorf("Charset %s has no default collation", defaultCharset)
+				return diag.Errorf("charset %s has no default collation", defaultCharset)
 			}
 
-			return fmt.Errorf("Error getting default charset: %s, %s", res, defaultCharset)
+			return diag.Errorf("error getting default charset: %s, %s", res, defaultCharset)
 		}
 	}
 
@@ -142,18 +143,20 @@ func ReadDatabase(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func DeleteDatabase(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func DeleteDatabase(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	name := d.Id()
 	stmtSQL := "DROP DATABASE " + quoteIdentifier(name)
 	log.Println("Executing statement:", stmtSQL)
 
-	_, err := db.Exec(stmtSQL)
-	if err == nil {
-		d.SetId("")
+	_, err := db.ExecContext(ctx, stmtSQL)
+	if err != nil {
+		return diag.Errorf("failed deleting DB: %v", err)
 	}
-	return err
+
+	d.SetId("")
+	return nil
 }
 
 func databaseConfigSQL(verb string, d *schema.ResourceData) string {
@@ -192,11 +195,10 @@ func extractIdentAfter(sql string, keyword string) string {
 	return ""
 }
 
-func ImportDatabase(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
-	err := ReadDatabase(d, meta)
-
+func ImportDatabase(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	err := ReadDatabase(ctx, d, meta)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error while importing: %v", err)
 	}
 
 	return []*schema.ResourceData{d}, nil

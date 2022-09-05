@@ -1,12 +1,12 @@
 package mysql
 
 import (
+	"context"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 	"regexp"
 	"strings"
-
-	"errors"
 
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -14,12 +14,12 @@ import (
 
 func resourceUser() *schema.Resource {
 	return &schema.Resource{
-		Create: CreateUser,
-		Update: UpdateUser,
-		Read:   ReadUser,
-		Delete: DeleteUser,
+		CreateContext: CreateUser,
+		UpdateContext: UpdateUser,
+		ReadContext:   ReadUser,
+		DeleteContext: DeleteUser,
 		Importer: &schema.ResourceImporter{
-			State: ImportUser,
+			StateContext: ImportUser,
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -77,8 +77,8 @@ func resourceUser() *schema.Resource {
 	}
 }
 
-func CreateUser(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	var authStm string
 	var auth string
@@ -113,7 +113,7 @@ func CreateUser(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	if auth == "AWSAuthenticationPlugin" && d.Get("host").(string) == "localhost" {
-		return errors.New("cannot use IAM auth against localhost")
+		return diag.Errorf("cannot use IAM auth against localhost")
 	}
 
 	if authStm != "" {
@@ -129,9 +129,9 @@ func CreateUser(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	log.Println("Executing statement:", stmtSQL)
-	_, err := db.Exec(stmtSQL)
+	_, err := db.ExecContext(ctx, stmtSQL)
 	if err != nil {
-		return err
+		return diag.Errorf("failed executing SQL: %v", err)
 	}
 
 	user := fmt.Sprintf("%s@%s", d.Get("user").(string), d.Get("host").(string))
@@ -150,9 +150,8 @@ func getSetPasswordStatement(meta interface{}) (string, error) {
 	}
 }
 
-func UpdateUser(d *schema.ResourceData, meta interface{}) error {
-	mysqlConf := meta.(*MySQLConfiguration)
-	db := mysqlConf.Db
+func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	var auth string
 	if v, ok := d.GetOk("auth_plugin"); ok {
@@ -173,9 +172,9 @@ func UpdateUser(d *schema.ResourceData, meta interface{}) error {
 				d.Get("tls_option").(string))
 
 			log.Println("Executing query:", stmtSQL)
-			_, err := db.Exec(stmtSQL)
+			_, err := db.ExecContext(ctx, stmtSQL)
 			if err != nil {
-				return err
+				return diag.Errorf("failed running query: %v", err)
 			}
 		}
 
@@ -195,21 +194,21 @@ func UpdateUser(d *schema.ResourceData, meta interface{}) error {
 	if newpw != nil {
 		stmtSQL, err := getSetPasswordStatement(meta)
 		if err != nil {
-			return err
+			return diag.Errorf("failed getting change password statement: %v", err)
 		}
 
 		log.Println("Executing query:", stmtSQL)
-		_, err = db.Exec(stmtSQL,
+		_, err = db.ExecContext(ctx, stmtSQL,
 			d.Get("user").(string),
 			d.Get("host").(string),
 			newpw.(string))
 		if err != nil {
-			return err
+			return diag.Errorf("failed changing password: %v", err)
 		}
 	}
 
 	requiredVersion, _ := version.NewVersion("5.7.0")
-	if d.HasChange("tls_option") && mysqlConf.Version.GreaterThan(requiredVersion) {
+	if d.HasChange("tls_option") && getVersionFromMeta(meta).GreaterThan(requiredVersion) {
 		var stmtSQL string
 
 		stmtSQL = fmt.Sprintf("ALTER USER '%s'@'%s'  REQUIRE %s",
@@ -218,30 +217,29 @@ func UpdateUser(d *schema.ResourceData, meta interface{}) error {
 			fmt.Sprintf(" REQUIRE %s", d.Get("tls_option").(string)))
 
 		log.Println("Executing query:", stmtSQL)
-		_, err := db.Exec(stmtSQL)
+		_, err := db.ExecContext(ctx, stmtSQL)
 		if err != nil {
-			return err
+			return diag.Errorf("failed setting require tls option: %v", err)
 		}
 	}
 
 	return nil
 }
 
-func ReadUser(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
-	currentVersion := meta.(*MySQLConfiguration).Version
+func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 	requiredVersion, _ := version.NewVersion("5.7.0")
-	if currentVersion.GreaterThan(requiredVersion) {
+	if getVersionFromMeta(meta).GreaterThan(requiredVersion) {
 		stmt := "SHOW CREATE USER ?@?"
 
 		var createUserStmt string
-		err := db.QueryRow(stmt, d.Get("user").(string), d.Get("host").(string)).Scan(&createUserStmt)
+		err := db.QueryRowContext(ctx, stmt, d.Get("user").(string), d.Get("host").(string)).Scan(&createUserStmt)
 		if err != nil {
 			if mysqlErrorNumber(err) == unknownUserErrCode {
 				d.SetId("")
 				return nil
 			}
-			return err
+			return diag.Errorf("failed getting version: %v", err)
 		}
 
 		// Examples of create user:
@@ -264,7 +262,7 @@ func ReadUser(d *schema.ResourceData, meta interface{}) error {
 			// Ok, we have at least something - it's probably in MariaDB.
 			return nil
 		}
-		return fmt.Errorf("Create user couldn't be parsed - it is %s", createUserStmt)
+		return diag.Errorf("Create user couldn't be parsed - it is %s", createUserStmt)
 	} else {
 		// Worse user detection, only for compat with MySQL 5.6
 		stmtSQL := fmt.Sprintf("SELECT USER FROM mysql.user WHERE USER='%s'",
@@ -272,38 +270,41 @@ func ReadUser(d *schema.ResourceData, meta interface{}) error {
 
 		log.Println("Executing statement:", stmtSQL)
 
-		rows, err := db.Query(stmtSQL)
+		rows, err := db.QueryContext(ctx, stmtSQL)
 		if err != nil {
-			return err
+			return diag.Errorf("failed getting user from DB: %v", err)
 		}
 		defer rows.Close()
 
 		if !rows.Next() && rows.Err() == nil {
 			d.SetId("")
-			return rows.Err()
+			return nil
+		}
+		if rows.Err() != nil {
+			return diag.Errorf("failed getting rows: %v", rows.Err())
 		}
 	}
 	return nil
 }
 
-func DeleteUser(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func DeleteUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	stmtSQL := fmt.Sprintf("DROP USER ?@?")
 
 	log.Println("Executing statement:", stmtSQL)
 
-	_, err := db.Exec(stmtSQL,
+	_, err := db.ExecContext(ctx, stmtSQL,
 		d.Get("user").(string),
 		d.Get("host").(string))
 
 	if err == nil {
 		d.SetId("")
 	}
-	return err
+	return diag.FromErr(err)
 }
 
-func ImportUser(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func ImportUser(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	userHost := strings.SplitN(d.Id(), "@", 2)
 
 	if len(userHost) != 2 {
@@ -314,9 +315,13 @@ func ImportUser(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceDat
 	host := userHost[1]
 	d.Set("user", user)
 	d.Set("host", host)
-	err := ReadUser(d, meta)
+	err := ReadUser(ctx, d, meta)
+	var ferror error
+	if err.HasError() {
+		ferror = fmt.Errorf("failed reading user: %v", err)
+	}
 
-	return []*schema.ResourceData{d}, err
+	return []*schema.ResourceData{d}, ferror
 }
 
 func NewEmptyStringSuppressFunc(k, old, new string, d *schema.ResourceData) bool {

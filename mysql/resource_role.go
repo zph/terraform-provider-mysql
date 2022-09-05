@@ -1,7 +1,9 @@
 package mysql
 
 import (
+	"context"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -9,9 +11,9 @@ import (
 
 func resourceRole() *schema.Resource {
 	return &schema.Resource{
-		Create: CreateRole,
-		Read:   ReadRole,
-		Delete: DeleteRole,
+		CreateContext: CreateRole,
+		ReadContext:   ReadRole,
+		DeleteContext: DeleteRole,
 
 		Schema: map[string]*schema.Schema{
 			"name": {
@@ -23,17 +25,17 @@ func resourceRole() *schema.Resource {
 	}
 }
 
-func CreateRole(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func CreateRole(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	roleName := d.Get("name").(string)
 
 	sql := fmt.Sprintf("CREATE ROLE '%s'", roleName)
 	log.Printf("[DEBUG] SQL: %s", sql)
 
-	_, err := db.Exec(sql)
+	_, err := db.ExecContext(ctx, sql)
 	if err != nil {
-		return fmt.Errorf("error creating role: %s", err)
+		return diag.Errorf("error creating role: %s", err)
 	}
 
 	d.SetId(roleName)
@@ -41,13 +43,13 @@ func CreateRole(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func ReadRole(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func ReadRole(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	sql := fmt.Sprintf("SHOW GRANTS FOR '%s'", d.Id())
 	log.Printf("[DEBUG] SQL: %s", sql)
 
-	_, err := db.Exec(sql)
+	_, err := db.ExecContext(ctx, sql)
 	if err != nil {
 		log.Printf("[WARN] Role (%s) not found; removing from state", d.Id())
 		d.SetId("")
@@ -59,15 +61,15 @@ func ReadRole(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func DeleteRole(d *schema.ResourceData, meta interface{}) error {
-	db := meta.(*MySQLConfiguration).Db
+func DeleteRole(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	db := getDatabaseFromMeta(meta)
 
 	sql := fmt.Sprintf("DROP ROLE '%s'", d.Get("name").(string))
 	log.Printf("[DEBUG] SQL: %s", sql)
 
-	_, err := db.Exec(sql)
+	_, err := db.ExecContext(ctx, sql)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	return nil
