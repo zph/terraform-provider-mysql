@@ -91,7 +91,7 @@ func ReadDatabase(ctx context.Context, d *schema.ResourceData, meta interface{})
 
 	log.Println("Executing query:", stmtSQL)
 	var createSQL, _database string
-	err := db.QueryRow(stmtSQL).Scan(&_database, &createSQL)
+	err := db.QueryRowContext(ctx, stmtSQL).Scan(&_database, &createSQL)
 	if err != nil {
 		if mysqlErr, ok := err.(*mysql.MySQLError); ok {
 			if mysqlErr.Number == unknownDatabaseErrCode {

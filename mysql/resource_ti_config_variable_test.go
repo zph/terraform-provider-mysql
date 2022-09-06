@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -126,7 +127,8 @@ func TestTiKvConfigVar_basic(t *testing.T) {
 
 func testAccConfigVarExists(varName string, varValue string, varType string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
-		db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+		ctx := context.Background()
+		db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 		if err != nil {
 			return err
 		}
@@ -153,7 +155,8 @@ func getGetInstance(varType string, t *testing.T) string {
 		t.Skip("Skip on MySQL")
 	}
 
-	db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+	ctx := context.Background()
+	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 	if err != nil {
 		return err.Error()
 	}
