@@ -151,7 +151,7 @@ func TestAccGrantComplex(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				// Create table first
-				Config: testAccGrantConfig_nogrant(dbName),
+				Config: testAccGrantConfigNoGrant(dbName),
 				Check: resource.ComposeTestCheckFunc(
 					prepareTable(dbName),
 				),
@@ -234,7 +234,8 @@ func TestAccGrant_role(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
-			db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+			ctx := context.Background()
+			db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 			if err != nil {
 				return
 			}
@@ -281,7 +282,8 @@ func TestAccGrant_roleToUser(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
-			db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+			ctx := context.Background()
+			db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 			if err != nil {
 				return
 			}
@@ -313,7 +315,8 @@ func TestAccGrant_roleToUser(t *testing.T) {
 
 func prepareTable(dbname string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
-		db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+		ctx := context.Background()
+		db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 		if err != nil {
 			return err
 		}
@@ -336,7 +339,8 @@ func testAccPrivilege(rn string, privilege string, expectExists bool) resource.T
 			return fmt.Errorf("grant id not set")
 		}
 
-		db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+		ctx := context.Background()
+		db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 		if err != nil {
 			return err
 		}
@@ -385,7 +389,8 @@ func testAccPrivilege(rn string, privilege string, expectExists bool) resource.T
 }
 
 func testAccGrantCheckDestroy(s *terraform.State) error {
-	db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+	ctx := context.Background()
+	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 	if err != nil {
 		return err
 	}
@@ -415,16 +420,16 @@ func testAccGrantCheckDestroy(s *terraform.State) error {
 
 			return fmt.Errorf("error reading grant: %s", err)
 		}
-		defer rows.Close()
 
 		if rows.Next() {
 			return fmt.Errorf("grant still exists for: %s", userOrRole)
 		}
+		rows.Close()
 	}
 	return nil
 }
 
-func testAccGrantConfig_nogrant(dbName string) string {
+func testAccGrantConfigNoGrant(dbName string) string {
 	return fmt.Sprintf(`
 resource "mysql_database" "test" {
   name = "%s"

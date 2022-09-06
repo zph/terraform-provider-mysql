@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"regexp"
@@ -119,7 +120,8 @@ func TestAccGlobalVar_parseBoolean(t *testing.T) {
 
 func testAccGlobalVarExists(varName, varExpected string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
-		db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+		ctx := context.Background()
+		db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 		if err != nil {
 			return err
 		}
@@ -157,7 +159,8 @@ func testAccGetGlobalVar(varName string, db *sql.DB) (string, error) {
 
 func testAccGlobalVarCheckDestroy(varName, varExpected string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
-		db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+		ctx := context.Background()
+		db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 		if err != nil {
 			return err
 		}

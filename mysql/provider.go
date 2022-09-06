@@ -1,8 +1,10 @@
 package mysql
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"net"
 	"net/url"
 	"regexp"
@@ -143,14 +145,13 @@ func Provider() *schema.Provider {
 			"mysql_ti_config":       resourceTiConfigVariable(),
 		},
 
-		ConfigureFunc: providerConfigure,
+		ConfigureContextFunc: providerConfigure,
 	}
 }
 
-func providerConfigure(d *schema.ResourceData) (interface{}, error) {
-
+func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 	var endpoint = d.Get("endpoint").(string)
-	var conn_params = make(map[string]string)
+	var connParams = make(map[string]string)
 
 	proto := "tcp"
 	if len(endpoint) > 0 && endpoint[0] == '/' {
@@ -160,9 +161,9 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	for k, vint := range d.Get("conn_params").(map[string]interface{}) {
 		v, ok := vint.(string)
 		if !ok {
-			return nil, fmt.Errorf("Cannot convert connection parameters to string")
+			return nil, diag.Errorf("cannot convert connection parameters to string")
 		}
-		conn_params[k] = v
+		connParams[k] = v
 	}
 
 	conf := mysql.Config{
@@ -174,15 +175,15 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 		AllowNativePasswords:    d.Get("authentication_plugin").(string) == nativePasswords,
 		AllowCleartextPasswords: d.Get("authentication_plugin").(string) == cleartextPasswords,
 		InterpolateParams:       true,
-		Params:                  conn_params,
+		Params:                  connParams,
 	}
 
 	dialer, err := makeDialer(d)
 	if err != nil {
-		return nil, err
+		return nil, diag.Errorf("failed making dialer: %v", err)
 	}
 
-	mysql.RegisterDial("tcp", func(network string) (net.Conn, error) {
+	mysql.RegisterDialContext("tcp", func(ctx context.Context, network string) (net.Conn, error) {
 		return dialer.Dial("tcp", network)
 	})
 
@@ -193,21 +194,21 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 		ConnectRetryTimeoutSec: time.Duration(d.Get("connect_retry_timeout_sec").(int)) * time.Second,
 	}
 
-	db, err := connectToMySQL(mysqlConf)
+	db, err := connectToMySQL(ctx, mysqlConf)
 
 	if err != nil {
-		return nil, err
+		return nil, diag.Errorf("failed to connect to MySQL: %v", err)
 	}
 
 	mysqlConf.Db = db
-	if err := afterConnect(mysqlConf, db); err != nil {
-		return nil, fmt.Errorf("Failed running after connect command: %v", err)
+	if err := afterConnect(ctx, mysqlConf, db); err != nil {
+		return nil, diag.Errorf("failed running after connect command: %v", err)
 	}
 
 	return mysqlConf, nil
 }
 
-func afterConnect(mysqlConf *MySQLConfiguration, db *sql.DB) error {
+func afterConnect(ctx context.Context, mysqlConf *MySQLConfiguration, db *sql.DB) error {
 	// Set up env so that we won't create users randomly.
 	currentVersion, err := serverVersion(db)
 	if err != nil {
@@ -221,9 +222,9 @@ func afterConnect(mysqlConf *MySQLConfiguration, db *sql.DB) error {
 	if mysqlConf.Version.GreaterThanOrEqual(versionMinInclusive) &&
 		mysqlConf.Version.LessThan(versionMaxExclusive) {
 		// CONCAT and setting works even if there is no value.
-		_, err := db.Exec(`SET SESSION sql_mode=CONCAT(@@sql_mode, ',NO_AUTO_CREATE_USER')`)
+		_, err = db.ExecContext(ctx, `SET SESSION sql_mode=CONCAT(@@sql_mode, ',NO_AUTO_CREATE_USER')`)
 		if err != nil {
-			return fmt.Errorf("Failed setting SQL mode: %v", err)
+			return fmt.Errorf("failed setting SQL mode: %v", err)
 		}
 	}
 
@@ -241,12 +242,12 @@ func makeDialer(d *schema.ResourceData) (proxy.Dialer, error) {
 		if err != nil {
 			return nil, err
 		}
-		proxy, err := proxy.FromURL(proxyURL, proxy.Direct)
+		proxyDialer, err := proxy.FromURL(proxyURL, proxy.Direct)
 		if err != nil {
 			return nil, err
 		}
 
-		return proxy, nil
+		return proxyDialer, nil
 	}
 
 	return proxyFromEnv, nil
@@ -276,7 +277,7 @@ func serverVersionString(db *sql.DB) (string, error) {
 	return versionString, nil
 }
 
-func connectToMySQL(conf *MySQLConfiguration) (*sql.DB, error) {
+func connectToMySQL(ctx context.Context, conf *MySQLConfiguration) (*sql.DB, error) {
 	// This is fine - we'll connect serially, but we don't expect more than
 	// 1 or 2 connections starting at once.
 	connectionCacheMtx.Lock()
@@ -293,18 +294,18 @@ func connectToMySQL(conf *MySQLConfiguration) (*sql.DB, error) {
 	// when Terraform thinks it's available and when it is actually available.
 	// This is particularly acute when provisioning a server and then immediately
 	// trying to provision a database on it.
-	retryError := resource.Retry(conf.ConnectRetryTimeoutSec, func() *resource.RetryError {
+	retryError := resource.RetryContext(ctx, conf.ConnectRetryTimeoutSec, func() *resource.RetryError {
 		db, err = sql.Open("mysql", dsn)
 		if err != nil {
-			if mysqlErrorNumber(err) == unknownVarErrCode {
+			if mysqlErrorNumber(err) == unknownVarErrCode || ctx.Err() != nil {
 				return resource.NonRetryableError(err)
 			}
 			return resource.RetryableError(err)
 		}
 
-		err = db.Ping()
+		err = db.PingContext(ctx)
 		if err != nil {
-			if mysqlErrorNumber(err) == unknownVarErrCode {
+			if mysqlErrorNumber(err) == unknownVarErrCode || ctx.Err() != nil {
 				return resource.NonRetryableError(err)
 			}
 

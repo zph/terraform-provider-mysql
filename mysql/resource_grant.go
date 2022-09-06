@@ -139,7 +139,7 @@ func userOrRole(user string, host string, role string, hasRoles bool) (string, b
 		return fmt.Sprintf("'%s'@'%s'", user, host), false, nil
 	} else if len(role) > 0 {
 		if !hasRoles {
-			return "", false, fmt.Errorf("Roles are only supported on MySQL 8 and above")
+			return "", false, fmt.Errorf("roles are only supported on MySQL 8 and above")
 		}
 
 		return fmt.Sprintf("'%s'", role), true, nil

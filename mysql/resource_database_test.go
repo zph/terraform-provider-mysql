@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -37,6 +38,7 @@ func TestAccDatabase_collationChange(t *testing.T) {
 	collation2 := "utf8mb4_general_ci"
 
 	resourceName := "mysql_database.test"
+	ctx := context.Background()
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheckSkipTiDB(t) },
@@ -56,7 +58,7 @@ func TestAccDatabase_collationChange(t *testing.T) {
 			},
 			{
 				PreConfig: func() {
-					db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+					db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 					if err != nil {
 						return
 					}
@@ -87,7 +89,8 @@ func testAccDatabaseCheck_full(rn string, name string, charset string, collation
 			return fmt.Errorf("database id not set")
 		}
 
-		db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+		ctx := context.Background()
+		db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 		if err != nil {
 			return err
 		}
@@ -111,7 +114,8 @@ func testAccDatabaseCheck_full(rn string, name string, charset string, collation
 
 func testAccDatabaseCheckDestroy(name string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
-		db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+		ctx := context.Background()
+		db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 		if err != nil {
 			return err
 		}

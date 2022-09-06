@@ -70,7 +70,9 @@ func testAccPreCheck(t *testing.T) {
 
 func testAccPreCheckSkipTiDB(t *testing.T) {
 	testAccPreCheck(t)
-	db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+
+	ctx := context.Background()
+	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 	if err != nil {
 		return
 	}
@@ -87,7 +89,9 @@ func testAccPreCheckSkipTiDB(t *testing.T) {
 
 func testAccPreCheckSkipMariaDB(t *testing.T) {
 	testAccPreCheck(t)
-	db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+
+	ctx := context.Background()
+	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 	if err != nil {
 		return
 	}
@@ -104,7 +108,9 @@ func testAccPreCheckSkipMariaDB(t *testing.T) {
 
 func testAccPreCheckSkipNotTiDB(t *testing.T) {
 	testAccPreCheck(t)
-	db, err := connectToMySQL(testAccProvider.Meta().(*MySQLConfiguration))
+
+	ctx := context.Background()
+	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 	if err != nil {
 		return
 	}
