@@ -46,7 +46,10 @@ func resourceGlobalVariable() *schema.Resource {
 func CreateOrUpdateGlobalVariable(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var sql string
 
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 	name := d.Get("name").(string)
 	value := d.Get("value").(string)
 
@@ -61,7 +64,7 @@ func CreateOrUpdateGlobalVariable(ctx context.Context, d *schema.ResourceData, m
 
 	log.Printf("[DEBUG] SQL: %s", sql)
 
-	_, err := db.ExecContext(ctx, sql)
+	_, err = db.ExecContext(ctx, sql)
 	if err != nil {
 		return diag.Errorf("error setting value: %s", err)
 	}
@@ -72,7 +75,10 @@ func CreateOrUpdateGlobalVariable(ctx context.Context, d *schema.ResourceData, m
 }
 
 func ReadGlobalVariable(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	stmt, err := db.Prepare("SHOW GLOBAL VARIABLES WHERE VARIABLE_NAME = ?")
 	if err != nil {
@@ -94,13 +100,16 @@ func ReadGlobalVariable(ctx context.Context, d *schema.ResourceData, meta interf
 }
 
 func DeleteGlobalVariable(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 	name := d.Get("name").(string)
 
 	sql := fmt.Sprintf("SET GLOBAL %s = DEFAULT", quoteIdentifier(name))
 	log.Printf("[DEBUG] SQL: %s", sql)
 
-	_, err := db.ExecContext(ctx, sql)
+	_, err = db.ExecContext(ctx, sql)
 	if err != nil {
 		log.Printf("[WARN] Variable_name (%s) not found; removing from state", d.Id())
 		d.SetId("")

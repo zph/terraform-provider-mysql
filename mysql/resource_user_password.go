@@ -38,7 +38,10 @@ func resourceUserPassword() *schema.Resource {
 }
 
 func SetUserPassword(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	uuid, err := uuid.NewV4()
 	if err != nil {
@@ -51,7 +54,7 @@ func SetUserPassword(ctx context.Context, d *schema.ResourceData, meta interface
 		d.Set("plaintext_password", password)
 	}
 
-	stmtSQL, err := getSetPasswordStatement(meta)
+	stmtSQL, err := getSetPasswordStatement(ctx, meta)
 	if err != nil {
 		return diag.Errorf("failed getting password statement: %v", err)
 	}
@@ -69,14 +72,14 @@ func SetUserPassword(ctx context.Context, d *schema.ResourceData, meta interface
 	return nil
 }
 
-func canReadPassword(meta interface{}) (bool, error) {
-	serverVersion := getVersionFromMeta(meta)
+func canReadPassword(ctx context.Context, meta interface{}) (bool, error) {
+	serverVersion := getVersionFromMeta(ctx, meta)
 	ver, _ := version.NewVersion("8.0.0")
 	return serverVersion.LessThan(ver), nil
 }
 
 func ReadUserPassword(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	canRead, err := canReadPassword(meta)
+	canRead, err := canReadPassword(ctx, meta)
 	if err != nil {
 		return diag.Errorf("cannot get whether we can read password: %v", err)
 	}
@@ -84,7 +87,10 @@ func ReadUserPassword(ctx context.Context, d *schema.ResourceData, meta interfac
 		return nil
 	}
 
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	results, err := db.QueryContext(ctx, `SELECT IF(PASSWORD(?) = authentication_string,'OK','FAIL') result, plugin FROM mysql.user WHERE user = ? AND host = ?`,
 		d.Get("plaintext_password").(string),

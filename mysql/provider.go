@@ -29,25 +29,28 @@ const (
 	unknownUserErrCode = 1396
 )
 
+type OneConnection struct {
+	Db      *sql.DB
+	Version *version.Version
+}
+
 type MySQLConfiguration struct {
 	Config                 *mysql.Config
-	Db                     *sql.DB
 	MaxConnLifetime        time.Duration
 	MaxOpenConns           int
 	ConnectRetryTimeoutSec time.Duration
-	Version                *version.Version
 }
 
 var (
 	connectionCacheMtx sync.Mutex
-	connectionCache    map[string]*sql.DB
+	connectionCache    map[string]*OneConnection
 )
 
 func init() {
 	connectionCacheMtx.Lock()
 	defer connectionCacheMtx.Unlock()
 
-	connectionCache = map[string]*sql.DB{}
+	connectionCache = map[string]*OneConnection{}
 }
 
 func Provider() *schema.Provider {
@@ -194,41 +197,29 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		ConnectRetryTimeoutSec: time.Duration(d.Get("connect_retry_timeout_sec").(int)) * time.Second,
 	}
 
-	db, err := connectToMySQL(ctx, mysqlConf)
-
-	if err != nil {
-		return nil, diag.Errorf("failed to connect to MySQL: %v", err)
-	}
-
-	mysqlConf.Db = db
-	if err := afterConnect(ctx, mysqlConf, db); err != nil {
-		return nil, diag.Errorf("failed running after connect command: %v", err)
-	}
-
 	return mysqlConf, nil
 }
 
-func afterConnect(ctx context.Context, mysqlConf *MySQLConfiguration, db *sql.DB) error {
+func afterConnectVersion(ctx context.Context, mysqlConf *MySQLConfiguration, db *sql.DB) (*version.Version, error) {
 	// Set up env so that we won't create users randomly.
+	fmt.Printf("AAA Running after connect\n")
 	currentVersion, err := serverVersion(db)
 	if err != nil {
-		return fmt.Errorf("Failed getting server version: %v", err)
+		return nil, fmt.Errorf("Failed getting server version: %v", err)
 	}
-
-	mysqlConf.Version = currentVersion
 
 	versionMinInclusive, _ := version.NewVersion("5.7.5")
 	versionMaxExclusive, _ := version.NewVersion("8.0.0")
-	if mysqlConf.Version.GreaterThanOrEqual(versionMinInclusive) &&
-		mysqlConf.Version.LessThan(versionMaxExclusive) {
+	if currentVersion.GreaterThanOrEqual(versionMinInclusive) &&
+		currentVersion.LessThan(versionMaxExclusive) {
 		// CONCAT and setting works even if there is no value.
 		_, err = db.ExecContext(ctx, `SET SESSION sql_mode=CONCAT(@@sql_mode, ',NO_AUTO_CREATE_USER')`)
 		if err != nil {
-			return fmt.Errorf("failed setting SQL mode: %v", err)
+			return nil, fmt.Errorf("failed setting SQL mode: %v", err)
 		}
 	}
 
-	return nil
+	return currentVersion, nil
 }
 
 var identQuoteReplacer = strings.NewReplacer("`", "``")
@@ -276,8 +267,15 @@ func serverVersionString(db *sql.DB) (string, error) {
 
 	return versionString, nil
 }
-
 func connectToMySQL(ctx context.Context, conf *MySQLConfiguration) (*sql.DB, error) {
+	conn, err := connectToMySQLInternal(ctx, conf)
+	if err != nil {
+		return nil, err
+	}
+	return conn.Db, nil
+}
+
+func connectToMySQLInternal(ctx context.Context, conf *MySQLConfiguration) (*OneConnection, error) {
 	// This is fine - we'll connect serially, but we don't expect more than
 	// 1 or 2 connections starting at once.
 	connectionCacheMtx.Lock()
@@ -316,12 +314,21 @@ func connectToMySQL(ctx context.Context, conf *MySQLConfiguration) (*sql.DB, err
 	})
 
 	if retryError != nil {
-		return nil, fmt.Errorf("Could not connect to server: %s", retryError)
+		return nil, fmt.Errorf("could not connect to server: %s", retryError)
 	}
-	connectionCache[dsn] = db
 	db.SetConnMaxLifetime(conf.MaxConnLifetime)
 	db.SetMaxOpenConns(conf.MaxOpenConns)
-	return db, nil
+
+	currentVersion, err := afterConnectVersion(ctx, conf, db)
+	if err != nil {
+		return nil, fmt.Errorf("failed running after connect command: %v", err)
+	}
+
+	connectionCache[dsn] = &OneConnection{
+		Db:      db,
+		Version: currentVersion,
+	}
+	return connectionCache[dsn], nil
 }
 
 // 0 == not mysql error or not error at all.

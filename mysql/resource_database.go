@@ -49,12 +49,15 @@ func resourceDatabase() *schema.Resource {
 }
 
 func CreateDatabase(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	stmtSQL := databaseConfigSQL("CREATE", d)
 	log.Println("Executing statement:", stmtSQL)
 
-	_, err := db.ExecContext(ctx, stmtSQL)
+	_, err = db.ExecContext(ctx, stmtSQL)
 	if err != nil {
 		return diag.Errorf("failed running SQL to create DB: %v", err)
 	}
@@ -65,12 +68,15 @@ func CreateDatabase(ctx context.Context, d *schema.ResourceData, meta interface{
 }
 
 func UpdateDatabase(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	stmtSQL := databaseConfigSQL("ALTER", d)
 	log.Println("Executing statement:", stmtSQL)
 
-	_, err := db.ExecContext(ctx, stmtSQL)
+	_, err = db.ExecContext(ctx, stmtSQL)
 	if err != nil {
 		return diag.Errorf("failed updating DB: %v", err)
 	}
@@ -79,7 +85,10 @@ func UpdateDatabase(ctx context.Context, d *schema.ResourceData, meta interface{
 }
 
 func ReadDatabase(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	// This is kinda flimsy-feeling, since it depends on the formatting
 	// of the SHOW CREATE DATABASE output... but this data doesn't seem
@@ -91,7 +100,7 @@ func ReadDatabase(ctx context.Context, d *schema.ResourceData, meta interface{})
 
 	log.Println("Executing query:", stmtSQL)
 	var createSQL, _database string
-	err := db.QueryRowContext(ctx, stmtSQL).Scan(&_database, &createSQL)
+	err = db.QueryRowContext(ctx, stmtSQL).Scan(&_database, &createSQL)
 	if err != nil {
 		if mysqlErr, ok := err.(*mysql.MySQLError); ok {
 			if mysqlErr.Number == unknownDatabaseErrCode {
@@ -121,7 +130,7 @@ func ReadDatabase(ctx context.Context, d *schema.ResourceData, meta interface{})
 
 		// MySQL 8 returns more data in a row.
 		var res error
-		if !strings.Contains(serverVersionString, "MariaDB") && getVersionFromMeta(meta).GreaterThan(requiredVersion) {
+		if !strings.Contains(serverVersionString, "MariaDB") && getVersionFromMeta(ctx, meta).GreaterThan(requiredVersion) {
 			res = db.QueryRow(stmtSQL, defaultCharset).Scan(&defaultCollation, &empty, &empty, &empty, &empty, &empty, &empty)
 		} else {
 			res = db.QueryRow(stmtSQL, defaultCharset).Scan(&defaultCollation, &empty, &empty, &empty, &empty, &empty)
@@ -144,13 +153,16 @@ func ReadDatabase(ctx context.Context, d *schema.ResourceData, meta interface{})
 }
 
 func DeleteDatabase(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	name := d.Id()
 	stmtSQL := "DROP DATABASE " + quoteIdentifier(name)
 	log.Println("Executing statement:", stmtSQL)
 
-	_, err := db.ExecContext(ctx, stmtSQL)
+	_, err = db.ExecContext(ctx, stmtSQL)
 	if err != nil {
 		return diag.Errorf("failed deleting DB: %v", err)
 	}

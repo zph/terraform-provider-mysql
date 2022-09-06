@@ -35,14 +35,16 @@ func resourceSql() *schema.Resource {
 }
 
 func CreateSql(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 	name := d.Get("name").(string)
 	createSql := d.Get("create_sql").(string)
 
 	log.Println("Executing SQL", createSql)
 
-	_, err := db.ExecContext(ctx, createSql)
-
+	_, err = db.ExecContext(ctx, createSql)
 	if err != nil {
 		return diag.Errorf("couldn't exec SQL: %v", err)
 	}
@@ -57,13 +59,15 @@ func ReadSql(ctx context.Context, d *schema.ResourceData, meta interface{}) diag
 }
 
 func DeleteSql(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 	deleteSql := d.Get("delete_sql").(string)
 
 	log.Println("Executing SQL:", deleteSql)
 
-	_, err := db.ExecContext(ctx, deleteSql)
-
+	_, err = db.ExecContext(ctx, deleteSql)
 	if err != nil {
 		return diag.Errorf("failed to run delete SQL: %v", err)
 	}
