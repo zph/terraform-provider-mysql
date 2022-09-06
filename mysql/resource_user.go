@@ -78,7 +78,10 @@ func resourceUser() *schema.Resource {
 }
 
 func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	var authStm string
 	var auth string
@@ -124,12 +127,12 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 
 	requiredVersion, _ := version.NewVersion("5.7.0")
 
-	if getVersionFromMeta(meta).GreaterThan(requiredVersion) && d.Get("tls_option").(string) != "" {
+	if getVersionFromMeta(ctx, meta).GreaterThan(requiredVersion) && d.Get("tls_option").(string) != "" {
 		stmtSQL += fmt.Sprintf(" REQUIRE %s", d.Get("tls_option").(string))
 	}
 
 	log.Println("Executing statement:", stmtSQL)
-	_, err := db.ExecContext(ctx, stmtSQL)
+	_, err = db.ExecContext(ctx, stmtSQL)
 	if err != nil {
 		return diag.Errorf("failed executing SQL: %v", err)
 	}
@@ -140,10 +143,10 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 	return nil
 }
 
-func getSetPasswordStatement(meta interface{}) (string, error) {
+func getSetPasswordStatement(ctx context.Context, meta interface{}) (string, error) {
 	/* ALTER USER syntax introduced in MySQL 5.7.6 deprecates SET PASSWORD (GH-8230) */
 	ver, _ := version.NewVersion("5.7.6")
-	if getVersionFromMeta(meta).LessThan(ver) {
+	if getVersionFromMeta(ctx, meta).LessThan(ver) {
 		return "SET PASSWORD FOR ?@? = PASSWORD(?)", nil
 	} else {
 		return "ALTER USER ?@? IDENTIFIED BY ?", nil
@@ -151,7 +154,10 @@ func getSetPasswordStatement(meta interface{}) (string, error) {
 }
 
 func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	var auth string
 	if v, ok := d.GetOk("auth_plugin"); ok {
@@ -192,7 +198,7 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 	}
 
 	if newpw != nil {
-		stmtSQL, err := getSetPasswordStatement(meta)
+		stmtSQL, err := getSetPasswordStatement(ctx, meta)
 		if err != nil {
 			return diag.Errorf("failed getting change password statement: %v", err)
 		}
@@ -208,7 +214,7 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 	}
 
 	requiredVersion, _ := version.NewVersion("5.7.0")
-	if d.HasChange("tls_option") && getVersionFromMeta(meta).GreaterThan(requiredVersion) {
+	if d.HasChange("tls_option") && getVersionFromMeta(ctx, meta).GreaterThan(requiredVersion) {
 		var stmtSQL string
 
 		stmtSQL = fmt.Sprintf("ALTER USER '%s'@'%s'  REQUIRE %s",
@@ -227,9 +233,12 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 }
 
 func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 	requiredVersion, _ := version.NewVersion("5.7.0")
-	if getVersionFromMeta(meta).GreaterThan(requiredVersion) {
+	if getVersionFromMeta(ctx, meta).GreaterThan(requiredVersion) {
 		stmt := "SHOW CREATE USER ?@?"
 
 		var createUserStmt string
@@ -288,13 +297,16 @@ func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) dia
 }
 
 func DeleteUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	stmtSQL := fmt.Sprintf("DROP USER ?@?")
 
 	log.Println("Executing statement:", stmtSQL)
 
-	_, err := db.ExecContext(ctx, stmtSQL,
+	_, err = db.ExecContext(ctx, stmtSQL,
 		d.Get("user").(string),
 		d.Get("host").(string))
 

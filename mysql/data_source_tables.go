@@ -32,7 +32,10 @@ func dataSourceTables() *schema.Resource {
 }
 
 func ShowTables(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	database := d.Get("database").(string)
 	pattern := d.Get("pattern").(string)

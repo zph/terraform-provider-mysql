@@ -58,7 +58,10 @@ func resourceTiConfigVariable() *schema.Resource {
 }
 
 func CreateOrUpdateConfigVariable(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	varName := d.Get("name").(string)
 	varValue := d.Get("value").(string)
@@ -78,7 +81,7 @@ func CreateOrUpdateConfigVariable(ctx context.Context, d *schema.ResourceData, m
 
 	log.Printf("[DEBUG] SQL: %s\n", configQuery)
 
-	_, err := db.ExecContext(ctx, configQuery)
+	_, err = db.ExecContext(ctx, configQuery)
 	if err != nil {
 		return diag.Errorf("error setting value: %s", err)
 	}
@@ -102,7 +105,11 @@ func CreateOrUpdateConfigVariable(ctx context.Context, d *schema.ResourceData, m
 func ReadConfigVariable(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var resType, resInstance, resName, resValue string
 
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
 	match, _ := regexp.MatchString("^(pd|tikv)#(.*)$", d.Id())
 	if !match {
 		return diag.Errorf("error parsing TiDB component (tikv or pd) type from ID.  \n Acceptable format is <pd|tikv>#<config_variable>#<optional_instance>")
@@ -119,7 +126,7 @@ func ReadConfigVariable(ctx context.Context, d *schema.ResourceData, meta interf
 
 	log.Printf("[DEBUG] SQL: %s\n", configQuery)
 
-	err := db.QueryRow(configQuery).Scan(&resType, &resInstance, &resName, &resValue)
+	err = db.QueryRow(configQuery).Scan(&resType, &resInstance, &resName, &resValue)
 	if err != nil && err != sql.ErrNoRows {
 		d.SetId("")
 		return diag.Errorf("error during show config variables: %s", err)

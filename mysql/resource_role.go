@@ -26,14 +26,17 @@ func resourceRole() *schema.Resource {
 }
 
 func CreateRole(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	roleName := d.Get("name").(string)
 
 	sql := fmt.Sprintf("CREATE ROLE '%s'", roleName)
 	log.Printf("[DEBUG] SQL: %s", sql)
 
-	_, err := db.ExecContext(ctx, sql)
+	_, err = db.ExecContext(ctx, sql)
 	if err != nil {
 		return diag.Errorf("error creating role: %s", err)
 	}
@@ -44,12 +47,15 @@ func CreateRole(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 }
 
 func ReadRole(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	sql := fmt.Sprintf("SHOW GRANTS FOR '%s'", d.Id())
 	log.Printf("[DEBUG] SQL: %s", sql)
 
-	_, err := db.ExecContext(ctx, sql)
+	_, err = db.ExecContext(ctx, sql)
 	if err != nil {
 		log.Printf("[WARN] Role (%s) not found; removing from state", d.Id())
 		d.SetId("")
@@ -62,12 +68,15 @@ func ReadRole(ctx context.Context, d *schema.ResourceData, meta interface{}) dia
 }
 
 func DeleteRole(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	sql := fmt.Sprintf("DROP ROLE '%s'", d.Get("name").(string))
 	log.Printf("[DEBUG] SQL: %s", sql)
 
-	_, err := db.ExecContext(ctx, sql)
+	_, err = db.ExecContext(ctx, sql)
 	if err != nil {
 		return diag.FromErr(err)
 	}

@@ -148,8 +148,8 @@ func userOrRole(user string, host string, role string, hasRoles bool) (string, b
 	}
 }
 
-func supportsRoles(meta interface{}) (bool, error) {
-	currentVersion := getVersionFromMeta(meta)
+func supportsRoles(ctx context.Context, meta interface{}) (bool, error) {
+	currentVersion := getVersionFromMeta(ctx, meta)
 
 	requiredVersion, _ := version.NewVersion("8.0.0")
 	hasRoles := currentVersion.GreaterThan(requiredVersion)
@@ -157,9 +157,12 @@ func supportsRoles(meta interface{}) (bool, error) {
 }
 
 func CreateGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
-	hasRoles, err := supportsRoles(meta)
+	hasRoles, err := supportsRoles(ctx, meta)
 	if err != nil {
 		return diag.Errorf("failed getting role support: %v", err)
 	}
@@ -260,9 +263,12 @@ func CreateGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 }
 
 func ReadGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
-	hasRoles, err := supportsRoles(meta)
+	hasRoles, err := supportsRoles(ctx, meta)
 	if err != nil {
 		return diag.Errorf("failed getting role support: %v", err)
 	}
@@ -320,9 +326,12 @@ func ReadGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) di
 }
 
 func UpdateGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
-	hasRoles, err := supportsRoles(meta)
+	hasRoles, err := supportsRoles(ctx, meta)
 
 	if err != nil {
 		return diag.Errorf("failed getting role support: %v", err)
@@ -394,13 +403,15 @@ func updatePrivileges(ctx context.Context, d *schema.ResourceData, db *sql.DB, u
 }
 
 func DeleteGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	database := formatDatabaseName(d.Get("database").(string))
-
 	table := formatTableName(d.Get("table").(string))
 
-	hasRoles, err := supportsRoles(meta)
+	hasRoles, err := supportsRoles(ctx, meta)
 	if err != nil {
 		return diag.Errorf("failed getting role support: %v", err)
 	}
@@ -480,7 +491,10 @@ func ImportGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 	database := userHostDatabaseTable[2]
 	table := userHostDatabaseTable[3]
 
-	db := getDatabaseFromMeta(meta)
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return nil, err
+	}
 
 	grants, err := showGrants(ctx, db, fmt.Sprintf("'%s'@'%s'", user, host), database, table)
 
