@@ -134,6 +134,7 @@ func formatTableName(table string) string {
 	return fmt.Sprintf("`%s`", table)
 }
 
+// Formats user/host or role. Returns the formatted string and whether it is role. And an error in case it's not supported.
 func userOrRole(user string, host string, role string, hasRoles bool) (string, bool, error) {
 	if len(user) > 0 && len(host) > 0 {
 		return fmt.Sprintf("'%s'@'%s'", user, host), false, nil
@@ -221,7 +222,7 @@ func CreateGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 		}
 	}
 
-	// DB and table have to be wrappedsin backticks in some cases.
+	// DB and table have to be wrapped in backticks in some cases.
 	databaseWrapped := formatDatabaseName(database)
 	tableWrapped := formatTableName(table)
 	if (!isRole || hasPrivs) && rolesGranted == 0 {
@@ -295,6 +296,10 @@ func ReadGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) di
 	grants, err = showGrants(ctx, db, userOrRole, database, table)
 
 	if err != nil {
+		return diag.Errorf("error reading grant for %s: %v", userOrRole, err)
+	}
+
+	if len(grants) == 0 {
 		log.Printf("[WARN] GRANT not found for %s (%s) - removing from state", userOrRole, err)
 		d.SetId("")
 		return nil
@@ -430,18 +435,17 @@ func DeleteGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 
 	privileges := d.Get("privileges").(*schema.Set)
 
-	var sql string
 	if rolesCount == 0 {
-		sql = fmt.Sprintf("REVOKE GRANT OPTION ON %s.%s FROM %s",
+		sqlStatement := fmt.Sprintf("REVOKE GRANT OPTION ON %s.%s FROM %s",
 			database,
 			table,
 			userOrRole)
 
-		log.Printf("[DEBUG] SQL: %s", sql)
-		_, err = db.ExecContext(ctx, sql)
+		log.Printf("[DEBUG] SQL: %s", sqlStatement)
+		_, err = db.ExecContext(ctx, sqlStatement)
 		if err != nil {
 			if !isNonExistingGrant(err) {
-				return diag.Errorf("error revoking GRANT (%s): %s", sql, err)
+				return diag.Errorf("error revoking GRANT (%s): %s", sqlStatement, err)
 			}
 		}
 	}
@@ -454,12 +458,12 @@ func DeleteGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 		whatToRevoke = fmt.Sprintf("%s ON %s.%s", privilegeList, database, table)
 	}
 
-	sql = fmt.Sprintf("REVOKE %s FROM %s", whatToRevoke, userOrRole)
-	log.Printf("[DEBUG] SQL: %s", sql)
-	_, err = db.ExecContext(ctx, sql)
+	sqlStatement := fmt.Sprintf("REVOKE %s FROM %s", whatToRevoke, userOrRole)
+	log.Printf("[DEBUG] SQL: %s", sqlStatement)
+	_, err = db.ExecContext(ctx, sqlStatement)
 	if err != nil {
 		if !isNonExistingGrant(err) {
-			return diag.Errorf("error revoking ALL (%s): %s", sql, err)
+			return diag.Errorf("error revoking ALL (%s): %s", sqlStatement, err)
 		}
 	}
 
@@ -546,8 +550,8 @@ func showGrants(ctx context.Context, db *sql.DB, user, database, table string) (
 func showUserGrants(ctx context.Context, db *sql.DB, user string) ([]*MySQLGrant, error) {
 	grants := []*MySQLGrant{}
 
-	sql := fmt.Sprintf("SHOW GRANTS FOR %s", user)
-	rows, err := db.QueryContext(ctx, sql)
+	sqlStatement := fmt.Sprintf("SHOW GRANTS FOR %s", user)
+	rows, err := db.QueryContext(ctx, sqlStatement)
 
 	if isNonExistingGrant(err) {
 		return []*MySQLGrant{}, nil
@@ -579,10 +583,10 @@ func showUserGrants(ctx context.Context, db *sql.DB, user string) ([]*MySQLGrant
 
 		if m := re.FindStringSubmatch(rawGrant); len(m) == 5 {
 			privsStr := m[1]
-			priv_list := extractPermTypes(privsStr)
-			privileges := make([]string, len(priv_list))
+			privList := extractPermTypes(privsStr)
+			privileges := make([]string, len(privList))
 
-			for i, priv := range priv_list {
+			for i, priv := range privList {
 				privileges[i] = strings.TrimSpace(priv)
 			}
 			grantUserHost := m[4]
