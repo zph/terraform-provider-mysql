@@ -3,12 +3,12 @@ layout: "mysql"
 page_title: "MySQL: mysql_tables"
 sidebar_current: "docs-mysql-datasource-tables"
 description: |-
-  Get tables on a MySQL server.
+  Gets tables on a MySQL server.
 ---
 
 # Data Source: mysql\_tables
 
-The ``mysql_tables`` get tables on a MySQL
+The ``mysql_tables`` gets tables on a MySQL
 server.
 
 ## Example Usage
@@ -24,11 +24,10 @@ data "mysql_tables" "app" {
 The following arguments are supported:
 
 * `database` - (Required) The name of the database.
-
 * `pattern` - (Optional) Patterns for searching tables.
 
 ## Attributes Reference
 
 The following attributes are exported:
 
-* `tabels` - The list of the table names.
+* `tables` - The list of the table names.
