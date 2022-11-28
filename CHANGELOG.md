@@ -1,4 +1,8 @@
 ## 1.9.1 (Unreleased)
+
+FEATURES:
+* Add support for GCP CloudSQL Native Connection
+
 ## 1.9.0 (November 07, 2019)
 
 FEATURES:
