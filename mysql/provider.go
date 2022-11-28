@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"log"
 	"net"
 	"net/url"
 	"regexp"
@@ -15,11 +15,14 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/hashicorp/go-version"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 
 	"golang.org/x/net/proxy"
+
+	cloudsql "cloud.google.com/go/cloudsqlconn/mysql/mysql"
 )
 
 const (
@@ -159,6 +162,13 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	proto := "tcp"
 	if len(endpoint) > 0 && endpoint[0] == '/' {
 		proto = "unix"
+	} else if strings.HasPrefix(endpoint, "cloudsql://") {
+		proto = "cloudsql"
+		endpoint = strings.ReplaceAll(endpoint, "cloudsql://", "")
+		_, err := cloudsql.RegisterDriver("cloudsql")
+		if err != nil {
+			return nil, diag.Errorf("failed to register driver %v", err)
+		}
 	}
 
 	for k, vint := range d.Get("conn_params").(map[string]interface{}) {
@@ -288,12 +298,18 @@ func connectToMySQLInternal(ctx context.Context, conf *MySQLConfiguration) (*One
 	var db *sql.DB
 	var err error
 
+	driverName := "mysql"
+	if conf.Config.Net == "cloudsql" {
+		driverName = "cloudsql"
+	}
+	log.Printf("[DEBUG] Using driverName: %s", driverName)
+
 	// When provisioning a database server there can often be a lag between
 	// when Terraform thinks it's available and when it is actually available.
 	// This is particularly acute when provisioning a server and then immediately
 	// trying to provision a database on it.
 	retryError := resource.RetryContext(ctx, conf.ConnectRetryTimeoutSec, func() *resource.RetryError {
-		db, err = sql.Open("mysql", dsn)
+		db, err = sql.Open(driverName, dsn)
 		if err != nil {
 			if mysqlErrorNumber(err) == unknownVarErrCode || ctx.Err() != nil {
 				return resource.NonRetryableError(err)
