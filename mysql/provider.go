@@ -141,14 +141,15 @@ func Provider() *schema.Provider {
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
-			"mysql_database":        resourceDatabase(),
-			"mysql_global_variable": resourceGlobalVariable(),
-			"mysql_grant":           resourceGrant(),
-			"mysql_role":            resourceRole(),
-			"mysql_sql":             resourceSql(),
-			"mysql_user_password":   resourceUserPassword(),
-			"mysql_user":            resourceUser(),
-			"mysql_ti_config":       resourceTiConfigVariable(),
+			"mysql_database":         resourceDatabase(),
+			"mysql_global_variable":  resourceGlobalVariable(),
+			"mysql_grant":            resourceGrant(),
+			"mysql_role":             resourceRole(),
+			"mysql_sql":              resourceSql(),
+			"mysql_user_password":    resourceUserPassword(),
+			"mysql_user":             resourceUser(),
+			"mysql_ti_config":        resourceTiConfigVariable(),
+			"mysql_binlog_retention": resourceBinLog(),
 		},
 
 		ConfigureContextFunc: providerConfigure,
