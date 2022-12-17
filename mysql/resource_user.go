@@ -183,9 +183,6 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 				return diag.Errorf("failed running query: %v", err)
 			}
 		}
-
-		// nothing to change, return
-		return nil
 	}
 
 	var newpw interface{}
@@ -217,10 +214,10 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 	if d.HasChange("tls_option") && getVersionFromMeta(ctx, meta).GreaterThan(requiredVersion) {
 		var stmtSQL string
 
-		stmtSQL = fmt.Sprintf("ALTER USER '%s'@'%s'  REQUIRE %s",
+		stmtSQL = fmt.Sprintf("ALTER USER '%s'@'%s' REQUIRE %s",
 			d.Get("user").(string),
 			d.Get("host").(string),
-			fmt.Sprintf(" REQUIRE %s", d.Get("tls_option").(string)))
+			d.Get("tls_option").(string))
 
 		log.Println("Executing query:", stmtSQL)
 		_, err := db.ExecContext(ctx, stmtSQL)
