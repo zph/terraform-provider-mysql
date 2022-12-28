@@ -25,7 +25,7 @@ bin/terraform:
 testacc: fmtcheck bin/terraform
 	PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout=60s
 
-acceptance: testversion5.6 testversion5.7 testversion8.0 testpercona5.7 testpercona8.0 testmariadb10.3 testmariadb10.8 testtidb6.1.0
+acceptance: testversion5.6 testversion5.7 testversion8.0 testpercona5.7 testpercona8.0 testmariadb10.3 testmariadb10.8 testmariadb10.10 testtidb6.1.0
 
 testversion%:
 	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=33$(shell echo "$*" | tr -d '.') testversion
@@ -60,7 +60,7 @@ testtidb:
 	@sh -c "'$(CURDIR)/scripts/tidb-test-cluster.sh' --destroy"
 
 testmariadb%:
-	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=36$(shell echo "$*" | tr -d '.') testmariadb
+	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=6$(shell echo "$*" | tr -d '.') testmariadb
 
 testmariadb:
 	-docker run --rm --name test-mariadb$(MYSQL_VERSION) -e MYSQL_ROOT_PASSWORD="$(TEST_PASSWORD)" -d -p $(MYSQL_PORT):3306 mariadb:$(MYSQL_VERSION)

@@ -260,11 +260,12 @@ func quoteIdentifier(in string) string {
 
 func serverVersion(db *sql.DB) (*version.Version, error) {
 	var versionString string
-	err := db.QueryRow("SELECT @@GLOBAL.innodb_version").Scan(&versionString)
+	err := db.QueryRow("SELECT @@GLOBAL.version").Scan(&versionString)
 	if err != nil {
 		return nil, err
 	}
 
+	versionString = strings.SplitN(versionString, ":", 2)[0]
 	return version.NewVersion(versionString)
 }
 
