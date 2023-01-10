@@ -25,9 +25,10 @@ func resourceBinLog() *schema.Resource {
 		},
 		Schema: map[string]*schema.Schema{
 			"retention_period": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Default:  "NULL",
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Default:     0,
+				Description: "Retention period in hours. 0 value disables binlog retention",
 			},
 		},
 	}
@@ -51,7 +52,7 @@ func CreateBinLog(ctx context.Context, d *schema.ResourceData, meta interface{})
 
 	d.SetId(id)
 
-	return ReadBinLog(ctx, d, meta)
+	return nil
 }
 
 func UpdateBinLog(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -68,7 +69,7 @@ func UpdateBinLog(ctx context.Context, d *schema.ResourceData, meta interface{})
 		return diag.Errorf("failed updating binlog retention period: %v", err)
 	}
 
-	return ReadBinLog(ctx, d, meta)
+	return nil
 }
 
 func ReadBinLog(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -105,7 +106,7 @@ func ReadBinLog(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 		results["binlog retention hours"] = "0"
 	}
 
-	d.Set("retention_period", results["binlog retention hours"])
+	d.Set("retention_period", fmt.Sprintf("%d", results["binlog retention hours"]))
 
 	return nil
 }
@@ -129,14 +130,14 @@ func DeleteBinLog(ctx context.Context, d *schema.ResourceData, meta interface{})
 }
 
 func binlogConfigSQL(d *schema.ResourceData) string {
-	retention_period := d.Get("retention_period").(string)
-	if retention_period == "0" {
+	retention_period := d.Get("retention_period")
+	if retention_period == 0 {
 		return fmt.Sprintf(
 			"call mysql.rds_set_configuration('binlog retention hours', %s)",
 			"NULL")
 	} else {
 		return fmt.Sprintf(
-			"call mysql.rds_set_configuration('binlog retention hours', %s)",
+			"call mysql.rds_set_configuration('binlog retention hours', %d)",
 			retention_period,
 		)
 	}
