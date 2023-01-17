@@ -30,7 +30,6 @@ import (
 const (
 	cleartextPasswords = "cleartext"
 	nativePasswords    = "native"
-	unknownVarErrCode  = 1193
 	unknownUserErrCode = 1396
 )
 
@@ -314,7 +313,7 @@ func connectToMySQLInternal(ctx context.Context, conf *MySQLConfiguration) (*One
 	retryError := resource.RetryContext(ctx, conf.ConnectRetryTimeoutSec, func() *resource.RetryError {
 		db, err = sql.Open(driverName, dsn)
 		if err != nil {
-			if mysqlErrorNumber(err) == unknownVarErrCode || cloudsqlErrorNumber(err) != 0 || ctx.Err() != nil {
+			if mysqlErrorNumber(err) != 0 || cloudsqlErrorNumber(err) != 0 || ctx.Err() != nil {
 				return resource.NonRetryableError(err)
 			}
 			return resource.RetryableError(err)
@@ -322,7 +321,7 @@ func connectToMySQLInternal(ctx context.Context, conf *MySQLConfiguration) (*One
 
 		err = db.PingContext(ctx)
 		if err != nil {
-			if mysqlErrorNumber(err) == unknownVarErrCode || cloudsqlErrorNumber(err) != 0 || ctx.Err() != nil {
+			if mysqlErrorNumber(err) != 0 || cloudsqlErrorNumber(err) != 0 || ctx.Err() != nil {
 				return resource.NonRetryableError(err)
 			}
 
