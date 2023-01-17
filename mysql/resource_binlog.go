@@ -130,15 +130,11 @@ func DeleteBinLog(ctx context.Context, d *schema.ResourceData, meta interface{})
 }
 
 func binlogConfigSQL(d *schema.ResourceData) string {
-	retention_period := d.Get("retention_period")
-	if retention_period == 0 {
-		return fmt.Sprintf(
-			"call mysql.rds_set_configuration('binlog retention hours', %s)",
-			"NULL")
-	} else {
-		return fmt.Sprintf(
-			"call mysql.rds_set_configuration('binlog retention hours', %d)",
-			retention_period,
-		)
+	retention_period := strconv.Itoa(d.Get("retention_period").(int))
+	if retention_period == "0" {
+		retention_period = "NULL"
 	}
+	return fmt.Sprintf(
+		"call mysql.rds_set_configuration('binlog retention hours', %s)",
+		retention_period)
 }
