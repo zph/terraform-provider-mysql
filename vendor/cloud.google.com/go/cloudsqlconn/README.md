@@ -46,7 +46,7 @@ connections. These functions can be used with your database driver to connect to
 your Cloud SQL instance.
 
 The instance connection name for your Cloud SQL instance is always in the
-format "project:region:instance".
+format `project:region:instance`.
 
 ### APIs and Services
 
@@ -64,7 +64,7 @@ the IAM principal.
 
 ### Credentials
 
-This repo uses the [Application Default Credentials (ADC)][adc] strategy for
+This project uses the [Application Default Credentials (ADC)][adc] strategy for
 resolving credentials. Please see [these instructions for how to set your ADC][set-adc]
 (Google Cloud Application vs Local Development, IAM user vs service account credentials),
 or consult the [golang.org/x/oauth2/google][google-auth] documentation.
@@ -76,58 +76,157 @@ Options](#using-options) below.
 [set-adc]: https://cloud.google.com/docs/authentication/provide-credentials-adc
 [google-auth]: https://pkg.go.dev/golang.org/x/oauth2/google#hdr-Credentials
 
-### Postgres
+### Connecting to a database
 
-To use the dialer with [pgx](https://github.com/jackc/pgx), use
+#### Postgres
+
+Postgres users have the option of using the `database/sql` interface or
+using [pgx][] directly. See [pgx's advice on which to choose][pgx-advice].
+
+[pgx]: https://github.com/jackc/pgx
+[pgx-advice]: https://github.com/jackc/pgx#choosing-between-the-pgx-and-databasesql-interfaces
+
+##### Using the dialer with pgx
+
+To use the dialer with [pgx][], we recommend using connection pooling with
 [pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v4/pgxpool) by configuring
 a [Config.DialFunc][dial-func] like so:
 
 ``` go
-// Configure the driver to connect to the database
-dsn := fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", pgUser, pgPass, pgDB)
-config, err := pgxpool.ParseConfig(dsn)
-if err != nil {
-    log.Fatalf("failed to parse pgx config: %v", err)
-}
+import (
+    "context"
+    "net"
 
-// Create a new dialer with any options
-d, err := cloudsqlconn.NewDialer(ctx)
-if err != nil {
-    log.Fatalf("failed to initialize dialer: %v", err)
-}
-defer d.Close()
+    "cloud.google.com/go/cloudsqlconn"
+    "github.com/jackc/pgx/v4/pgxpool"
+)
 
-// Tell the driver to use the Cloud SQL Go Connector to create connections
-config.ConnConfig.DialFunc = func(ctx context.Context, _ string, instance string) (net.Conn, error) {
-    return d.Dial(ctx, "project:region:instance")
-}
+func connect() {
+    // Configure the driver to connect to the database
+    dsn := "user=myuser password=mypass dbname=mydb sslmode=disable"
+    config, err := pgxpool.ParseConfig(dsn)
+    if err != nil {
+        /* handle error */
+    }
 
-// Interact with the dirver directly as you normally would
-conn, err := pgxpool.ConnectConfig(context.Background(), config)
-if err != nil {
-    log.Fatalf("failed to connect: %v", connErr)
+    // Create a new dialer with any options
+    d, err := cloudsqlconn.NewDialer(context.Background())
+    if err != nil {
+        /* handle error */
+    }
+
+    // Tell the driver to use the Cloud SQL Go Connector to create connections
+    config.ConnConfig.DialFunc = func(ctx context.Context, _ string, instance string) (net.Conn, error) {
+        return d.Dial(ctx, "project:region:instance")
+    }
+
+    // Interact with the driver directly as you normally would
+    conn, err := pgxpool.ConnectConfig(context.Background(), config)
+    if err != nil {
+        /* handle error */
+    }
+
+    // call cleanup when you're done with the database connection
+    cleanup := func() error { return d.Close() }
+    // ... etc
 }
-defer conn.Close()
 ```
 
 [dial-func]: https://pkg.go.dev/github.com/jackc/pgconn#Config
 
-### MySQL
+##### Using the dialer with `database/sql`
 
-The [Go MySQL driver][mysql] does not provide a stand-alone interface for
-interacting with a database and instead uses `database/sql`. See [the section
-below](#MySQL) on how to use the `database/sql` package with a Cloud SQL MySQL
-instance.
+To use `database/sql`, call `pgxv4.RegisterDriver` with any necessary Dialer
+configuration. Note: the connection string must use the keyword/value format
+with host set to the instance connection name. The returned `cleanup` func
+will stop the dialer's background refresh goroutine and so should only be called
+when you're done with the `Dialer`.
 
-[mysql]: https://github.com/go-sql-driver/mysql
+``` go
+import (
+    "database/sql"
 
-### SQL Server
+    "cloud.google.com/go/cloudsqlconn"
+    "cloud.google.com/go/cloudsqlconn/postgres/pgxv4"
+)
 
-[Go-mssql][go-mssqldb] does not provide a stand-alone interface for interacting
-with a database and instead uses `database/sql`. See [the section below](#SQL-Server)
-on how to use the `database/sql` package with a Cloud SQL SQL Server instance.
+func connect() {
+    cleanup, err := pgxv4.RegisterDriver("cloudsql-postgres", cloudsqlconn.WithIAMAuthN())
+    if err != nil {
+        // ... handle error
+    }
+    // call cleanup when you're done with the database connection
+    defer cleanup()
 
-[go-mssqldb]: https://github.com/microsoft/go-mssqldb
+    db, err := sql.Open(
+        "cloudsql-postgres",
+        "host=project:region:instance user=myuser password=mypass dbname=mydb sslmode=disable",
+    )
+    // ... etc
+}
+```
+
+#### MySQL
+
+To use `database/sql`, use `mysql.RegisterDriver` with any necessary Dialer
+configuration. The returned `cleanup` func
+will stop the dialer's background refresh goroutine and so should only be called
+when you're done with the `Dialer`.
+
+```go
+import (
+    "database/sql"
+
+    "cloud.google.com/go/cloudsqlconn"
+    "cloud.google.com/go/cloudsqlconn/mysql/mysql"
+)
+
+func connect() {
+    cleanup, err := mysql.RegisterDriver("cloudsql-mysql", cloudsqlconn.WithCredentialsFile("key.json"))
+    if err != nil {
+        // ... handle error
+    }
+    // call cleanup when you're done with the database connection
+    defer cleanup()
+
+    db, err := sql.Open(
+        "cloudsql-mysql",
+        "myuser:mypass@cloudsql-mysql(project:region:instance)/mydb",
+    )
+    // ... etc
+}
+```
+
+#### SQL Server
+
+To use `database/sql`, use `mssql.RegisterDriver` with any necessary Dialer
+configuration. The returned `cleanup` func
+will stop the dialer's background refresh goroutine and so should only be called
+when you're done with the `Dialer`.
+
+``` go
+import (
+    "database/sql"
+
+    "cloud.google.com/go/cloudsqlconn"
+    "cloud.google.com/go/cloudsqlconn/sqlserver/mssql"
+)
+
+func connect() {
+    cleanup, err := mssql.RegisterDriver("cloudsql-sqlserver", cloudsqlconn.WithCredentialsFile("key.json"))
+    if err != nil {
+        // ... handle error
+    }
+    // call cleanup when you're done with the database connection
+    defer cleanup()
+
+    db, err := sql.Open(
+        "cloudsql-sqlserver",
+        "sqlserver://user:password@localhost?database=mydb&cloudsql=project:region:instance",
+    )
+    // ... etc
+}
+```
 
 ### Using Options
 
@@ -135,7 +234,7 @@ If you need to customize something about the `Dialer`, you can initialize
 directly with `NewDialer`:
 
 ```go
-myDialer, err := cloudsqlconn.NewDialer(
+d, err := cloudsqlconn.NewDialer(
     ctx,
     cloudsqlconn.WithCredentialsFile("key.json"),
 )
@@ -143,7 +242,7 @@ if err != nil {
     log.Fatalf("unable to initialize dialer: %s", err)
 }
 
-conn, err := myDialer.Dial(ctx, "project:region:instance")
+conn, err := d.Dial(ctx, "project:region:instance")
 ```
 
 For a full list of customizable behavior, see Option.
@@ -152,8 +251,9 @@ For a full list of customizable behavior, see Option.
 
 If you want to customize things about how the connection is created, use
 `Option`:
+
 ```go
-conn, err := myDialer.Dial(
+conn, err := d.Dial(
     ctx,
     "project:region:instance",
     cloudsqlconn.WithPrivateIP(),
@@ -162,8 +262,9 @@ conn, err := myDialer.Dial(
 
 You can also use the `WithDefaultDialOptions` Option to specify
 DialOptions to be used by default:
+
 ```go
-myDialer, err := cloudsqlconn.NewDialer(
+d, err := cloudsqlconn.NewDialer(
     ctx,
     cloudsqlconn.WithDefaultDialOptions(
         cloudsqlconn.WithPrivateIP(),
@@ -171,115 +272,37 @@ myDialer, err := cloudsqlconn.NewDialer(
 )
 ```
 
-### Using the dialer with database/sql
-
-Using the dialer directly will expose more configuration options. However, it is
-possible to use the dialer with the `database/sql` package.
-
-#### Postgres
-
-To use `database/sql`, use `pgxv4.RegisterDriver` with any necessary Dialer
-configuration. Note: the connection string must use the keyword/value format
-with host set to the instance connection name.
-
-``` go
-package foo
-
-import (
-    "database/sql"
-
-    "cloud.google.com/go/cloudsqlconn"
-    "cloud.google.com/go/cloudsqlconn/postgres/pgxv4"
-)
-
-func Connect() {
-    cleanup, err := pgxv4.RegisterDriver("cloudsql-postgres", cloudsqlconn.WithIAMAuthN())
-    if err != nil {
-        // ... handle error
-    }
-    defer cleanup()
-
-    db, err := sql.Open(
-        "cloudsql-postgres",
-        "host=project:region:instance user=myuser password=mypass dbname=mydb sslmode=disable",
-	)
-    // ... etc
-}
-```
-
-#### MySQL
-
-To use `database/sql`, use `mysql.RegisterDriver` with any necessary Dialer
-configuration.
-
-```go
-package foo
-
-import (
-    "database/sql"
-
-    "cloud.google.com/go/cloudsqlconn"
-    "cloud.google.com/go/cloudsqlconn/mysql/mysql"
-)
-
-func Connect() {
-    cleanup, err := mysql.RegisterDriver("cloudsql-mysql", cloudsqlconn.WithCredentialsFile("key.json"))
-    if err != nil {
-        // ... handle error
-    }
-    defer cleanup()
-
-    db, err := sql.Open(
-        "cloudsql-mysql",
-        "myuser:mypass@cloudsql-mysql(my-project:us-central1:my-instance)/mydb",
-	)
-    // ... etc
-}
-```
-
-### SQL Server
-
-To use `database/sql`, use `mssql.RegisterDriver` with any necessary Dialer
-configuration.
-
-``` go
-package foo
-
-import (
-    "database/sql"
-
-    "cloud.google.com/go/cloudsqlconn"
-    "cloud.google.com/go/cloudsqlconn/sqlserver/mssql"
-)
-
-func Connect() {
-    cleanup, err := mssql.RegisterDriver("cloudsql-sqlserver", cloudsqlconn.WithCredentialsFile("key.json"))
-    if err != nil {
-        // ... handle error
-    }
-    defer cleanup()
-
-    db, err := sql.Open(
-        "cloudsql-sqlserver",
-        "sqlserver://user:password@localhost?database=mydb&cloudsql=my-proj:us-central1:my-inst",
-    )
-    // ... etc
-}
-```
-
-
 ### Enabling Metrics and Tracing
 
 This library includes support for metrics and tracing using [OpenCensus][].
 To enable metrics or tracing, you need to configure an [exporter][].
 OpenCensus supports many backends for exporters.
 
+Supported metrics include:
+
+- `cloudsqlconn/dial_latency`: The distribution of dialer latencies (ms)
+- `cloudsqlconn/open_connections`: The current number of open Cloud SQL
+  connections
+- `cloudsqlconn/dial_failure_count`: The number of failed dial attempts
+- `cloudsqlconn/refresh_success_count`: The number of successful certificate
+  refresh operations
+- `cloudsqlconn/refresh_failure_count`: The number of failed refresh
+  operations.
+
+Supported traces include:
+
+- `cloud.google.com/go/cloudsqlconn.Dial`: The dial operation including
+  refreshing an ephemeral certificate and connecting the instance
+- `cloud.google.com/go/cloudsqlconn/internal.InstanceInfo`: The call to retrieve
+  instance metadata (e.g., database engine type, IP address, etc)
+- `cloud.google.com/go/cloudsqlconn/internal.Connect`: The connection attempt
+  using the ephemeral certificate
+- SQL Admin API client operations
+
 For example, to use [Cloud Monitoring][] and [Cloud Trace][], you would
 configure an exporter like so:
 
 ```golang
-package main
-
 import (
     "contrib.go.opencensus.io/exporter/stackdriver"
     "go.opencensus.io/trace"
@@ -327,8 +350,9 @@ considered unsupported.
 
 ## Supported Go Versions
 
-We test and support at minimum, the latest three Go versions. Changes in supported Go versions will be
-considered a minor change, and will be listed in the realease notes.
+We test and support at minimum, the latest three Go versions. Changes in 
+supported Go versions will be considered a minor change, and will be listed in
+the release notes.
 
 ### Release cadence
 This project aims for a release on at least a monthly basis. If no new features
