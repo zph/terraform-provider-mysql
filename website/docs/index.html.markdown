@@ -64,6 +64,23 @@ resource "mysql_database" "app" {
 }
 ```
 
+### GCP CloudSQL Connection
+
+For connections to GCP hosted instances, the provider can connect through the Cloud SQL MySQL library.
+
+To enable Cloud SQL MySQL library, add `cloudsql://` to the endpoint `Network type` DSN string and connection name of the instance in following format: `project/region/instance` (or `project:region:instance`).
+
+```hcl
+# Configure the MySQL provider for CloudSQL Mysql
+provider "mysql" {
+  endpoint = "cloudsql://project:region:instance"
+  username = "app-user"
+  password = "app-password"
+}
+```
+
+See also: [Authentication at Google](https://cloud.google.com/docs/authentication#service-accounts).
+
 ## SOCKS5 Proxy Support
 
 The MySQL provider respects the `ALL_PROXY` and/or `all_proxy` environment variables.
