@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 	"regexp"
@@ -12,7 +13,6 @@ import (
 	"unicode"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
@@ -266,7 +266,7 @@ func CreateGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 func ReadGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	db, err := getDatabaseFromMeta(ctx, meta)
 	if err != nil {
-		return diag.FromErr(err)
+		return diag.Errorf("failed getting database from Meta: %v", err)
 	}
 
 	hasRoles, err := supportsRoles(ctx, meta)
@@ -536,7 +536,7 @@ func restoreGrant(user string, host string, grant *MySQLGrant) *schema.ResourceD
 func showGrants(ctx context.Context, db *sql.DB, user, database, table string) ([]*MySQLGrant, error) {
 	allGrants, err := showUserGrants(ctx, db, user)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("showGrants - getting all grants failed: %w", err)
 	}
 	grants := []*MySQLGrant{}
 	for _, grant := range allGrants {
@@ -544,13 +544,14 @@ func showGrants(ctx context.Context, db *sql.DB, user, database, table string) (
 			grants = append(grants, grant)
 		}
 	}
-	return grants, err
+	return grants, nil
 }
 
 func showUserGrants(ctx context.Context, db *sql.DB, user string) ([]*MySQLGrant, error) {
 	grants := []*MySQLGrant{}
 
 	sqlStatement := fmt.Sprintf("SHOW GRANTS FOR %s", user)
+	log.Printf("[DEBUG] SQL: %s", sqlStatement)
 	rows, err := db.QueryContext(ctx, sqlStatement)
 
 	if isNonExistingGrant(err) {
@@ -558,7 +559,7 @@ func showUserGrants(ctx context.Context, db *sql.DB, user string) ([]*MySQLGrant
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("showUserGrants - getting grants failed: %w", err)
 	}
 
 	defer rows.Close()
@@ -573,7 +574,7 @@ func showUserGrants(ctx context.Context, db *sql.DB, user string) ([]*MySQLGrant
 
 		err := rows.Scan(&rawGrant)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("showUserGrants - reading row failed: %w", err)
 		}
 
 		if strings.HasPrefix(rawGrant, "REVOKE") {
@@ -593,12 +594,13 @@ func showUserGrants(ctx context.Context, db *sql.DB, user string) ([]*MySQLGrant
 			if normalizeUserHost(grantUserHost) != normalizeUserHost(user) {
 				// Percona returns also grants for % if we requested IP.
 				// Skip them as we don't want terraform to consider it.
+				log.Printf("[DEBUG] Skipping grant with host %v while we want %v", grantUserHost, user)
 				continue
 			}
 
 			grant := &MySQLGrant{
-				Database:   strings.ReplaceAll(m[2], "`", ""),
-				Table:      strings.Trim(m[3], "`"),
+				Database:   strings.Trim(m[2], "`\""),
+				Table:      strings.Trim(m[3], "`\""),
 				Privileges: privileges,
 				Grant:      reGrant.MatchString(rawGrant),
 			}
@@ -613,7 +615,7 @@ func showUserGrants(ctx context.Context, db *sql.DB, user string) ([]*MySQLGrant
 			roles := make([]string, len(rolesStart))
 
 			for i, role := range rolesStart {
-				roles[i] = strings.Trim(role, "`@% ")
+				roles[i] = strings.Trim(role, "`@%\" ")
 			}
 
 			grant := &MySQLGrant{
@@ -627,6 +629,7 @@ func showUserGrants(ctx context.Context, db *sql.DB, user string) ([]*MySQLGrant
 		}
 	}
 
+	log.Printf("[DEBUG] Parsed grants are: %v", grants)
 	return grants, nil
 }
 
@@ -636,7 +639,8 @@ func normalizeUserHost(userHost string) string {
 	}
 	withoutQuotes := strings.ReplaceAll(userHost, "'", "")
 	withoutBackticks := strings.ReplaceAll(withoutQuotes, "`", "")
-	return withoutBackticks
+	withoutDblQuotes := strings.ReplaceAll(withoutBackticks, "\"", "")
+	return withoutDblQuotes
 }
 
 func removeUselessPerms(grants []string) []string {
