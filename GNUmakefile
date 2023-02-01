@@ -7,7 +7,6 @@ TERRAFORM_OS=$(shell uname -s | tr A-Z a-z)
 TEST_USER=root
 TEST_PASSWORD=my-secret-pw
 
-
 default: build
 
 build: fmtcheck
