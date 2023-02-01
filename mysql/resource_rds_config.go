@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-
-	"github.com/go-sql-driver/mysql"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
@@ -21,10 +19,10 @@ func resourceRDSConfig() *schema.Resource {
 		ReadContext:   ReadRDSConfig,
 		DeleteContext: DeleteRDSConfig,
 		Importer: &schema.ResourceImporter{
-			StateContext: ImportRDSConfig,
+			StateContext: schema.ImportStatePassthroughContext,
 		},
 		Schema: map[string]*schema.Schema{
-			"binlog_retention_period": {
+			"binlog_retention_hours": {
 				Type:        schema.TypeInt,
 				Optional:    true,
 				Default:     0,
@@ -91,13 +89,8 @@ func ReadRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface{}
 	log.Println("Executing query:", stmtSQL)
 	rows, err := db.QueryContext(ctx, stmtSQL)
 	if err != nil {
-		if mysqlErr, ok := err.(*mysql.MySQLError); ok {
-			if mysqlErr.Number == unknownDatabaseErrCode {
-				d.SetId("")
-				return nil
-			}
-		}
-		return diag.Errorf("Error verifying RDS config: %s", err)
+		d.SetId("")
+		return diag.Errorf("Error reading RDS config from DB: %v", err)
 	}
 
 	results := make(map[string]string)
@@ -106,7 +99,7 @@ func ReadRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface{}
 		var value sql.NullString
 
 		if err := rows.Scan(&name, &value, &description); err != nil {
-			return diag.Errorf("failed reading RDS config: %v", err)
+			return diag.Errorf("failed validating RDS config: %v", err)
 		}
 
 		if value.Valid {
@@ -118,15 +111,15 @@ func ReadRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface{}
 
 	binlog_retention_period, err := strconv.Atoi(results["binlog retention hours"])
 	if err != nil {
-		return diag.Errorf("failed reading RDS config: %v", err)
+		return diag.Errorf("failed reading binlog retention hours in RDS config: %v", err)
 	}
 	replication_target_delay, err := strconv.Atoi(results["target delay"])
 	if err != nil {
-		return diag.Errorf("failed reading RDS config: %v", err)
+		return diag.Errorf("failed reading target delay in RDS config: %v", err)
 	}
 
 	d.Set("replication_target_delay", replication_target_delay)
-	d.Set("binlog_retention_period", binlog_retention_period)
+	d.Set("binlog_retention_hours", binlog_retention_period)
 
 	return nil
 }
@@ -153,8 +146,8 @@ func DeleteRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface
 
 func RDSConfigSQL(d *schema.ResourceData) []string {
 	result := []string{}
-	if d.Get("binlog_retention_period") != nil {
-		retention_period := strconv.Itoa(d.Get("binlog_retention_period").(int))
+	if d.Get("binlog_retention_hours") != nil {
+		retention_period := strconv.Itoa(d.Get("binlog_retention_hours").(int))
 		if retention_period == "0" {
 			retention_period = "NULL"
 		}
@@ -162,21 +155,9 @@ func RDSConfigSQL(d *schema.ResourceData) []string {
 	}
 
 	if d.Get("replication_target_delay") != nil {
-		target_delay := strconv.Itoa(d.Get("replication_target_delay").(int))
-		result = append(result, (fmt.Sprintf("call mysql.rds_set_configuration('target delay', %s)", target_delay)))
+		target_delay := d.Get("replication_target_delay")
+		result = append(result, (fmt.Sprintf("call mysql.rds_set_configuration('target delay', %v)", target_delay)))
 	}
 
 	return result
-}
-
-func ImportRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
-	id := strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
-	d.SetId(id)
-
-	err := ReadRDSConfig(ctx, d, meta)
-	if err != nil {
-		return nil, fmt.Errorf("error while importing: %v", err)
-	}
-
-	return []*schema.ResourceData{d}, nil
 }

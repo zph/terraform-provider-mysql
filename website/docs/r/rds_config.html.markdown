@@ -17,8 +17,8 @@ server.
 
 ```hcl
 resource "mysql_rds_config" "this" {
-  binlog_retention_period  = 48
-  replication_target_delay = 30
+  binlog_retention_hours  = 48
+  replication_target_delay = 3200
 }
 ```
 
@@ -26,8 +26,10 @@ resource "mysql_rds_config" "this" {
 
 The following arguments are supported:
 
-* `binlog_retention_period` - (Optional) binlog retention period in hours
+* `binlog_retention_hours` - (Optional) binlog retention period in hours
 * `replication_target_delay` - (Optional) replicaation target delay in seconds
+
+[Amazon RDS MySQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/mysql_rds_set_configuration.html)
 
 ## Attributes Reference
 

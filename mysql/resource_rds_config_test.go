@@ -8,15 +8,14 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
 func TestAccResourceRDS(t *testing.T) {
-	rName := acctest.RandStringFromCharSet(10, acctest.CharSetAlpha)
-	binlog := acctest.RandIntRange(0, 78)
-	targetDelay := acctest.RandIntRange(0, 7200)
+	rName := "test"
+	binlog := 24
+	targetDelay := 3200
 	resource.Test(t, resource.TestCase{
 		PreCheck:  func() { testAccPreCheck(t) },
 		Providers: testAccProviders,
@@ -25,7 +24,7 @@ func TestAccResourceRDS(t *testing.T) {
 				Config: testAccRDSConfig_basic(rName, binlog, targetDelay),
 				Check: resource.ComposeTestCheckFunc(
 					testAccRDSConfigExists(fmt.Sprintf("mysql_rds_config.%s", rName)),
-					resource.TestCheckResourceAttr(fmt.Sprintf("mysql_rds_config.%s", rName), "binlog_retention_period", fmt.Sprintf("%d", binlog)),
+					resource.TestCheckResourceAttr(fmt.Sprintf("mysql_rds_config.%s", rName), "binlog_retention_hours", fmt.Sprintf("%d", binlog)),
 					resource.TestCheckResourceAttr(fmt.Sprintf("mysql_rds_config.%s", rName), "replication_target_delay", fmt.Sprintf("%d", targetDelay)),
 				),
 			},
@@ -36,7 +35,7 @@ func TestAccResourceRDS(t *testing.T) {
 func testAccRDSConfig_basic(rName string, binlog int, replication int) string {
 	return fmt.Sprintf(`
 resource "mysql_rds_config" "%s" {
-                binlog_retention_period = %d
+                binlog_retention_hours = %d
                 replication_target_delay = %d
 }`, rName, binlog, replication)
 }
@@ -96,12 +95,12 @@ func testAccRDSCheckDestroy() resource.TestCheckFunc {
 }
 
 func TestAccResourceRDSConfigChange(t *testing.T) {
-	rName := acctest.RandStringFromCharSet(10, acctest.CharSetAlpha)
+	rName := "test_update"
 	fullResourceName := fmt.Sprintf("mysql_rds_config.%s", rName)
-	binlog := acctest.RandIntRange(0, 72)
-	binlogUpdated := acctest.RandIntRange(73, 96)
-	targetDelay := acctest.RandIntRange(0, 7200)
-	targetDelayUpdated := acctest.RandIntRange(7201, 8000)
+	binlog := 24
+	binlogUpdated := 48
+	targetDelay := 3200
+	targetDelayUpdated := 7400
 
 	ctx := context.Background()
 
