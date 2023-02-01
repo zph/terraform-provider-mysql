@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/hashicorp/go-version"
+	"google.golang.org/api/googleapi"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -28,7 +30,6 @@ import (
 const (
 	cleartextPasswords = "cleartext"
 	nativePasswords    = "native"
-	unknownVarErrCode  = 1193
 	unknownUserErrCode = 1396
 )
 
@@ -313,7 +314,7 @@ func connectToMySQLInternal(ctx context.Context, conf *MySQLConfiguration) (*One
 	retryError := resource.RetryContext(ctx, conf.ConnectRetryTimeoutSec, func() *resource.RetryError {
 		db, err = sql.Open(driverName, dsn)
 		if err != nil {
-			if mysqlErrorNumber(err) == unknownVarErrCode || ctx.Err() != nil {
+			if mysqlErrorNumber(err) != 0 || cloudsqlErrorNumber(err) != 0 || ctx.Err() != nil {
 				return resource.NonRetryableError(err)
 			}
 			return resource.RetryableError(err)
@@ -321,7 +322,7 @@ func connectToMySQLInternal(ctx context.Context, conf *MySQLConfiguration) (*One
 
 		err = db.PingContext(ctx)
 		if err != nil {
-			if mysqlErrorNumber(err) == unknownVarErrCode || ctx.Err() != nil {
+			if mysqlErrorNumber(err) != 0 || cloudsqlErrorNumber(err) != 0 || ctx.Err() != nil {
 				return resource.NonRetryableError(err)
 			}
 
@@ -359,4 +360,18 @@ func mysqlErrorNumber(err error) uint16 {
 		return 0
 	}
 	return me.Number
+}
+
+func cloudsqlErrorNumber(err error) int {
+	if err == nil {
+		return 0
+	}
+
+	var gapiError *googleapi.Error
+	if errors.As(err, &gapiError) {
+		if gapiError.Code >= 400 && gapiError.Code < 500 {
+			return gapiError.Code
+		}
+	}
+	return 0
 }

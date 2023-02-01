@@ -1,11 +1,11 @@
 // Copyright 2020 Google LLC
-
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-
+//
 //     https://www.apache.org/licenses/LICENSE-2.0
-
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,15 +20,12 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/tls"
 	_ "embed"
-	"errors"
 	"fmt"
 	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"cloud.google.com/go/cloudsqlconn/errtype"
@@ -96,8 +93,7 @@ type Dialer struct {
 	// network. By default it is golang.org/x/net/proxy#Dial.
 	dialFunc func(cxt context.Context, network, addr string) (net.Conn, error)
 
-	// iamTokenSource supplies the OAuth2 token used for IAM DB Authn. If IAM DB
-	// Authn is not enabled, iamTokenSource will be nil.
+	// iamTokenSource supplies the OAuth2 token used for IAM DB Authn.
 	iamTokenSource oauth2.TokenSource
 }
 
@@ -227,12 +223,9 @@ func (d *Dialer) Dial(ctx context.Context, instance string, opts ...DialOption) 
 			return nil, errtype.NewDialError("failed to set keep-alive period", i.String(), err)
 		}
 	}
-	tlsConn := tls.Client(conn, tlsCfg)
-	if err := tlsConn.Handshake(); err != nil {
-		// refresh the instance info in case it caused the handshake failure
-		i.ForceRefresh()
-		_ = tlsConn.Close() // best effort close attempt
-		return nil, errtype.NewDialError("handshake failed", i.String(), err)
+	tlsConn, err := connectTLS(ctx, conn, tlsCfg, i)
+	if err != nil {
+		return nil, err
 	}
 	latency := time.Since(startTime).Milliseconds()
 	go func() {
@@ -241,7 +234,7 @@ func (d *Dialer) Dial(ctx context.Context, instance string, opts ...DialOption) 
 		trace.RecordDialLatency(ctx, instance, d.dialerID, latency)
 	}()
 
-	return newInstrumentedConn(conn, tlsConn, func() {
+	return newInstrumentedConn(tlsConn, func() {
 		n := atomic.AddUint64(&i.OpenConns, ^uint64(0))
 		trace.RecordOpenConnections(context.Background(), int64(n), d.dialerID, i.String())
 	}), nil
@@ -275,10 +268,9 @@ func (d *Dialer) Warmup(_ context.Context, instance string, opts ...DialOption) 
 
 // newInstrumentedConn initializes an instrumentedConn that on closing will
 // decrement the number of open connects and record the result.
-func newInstrumentedConn(rawConn, conn net.Conn, closeFunc func()) *instrumentedConn {
+func newInstrumentedConn(conn net.Conn, closeFunc func()) *instrumentedConn {
 	return &instrumentedConn{
 		Conn:      conn,
-		rawConn:   rawConn,
 		closeFunc: closeFunc,
 	}
 }
@@ -287,19 +279,7 @@ func newInstrumentedConn(rawConn, conn net.Conn, closeFunc func()) *instrumented
 // is closed.
 type instrumentedConn struct {
 	net.Conn
-	// rawConn is the underlying net.Conn without TLS
-	rawConn   net.Conn
 	closeFunc func()
-}
-
-// SyscallConn supports a connection check in the MySQL driver by delegating to
-// the underlying non-TLS net.Conn.
-func (i *instrumentedConn) SyscallConn() (syscall.RawConn, error) {
-	sconn, ok := i.rawConn.(syscall.Conn)
-	if !ok {
-		return nil, errors.New("connection is not a syscall.Conn")
-	}
-	return sconn.SyscallConn()
 }
 
 // Close delegates to the underylying net.Conn interface and reports the close
