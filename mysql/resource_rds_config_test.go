@@ -136,14 +136,14 @@ func TestAccResourceRDSConfigChange(t *testing.T) {
 				},
 				Check: resource.ComposeTestCheckFunc(
 					testAccRDSConfigExists(fmt.Sprintf("mysql_rds_config.%s", rName)),
-					testAccRDSCheck_full(fullResourceName, binlog, targetDelay, binlogUpdated, targetDelayUpdated),
+					testAccRDSCheck_full(fullResourceName, binlogUpdated, targetDelayUpdated),
 				),
 			},
 		},
 	})
 }
 
-func testAccRDSCheck_full(rn string, binlog, targetDelay, binlogUpdated, targetDelayUpdated int) resource.TestCheckFunc {
+func testAccRDSCheck_full(rn string, binlogUpdated, targetDelayUpdated int) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[rn]
 		if !ok {
@@ -192,12 +192,12 @@ func testAccRDSCheck_full(rn string, binlog, targetDelay, binlogUpdated, targetD
 			return fmt.Errorf("failed reading RDS config: %v", err)
 		}
 
-		if binlog_retention_period == binlog {
-			return fmt.Errorf("binlog retention should NOT be %d. It should be %d", binlog, binlogUpdated)
+		if binlog_retention_period != binlogUpdated {
+			return fmt.Errorf("binlog retention should be %d, not %d", binlogUpdated, binlog_retention_period)
 		}
 
-		if replication_target_delay == targetDelay {
-			return fmt.Errorf("target delay should NOT be %d. It should be %d", targetDelay, targetDelayUpdated)
+		if replication_target_delay != targetDelayUpdated {
+			return fmt.Errorf("target delay should be %d, not %d", targetDelayUpdated, replication_target_delay)
 		}
 
 		return nil
