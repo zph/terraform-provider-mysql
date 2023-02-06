@@ -54,8 +54,6 @@ func CreateRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface
 		}
 	}
 
-	//id := strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
-
 	d.SetId(mysqlRdsConfigId)
 
 	return nil
