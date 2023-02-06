@@ -185,11 +185,11 @@ func testAccRDSCheck_full(rn string, binlogUpdated, targetDelayUpdated int) reso
 
 		binlog_retention_period, err := strconv.Atoi(results["binlog retention hours"])
 		if err != nil {
-			return fmt.Errorf("failed reading RDS config: %v", err)
+			return fmt.Errorf("failed reading binlog retention RDS config: %v", err)
 		}
 		replication_target_delay, err := strconv.Atoi(results["target delay"])
 		if err != nil {
-			return fmt.Errorf("failed reading RDS config: %v", err)
+			return fmt.Errorf("failed reading target delay RDS config: %v", err)
 		}
 
 		if binlog_retention_period != binlogUpdated {
