@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
+
+const mysqlRdsConfigId = "1223234548"
 
 func resourceRDSConfig() *schema.Resource {
 	return &schema.Resource{
@@ -53,9 +54,9 @@ func CreateRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface
 		}
 	}
 
-	id := strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
+	//id := strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
 
-	d.SetId(id)
+	d.SetId(mysqlRdsConfigId)
 
 	return nil
 }
@@ -89,7 +90,6 @@ func ReadRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface{}
 	log.Println("Executing query:", stmtSQL)
 	rows, err := db.QueryContext(ctx, stmtSQL)
 	if err != nil {
-		d.SetId("")
 		return diag.Errorf("Error reading RDS config from DB: %v", err)
 	}
 

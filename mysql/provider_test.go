@@ -68,6 +68,30 @@ func testAccPreCheck(t *testing.T) {
 	}
 }
 
+func testAccPreCheckSkipRds(t *testing.T) {
+	testAccPreCheck(t)
+
+	ctx := context.Background()
+	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
+	if err != nil {
+		return
+	}
+
+	metadataVersionString, err := serverVersionMetadataString(db)
+	if err != nil {
+		return
+	}
+
+	currentVersionString, err := serverVersionString(db)
+	if err != nil {
+		return
+	}
+
+	if !strings.Contains(currentVersionString+metadataVersionString, "rds") {
+		t.Skip("Skip on RDS")
+	}
+}
+
 func testAccPreCheckSkipTiDB(t *testing.T) {
 	testAccPreCheck(t)
 

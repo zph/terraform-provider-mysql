@@ -17,7 +17,7 @@ func TestAccResourceRDS(t *testing.T) {
 	binlog := 24
 	targetDelay := 3200
 	resource.Test(t, resource.TestCase{
-		PreCheck:  func() { testAccPreCheck(t) },
+		PreCheck:  func() { testAccPreCheckSkipRds(t) },
 		Providers: testAccProviders,
 		Steps: []resource.TestStep{
 			{
@@ -105,7 +105,7 @@ func TestAccResourceRDSConfigChange(t *testing.T) {
 	ctx := context.Background()
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
+		PreCheck:     func() { testAccPreCheckSkipRds(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccRDSCheckDestroy(),
 		Steps: []resource.TestStep{
@@ -121,29 +121,29 @@ func TestAccResourceRDSConfigChange(t *testing.T) {
 				PreConfig: func() {
 					db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 					if err != nil {
-						return
+						t.Fatalf("Could not connect to MySQL instance: %v", err)
 					}
 
 					_, err = db.QueryContext(ctx, fmt.Sprintf("call mysql.rds_set_configuration('binlog retention hours', %d)", binlogUpdated))
 					if err != nil {
-						fmt.Errorf("%v", err)
+						t.Fatalf("Failed to set binlog retention hours: %v", err)
 					}
 
 					_, err = db.QueryContext(ctx, fmt.Sprintf("call mysql.rds_set_configuration('target delay', %d)", targetDelayUpdated))
 					if err != nil {
-						fmt.Errorf("%v", err)
+						t.Fatalf("Failed to set target delay: %v", err)
 					}
 				},
 				Check: resource.ComposeTestCheckFunc(
 					testAccRDSConfigExists(fmt.Sprintf("mysql_rds_config.%s", rName)),
-					testAccRDSCheck_full(fullResourceName, binlog, targetDelay),
+					testAccRDSCheck_full(fullResourceName, binlog, targetDelay, binlogUpdated, targetDelayUpdated),
 				),
 			},
 		},
 	})
 }
 
-func testAccRDSCheck_full(rn string, binlog int, targetDelay int) resource.TestCheckFunc {
+func testAccRDSCheck_full(rn string, binlog, targetDelay, binlogUpdated, targetDelayUpdated int) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[rn]
 		if !ok {
@@ -193,11 +193,11 @@ func testAccRDSCheck_full(rn string, binlog int, targetDelay int) resource.TestC
 		}
 
 		if binlog_retention_period == binlog {
-			return fmt.Errorf("binlog retention should NOT be %d", binlog)
+			return fmt.Errorf("binlog retention should NOT be %d. It should be %d", binlog, binlogUpdated)
 		}
 
 		if replication_target_delay == targetDelay {
-			return fmt.Errorf("target delay should NOT be %d", replication_target_delay)
+			return fmt.Errorf("target delay should NOT be %d. It should be %d", targetDelay, targetDelayUpdated)
 		}
 
 		return nil
