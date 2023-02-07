@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
+// stable non-empty ID
 const mysqlRdsConfigId = "1223234548"
 
 func resourceRDSConfig() *schema.Resource {
