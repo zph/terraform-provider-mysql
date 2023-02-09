@@ -58,9 +58,7 @@ func testAccPreCheck(t *testing.T) {
 	}
 
 	raw := map[string]interface{}{
-		"conn_params": map[string]interface{}{
-			"sql_log_bin": 0,
-		},
+		"conn_params": map[string]interface{}{},
 	}
 	err := testAccProvider.Configure(ctx, terraform.NewResourceConfigRaw(raw))
 	if err != nil {
@@ -74,11 +72,13 @@ func testAccPreCheckSkipTiDB(t *testing.T) {
 	ctx := context.Background()
 	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 	if err != nil {
+		t.Fatalf("Cannot connect to DB (SkipTiDB): %v", err)
 		return
 	}
 
 	currentVersionString, err := serverVersionString(db)
 	if err != nil {
+		t.Fatalf("Cannot get DB version string (SkipTiDB): %v", err)
 		return
 	}
 
@@ -93,11 +93,13 @@ func testAccPreCheckSkipMariaDB(t *testing.T) {
 	ctx := context.Background()
 	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 	if err != nil {
+		t.Fatalf("Cannot connect to DB (SkipMariaDB): %v", err)
 		return
 	}
 
 	currentVersionString, err := serverVersionString(db)
 	if err != nil {
+		t.Fatalf("Cannot get DB version string (SkipMariaDB): %v", err)
 		return
 	}
 
@@ -112,11 +114,13 @@ func testAccPreCheckSkipNotTiDB(t *testing.T) {
 	ctx := context.Background()
 	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 	if err != nil {
+		t.Fatalf("Cannot connect to DB (SkipNotTiDB): %v", err)
 		return
 	}
 
 	currentVersionString, err := serverVersionString(db)
 	if err != nil {
+		t.Fatalf("Cannot get DB version string (SkipNotTiDB): %v", err)
 		return
 	}
 
