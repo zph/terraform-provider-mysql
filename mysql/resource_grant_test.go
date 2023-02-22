@@ -19,7 +19,7 @@ import (
 func TestAccGrant(t *testing.T) {
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckSkipRds(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccGrantCheckDestroy,
 		Steps: []resource.TestStep{
@@ -145,7 +145,7 @@ func TestAccDifferentHosts(t *testing.T) {
 func TestAccGrantComplex(t *testing.T) {
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheckSkipTiDB(t) },
+		PreCheck:     func() { testAccPreCheckSkipTiDB(t); testAccPreCheckSkipRds(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccGrantCheckDestroy,
 		Steps: []resource.TestStep{
@@ -234,6 +234,7 @@ func TestAccGrant_role(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
+			testAccPreCheckSkipRds(t)
 			ctx := context.Background()
 			db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 			if err != nil {
@@ -282,6 +283,7 @@ func TestAccGrant_roleToUser(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
+			testAccPreCheckSkipRds(t)
 			ctx := context.Background()
 			db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 			if err != nil {

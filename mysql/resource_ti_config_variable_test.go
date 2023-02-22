@@ -23,6 +23,7 @@ func TestPdConfigVar_basic(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckSkipNotTiDB(t)
+			testAccPreCheckSkipRds(t)
 		},
 		Providers:    testAccProviders,
 		CheckDestroy: testAccConfigVarCheckDestroy(varName, varType),
@@ -95,6 +96,7 @@ func TestTiKvConfigVar_basic(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckSkipNotTiDB(t)
+			testAccPreCheckSkipRds(t)
 		},
 		Providers:    testAccProviders,
 		CheckDestroy: testAccConfigVarCheckDestroy(varName, varType),

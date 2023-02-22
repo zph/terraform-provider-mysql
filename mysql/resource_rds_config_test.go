@@ -17,7 +17,7 @@ func TestAccResourceRDS(t *testing.T) {
 	binlog := 24
 	targetDelay := 3200
 	resource.Test(t, resource.TestCase{
-		PreCheck:  func() { testAccPreCheckSkipRds(t) },
+		PreCheck:  func() { testAccPreCheckSkipNotRds(t) },
 		Providers: testAccProviders,
 		Steps: []resource.TestStep{
 			{
@@ -105,7 +105,7 @@ func TestAccResourceRDSConfigChange(t *testing.T) {
 	ctx := context.Background()
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheckSkipRds(t) },
+		PreCheck:     func() { testAccPreCheckSkipNotRds(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccRDSCheckDestroy(),
 		Steps: []resource.TestStep{
@@ -183,21 +183,21 @@ func testAccRDSCheck_full(rn string, binlogUpdated, targetDelayUpdated int) reso
 			}
 		}
 
-		binlog_retention_period, err := strconv.Atoi(results["binlog retention hours"])
+		binlogRetentionPeriod, err := strconv.Atoi(results["binlog retention hours"])
 		if err != nil {
 			return fmt.Errorf("failed reading binlog retention RDS config: %v", err)
 		}
-		replication_target_delay, err := strconv.Atoi(results["target delay"])
+		replicationTargetDelay, err := strconv.Atoi(results["target delay"])
 		if err != nil {
 			return fmt.Errorf("failed reading target delay RDS config: %v", err)
 		}
 
-		if binlog_retention_period != binlogUpdated {
-			return fmt.Errorf("binlog retention should be %d, not %d", binlogUpdated, binlog_retention_period)
+		if binlogRetentionPeriod != binlogUpdated {
+			return fmt.Errorf("binlog retention should be %d, not %d", binlogUpdated, binlogRetentionPeriod)
 		}
 
-		if replication_target_delay != targetDelayUpdated {
-			return fmt.Errorf("target delay should be %d, not %d", targetDelayUpdated, replication_target_delay)
+		if replicationTargetDelay != targetDelayUpdated {
+			return fmt.Errorf("target delay should be %d, not %d", targetDelayUpdated, replicationTargetDelay)
 		}
 
 		return nil

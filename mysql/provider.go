@@ -281,18 +281,18 @@ func serverVersionString(db *sql.DB) (string, error) {
 	return versionString, nil
 }
 
-func serverVersionMetadataString(db *sql.DB) (string, error) {
+func serverRds(db *sql.DB) (bool, error) {
 	var metadataVersionString string
 	err := db.QueryRow("SELECT @@GLOBAL.datadir").Scan(&metadataVersionString)
 	if err != nil {
-		return "", err
+		return false, err
 	}
 
 	if strings.Contains(metadataVersionString, "rds") {
-		return "+rds", nil
+		return true, nil
 	}
 
-	return "", nil
+	return false, nil
 }
 
 func connectToMySQL(ctx context.Context, conf *MySQLConfiguration) (*sql.DB, error) {
