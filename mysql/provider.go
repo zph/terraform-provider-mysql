@@ -150,6 +150,7 @@ func Provider() *schema.Provider {
 			"mysql_user_password":   resourceUserPassword(),
 			"mysql_user":            resourceUser(),
 			"mysql_ti_config":       resourceTiConfigVariable(),
+			"mysql_rds_config":      resourceRDSConfig(),
 		},
 
 		ConfigureContextFunc: providerConfigure,
@@ -279,6 +280,21 @@ func serverVersionString(db *sql.DB) (string, error) {
 
 	return versionString, nil
 }
+
+func serverRds(db *sql.DB) (bool, error) {
+	var metadataVersionString string
+	err := db.QueryRow("SELECT @@GLOBAL.datadir").Scan(&metadataVersionString)
+	if err != nil {
+		return false, err
+	}
+
+	if strings.Contains(metadataVersionString, "rds") {
+		return true, nil
+	}
+
+	return false, nil
+}
+
 func connectToMySQL(ctx context.Context, conf *MySQLConfiguration) (*sql.DB, error) {
 	conn, err := connectToMySQLInternal(ctx, conf)
 	if err != nil {

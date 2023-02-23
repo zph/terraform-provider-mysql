@@ -17,7 +17,7 @@ func TestAccGlobalVar_basic(t *testing.T) {
 	varValue := "1"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckSkipMariaDB(t) },
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckSkipMariaDB(t); testAccPreCheckSkipRds(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccGlobalVarCheckDestroy(varName, varValue),
 		Steps: []resource.TestStep{
@@ -42,6 +42,7 @@ func TestAccGlobalVar_parseString(t *testing.T) {
 			testAccPreCheck(t)
 			testAccPreCheckSkipMariaDB(t)
 			testAccPreCheckSkipNotTiDB(t)
+			testAccPreCheckSkipRds(t)
 		},
 		Providers:    testAccProviders,
 		CheckDestroy: testAccGlobalVarCheckDestroy(varName, varValue),
@@ -78,6 +79,7 @@ func TestAccGlobalVar_parseFloat(t *testing.T) {
 			testAccPreCheck(t)
 			testAccPreCheckSkipMariaDB(t)
 			testAccPreCheckSkipNotTiDB(t)
+			testAccPreCheckSkipRds(t)
 		},
 		Providers:    testAccProviders,
 		CheckDestroy: testAccGlobalVarCheckDestroy(varName, varValue),
@@ -103,6 +105,7 @@ func TestAccGlobalVar_parseBoolean(t *testing.T) {
 			testAccPreCheck(t)
 			testAccPreCheckSkipMariaDB(t)
 			testAccPreCheckSkipNotTiDB(t)
+			testAccPreCheckSkipRds(t)
 		},
 		Providers:    testAccProviders,
 		CheckDestroy: testAccGlobalVarCheckDestroy(varName, varValue),

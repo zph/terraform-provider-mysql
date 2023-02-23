@@ -53,7 +53,7 @@ func TestAccUser_basic(t *testing.T) {
 
 func TestAccUser_auth(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheckSkipTiDB(t); testAccPreCheckSkipMariaDB(t) },
+		PreCheck:     func() { testAccPreCheckSkipTiDB(t); testAccPreCheckSkipMariaDB(t); testAccPreCheckSkipRds(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccUserCheckDestroy,
 		Steps: []resource.TestStep{

@@ -66,6 +66,47 @@ func testAccPreCheck(t *testing.T) {
 	}
 }
 
+func testAccPreCheckSkipNotRds(t *testing.T) {
+	testAccPreCheck(t)
+
+	ctx := context.Background()
+	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
+	if err != nil {
+		return
+	}
+
+	rdsEnabled, err := serverRds(db)
+	if err != nil {
+		return
+	}
+
+	if !rdsEnabled {
+		t.Skip("Skip on non RDS instance")
+	}
+}
+
+func testAccPreCheckSkipRds(t *testing.T) {
+	testAccPreCheck(t)
+
+	ctx := context.Background()
+	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
+	if err != nil {
+		if strings.Contains(err.Error(), "SUPER privilege(s) for this operation") {
+			t.Skip("Skip on RDS")
+		}
+		return
+	}
+
+	rdsEnabled, err := serverRds(db)
+	if err != nil {
+		return
+	}
+
+	if rdsEnabled {
+		t.Skip("Skip on RDS")
+	}
+}
+
 func testAccPreCheckSkipTiDB(t *testing.T) {
 	testAccPreCheck(t)
 
