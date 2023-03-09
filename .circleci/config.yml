@@ -5,7 +5,7 @@ version: 2.1
 jobs:
   gotest:
     docker:
-      - image: golang:1.18
+      - image: golang:1.20
     working_directory: /terraform-provider-mysql
     steps:
       - checkout
