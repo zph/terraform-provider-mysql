@@ -103,15 +103,22 @@ func ReadRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface{}
 
 		if value.Valid {
 			results[name] = value.String
-		} else {
-			results[name] = "0"
 		}
+	}
+
+	if len(results["binlog retention hours"]) == 0 || results["binlog retention hours"] == "NULL" {
+		results["binlog retention hours"] = "0"
 	}
 
 	binlogRetentionPeriod, err := strconv.Atoi(results["binlog retention hours"])
 	if err != nil {
 		return diag.Errorf("failed reading binlog retention hours in RDS config: %v", err)
 	}
+
+	if len(results["target delay"]) == 0 {
+		results["target delay"] = "0"
+	}
+
 	replicationTargetDelay, err := strconv.Atoi(results["target delay"])
 	if err != nil {
 		return diag.Errorf("failed reading target delay in RDS config: %v", err)
