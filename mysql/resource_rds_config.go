@@ -106,7 +106,7 @@ func ReadRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface{}
 		}
 	}
 
-	if len(results["binlog retention hours"]) == 0 {
+	if len(results["binlog retention hours"]) == 0 || results["binlog retention hours"] == "NULL" {
 		results["binlog retention hours"] = "0"
 	}
 

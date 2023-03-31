@@ -181,7 +181,7 @@ func testAccRDSCheck_full(rn string, binlogUpdated, targetDelayUpdated int) reso
 			}
 		}
 
-		if len(results["binlog retention hours"]) == 0 {
+		if len(results["binlog retention hours"]) == 0 || results["binlog retention hours"] == "NULL" {
 			results["binlog retention hours"] = "0"
 		}
 
