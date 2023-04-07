@@ -81,6 +81,25 @@ provider "mysql" {
 
 See also: [Authentication at Google](https://cloud.google.com/docs/authentication#service-accounts).
 
+### Azure MySQL server with AzureAD auth enabled connection
+
+For connections to Azure MySQL server with AzureAD auth enabled, the provider connects using DefaultAzureCredential from the Azure SDK for Go.
+
+To use this authentication set `use_azure_ad` to `true`. This will lead to ignore `password` field which would be replaced by Azure AD
+token of currently obtained identity. You have to use `username` as stated in Azure documentation.
+
+```hcl
+# Configure the MySQL provider for Azure Mysql Server with AzureAD authentication enabled
+provider "mysql" {
+  endpoint = "your-azure-instance-name.mysql.database.azure.com"
+  username = "username@yourtenant.onmicrosoft.com"
+  # or if you granted access to AAD group: username = "Active_Directory_GroupName" 
+  use_azure_ad = true
+}
+```
+
+See also: [Azure Active Directory authentication for MySQL](https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-azure-ad).
+
 ## SOCKS5 Proxy Support
 
 The MySQL provider respects the `ALL_PROXY` and/or `all_proxy` environment variables.
@@ -102,3 +121,4 @@ The following arguments are supported:
 * `max_open_conns` - (Optional) Sets the maximum number of open connections to the database. If n <= 0, then there is no limit on the number of open connections.
 * `conn_params` - (Optional) Sets extra mysql connection parameters (ODBC parameters). Most useful for session variables such as `default_storage_engine`, `foreign_key_checks` or `sql_log_bin`.
 * `authentication_plugin` - (Optional) Sets the authentication plugin, it can be one of the following: `native` or `cleartext`. Defaults to `native`.
+* `use_azure_ad` - (Optional) Uses Azure AD auth token to access database. Defaults to `false`. Can also be sourced from the `MYSQL_USE_AZURE_AD` environment variable.
