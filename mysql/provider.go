@@ -88,12 +88,6 @@ func Provider() *schema.Provider {
 				DefaultFunc: schema.EnvDefaultFunc("MYSQL_PASSWORD", nil),
 			},
 
-			"use_azure_ad": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				DefaultFunc: schema.EnvDefaultFunc("MYSQL_USE_AZURE_AD", false),
-			},
-
 			"proxy": {
 				Type:     schema.TypeString,
 				Optional: true,
@@ -183,11 +177,12 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		if err != nil {
 			return nil, diag.Errorf("failed to register driver %v", err)
 		}
-	} else if d.Get("use_azure_ad").(bool) {
+	} else if strings.HasPrefix(endpoint, "azure://") {
 		// Azure AD does not support native password authentication but go-sql-driver/mysql
 		// has to be configured only with ?allowClearTextPasswords=true not with allowNativePasswords=false in this case
 		allowClearTextPasswords = true
 		azCredential, err := azidentity.NewDefaultAzureCredential(nil)
+		endpoint = strings.ReplaceAll(endpoint, "azure://", "")
 
 		if err != nil {
 			return nil, diag.Errorf("failed to create Azure credential %v", err)
