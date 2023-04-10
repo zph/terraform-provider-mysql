@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -59,13 +60,18 @@ func resourceUser() *schema.Resource {
 				ConflictsWith:    []string{"plaintext_password", "password"},
 			},
 
+			"aad_identity": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				ForceNew:         true,
+				DiffSuppressFunc: NewEmptyStringSuppressFunc,
+			},
+
 			"auth_string_hashed": {
 				Type:             schema.TypeString,
 				Optional:         true,
 				Sensitive:        true,
 				DiffSuppressFunc: NewEmptyStringSuppressFunc,
-				RequiredWith:     []string{"auth_plugin"},
-				ConflictsWith:    []string{"plaintext_password", "password"},
 			},
 
 			"tls_option": {
@@ -85,12 +91,20 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 
 	var authStm string
 	var auth string
+	var createObj = "USER"
+
 	if v, ok := d.GetOk("auth_plugin"); ok {
 		auth = v.(string)
 	}
 
 	if len(auth) > 0 {
-		if auth == "AWSAuthenticationPlugin" {
+		if auth == "aad_auth" {
+			// aad_auth is plugin but Microsoft uses another statement to create this kind of users
+			createObj = "AADUSER"
+			if _, ok := d.GetOk("aad_identity"); !ok {
+				return diag.Errorf("aad_identity is required for aad_auth")
+			}
+		} else if auth == "AWSAuthenticationPlugin" {
 			authStm = " IDENTIFIED WITH AWSAuthenticationPlugin as 'RDS'"
 		} else {
 			// mysql_no_login, auth_pam, ...
@@ -100,13 +114,34 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 	if v, ok := d.GetOk("auth_string_hashed"); ok {
 		hashed := v.(string)
 		if hashed != "" {
+			if authStm == "" {
+				return diag.Errorf("auth_string_hashed is not supported for auth plugin %s", auth)
+			}
 			authStm = fmt.Sprintf("%s AS '%s'", authStm, hashed)
 		}
 	}
 
-	stmtSQL := fmt.Sprintf("CREATE USER '%s'@'%s'",
-		d.Get("user").(string),
-		d.Get("host").(string))
+	var stmtSQL string
+
+	if createObj == "AADUSER" {
+		if _, uuidErr := uuid.Parse(d.Get("aad_identity").(string)); uuidErr == nil {
+			// CREATE AADUSER "mysqlProtocolLoginName"@"mysqlHostRestriction" IDENTIFIED BY "identityId"
+			stmtSQL = fmt.Sprintf("CREATE AADUSER '%s'@'%s' IDENTIFIED BY '%s'",
+				d.Get("user").(string),
+				d.Get("host").(string),
+				d.Get("aad_identity").(string))
+		} else {
+			// CREATE AADUSER "identityName"@"mysqlHostRestriction" AS "mysqlProtocolLoginName"
+			stmtSQL = fmt.Sprintf("CREATE AADUSER '%s'@'%s' AS '%s'",
+				d.Get("aad_identity").(string),
+				d.Get("host").(string),
+				d.Get("user").(string))
+		}
+	} else {
+		stmtSQL = fmt.Sprintf("CREATE USER '%s'@'%s'",
+			d.Get("user").(string),
+			d.Get("host").(string))
+	}
 
 	var password string
 	if v, ok := d.GetOk("plaintext_password"); ok {
@@ -121,20 +156,37 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 
 	if authStm != "" {
 		stmtSQL = stmtSQL + authStm
-	} else {
+	} else if password != "" {
 		stmtSQL = stmtSQL + fmt.Sprintf(" IDENTIFIED BY '%s'", password)
 	}
 
 	requiredVersion, _ := version.NewVersion("5.7.0")
 
+	var updateStmtSql = ""
+
 	if getVersionFromMeta(ctx, meta).GreaterThan(requiredVersion) && d.Get("tls_option").(string) != "" {
-		stmtSQL += fmt.Sprintf(" REQUIRE %s", d.Get("tls_option").(string))
+		if createObj == "AADUSER" {
+			updateStmtSql = fmt.Sprintf("ALTER USER '%s'@'%s' REQUIRE %s",
+				d.Get("user").(string),
+				d.Get("host").(string),
+				d.Get("tls_option").(string))
+		} else {
+			stmtSQL += fmt.Sprintf(" REQUIRE %s", d.Get("tls_option").(string))
+		}
 	}
 
 	log.Println("Executing statement:", stmtSQL)
 	_, err = db.ExecContext(ctx, stmtSQL)
 	if err != nil {
 		return diag.Errorf("failed executing SQL: %v", err)
+	}
+
+	if updateStmtSql != "" {
+		log.Println("Executing statement:", updateStmtSql)
+		_, err = db.ExecContext(ctx, updateStmtSql)
+		if err != nil {
+			return diag.Errorf("failed executing SQL: %v", err)
+		}
 	}
 
 	user := fmt.Sprintf("%s@%s", d.Get("user").(string), d.Get("host").(string))
@@ -257,8 +309,25 @@ func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) dia
 			d.Set("user", m[1])
 			d.Set("host", m[2])
 			d.Set("auth_plugin", m[3])
-			d.Set("auth_string_hashed", m[4])
 			d.Set("tls_option", m[5])
+
+			if m[3] == "aad_auth" {
+				// AADGroup:98e61c8d-e104-4f8c-b1a6-7ae873617fe6:upn:Doe_Family_Group
+				// AADUser:98e61c8d-e104-4f8c-b1a6-7ae873617fe6:upn:little.johny@does.onmicrosoft.com
+				// AADSP:98e61c8d-e104-4f8c-b1a6-7ae873617fe6:upn:mysqlUserName
+				parts := strings.Split(m[4], ":")
+				if parts[0] == "AADSP" {
+					// service principals are referenced by UUID only
+					d.Set("aad_identity", parts[1])
+				} else if len(parts) >= 4 {
+					// users and groups should be referenced by UPN / group name
+					d.Set("aad_identity", strings.Join(parts[3:], ":"))
+				} else {
+					return diag.Errorf("AAD identity couldn't be parsed - it is %s", m[4])
+				}
+			} else {
+				d.Set("auth_string_hashed", m[4])
+			}
 			return nil
 		}
 
