@@ -25,6 +25,8 @@ import (
 	"golang.org/x/net/proxy"
 
 	cloudsql "cloud.google.com/go/cloudsqlconn/mysql/mysql"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	azidentity "github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 )
 
 const (
@@ -160,6 +162,10 @@ func Provider() *schema.Provider {
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 	var endpoint = d.Get("endpoint").(string)
 	var connParams = make(map[string]string)
+	var authPlugin = d.Get("authentication_plugin").(string)
+	var allowClearTextPasswords = authPlugin == cleartextPasswords
+	var allowNativePasswords = authPlugin == nativePasswords
+	var password = d.Get("password").(string)
 
 	proto := "tcp"
 	if len(endpoint) > 0 && endpoint[0] == '/' {
@@ -171,6 +177,27 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		if err != nil {
 			return nil, diag.Errorf("failed to register driver %v", err)
 		}
+	} else if strings.HasPrefix(endpoint, "azure://") {
+		// Azure AD does not support native password authentication but go-sql-driver/mysql
+		// has to be configured only with ?allowClearTextPasswords=true not with allowNativePasswords=false in this case
+		allowClearTextPasswords = true
+		azCredential, err := azidentity.NewDefaultAzureCredential(nil)
+		endpoint = strings.ReplaceAll(endpoint, "azure://", "")
+
+		if err != nil {
+			return nil, diag.Errorf("failed to create Azure credential %v", err)
+		}
+
+		azToken, err := azCredential.GetToken(
+			ctx,
+			policy.TokenRequestOptions{Scopes: []string{"https://ossrdbms-aad.database.windows.net/.default"}},
+		)
+
+		if err != nil {
+			return nil, diag.Errorf("failed to get token from Azure AD %v", err)
+		}
+
+		password = azToken.Token
 	}
 
 	for k, vint := range d.Get("conn_params").(map[string]interface{}) {
@@ -183,12 +210,12 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 
 	conf := mysql.Config{
 		User:                    d.Get("username").(string),
-		Passwd:                  d.Get("password").(string),
+		Passwd:                  password,
 		Net:                     proto,
 		Addr:                    endpoint,
 		TLSConfig:               d.Get("tls").(string),
-		AllowNativePasswords:    d.Get("authentication_plugin").(string) == nativePasswords,
-		AllowCleartextPasswords: d.Get("authentication_plugin").(string) == cleartextPasswords,
+		AllowNativePasswords:    allowNativePasswords,
+		AllowCleartextPasswords: allowClearTextPasswords,
 		InterpolateParams:       true,
 		Params:                  connParams,
 	}
