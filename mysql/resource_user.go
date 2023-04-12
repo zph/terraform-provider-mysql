@@ -181,16 +181,17 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 		return diag.Errorf("failed executing SQL: %v", err)
 	}
 
+	user := fmt.Sprintf("%s@%s", d.Get("user").(string), d.Get("host").(string))
+	d.SetId(user)
+
 	if updateStmtSql != "" {
 		log.Println("Executing statement:", updateStmtSql)
 		_, err = db.ExecContext(ctx, updateStmtSql)
 		if err != nil {
+			d.Set("tls_option", "")
 			return diag.Errorf("failed executing SQL: %v", err)
 		}
 	}
-
-	user := fmt.Sprintf("%s@%s", d.Get("user").(string), d.Get("host").(string))
-	d.SetId(user)
 
 	return nil
 }
