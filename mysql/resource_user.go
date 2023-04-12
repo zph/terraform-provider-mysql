@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"log"
 	"regexp"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -61,10 +61,30 @@ func resourceUser() *schema.Resource {
 			},
 
 			"aad_identity": {
-				Type:             schema.TypeString,
-				Optional:         true,
-				ForceNew:         true,
-				DiffSuppressFunc: NewEmptyStringSuppressFunc,
+				Type:     schema.TypeSet,
+				Optional: true,
+				ForceNew: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"type": {
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: true,
+							Default:  "user",
+							ValidateFunc: validation.StringInSlice([]string{
+								"user",
+								"group",
+								"service_principal",
+							}, false),
+						},
+						"identity": {
+							Type:     schema.TypeString,
+							Required: true,
+							ForceNew: true,
+						},
+					},
+				},
 			},
 
 			"auth_string_hashed": {
@@ -125,16 +145,18 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 	var stmtSQL string
 
 	if createObj == "AADUSER" {
-		if _, uuidErr := uuid.Parse(d.Get("aad_identity").(string)); uuidErr == nil {
+		var aadIdentity = d.Get("aad_identity").(*schema.Set).List()[0].(map[string]interface{})
+
+		if aadIdentity["type"].(string) == "service_principal" {
 			// CREATE AADUSER 'mysqlProtocolLoginName"@"mysqlHostRestriction' IDENTIFIED BY 'identityId'
 			stmtSQL = fmt.Sprintf("CREATE AADUSER '%s'@'%s' IDENTIFIED BY '%s'",
 				d.Get("user").(string),
 				d.Get("host").(string),
-				d.Get("aad_identity").(string))
+				aadIdentity["identity"].(string))
 		} else {
 			// CREATE AADUSER 'identityName"@"mysqlHostRestriction' AS 'mysqlProtocolLoginName'
 			stmtSQL = fmt.Sprintf("CREATE AADUSER '%s'@'%s' AS '%s'",
-				d.Get("aad_identity").(string),
+				aadIdentity["identity"].(string),
 				d.Get("host").(string),
 				d.Get("user").(string))
 		}
@@ -320,10 +342,29 @@ func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) dia
 				parts := strings.Split(m[4], ":")
 				if parts[0] == "AADSP" {
 					// service principals are referenced by UUID only
-					d.Set("aad_identity", parts[1])
+					d.Set("aad_identity", []map[string]interface{}{
+						{
+							"type":     "service_principal",
+							"identity": parts[1],
+						},
+					})
 				} else if len(parts) >= 4 {
 					// users and groups should be referenced by UPN / group name
-					d.Set("aad_identity", strings.Join(parts[3:], ":"))
+					if parts[0] == "AADUser" {
+						d.Set("aad_identity", []map[string]interface{}{
+							{
+								"type":     "user",
+								"identity": strings.Join(parts[3:], ":"),
+							},
+						})
+					} else {
+						d.Set("aad_identity", []map[string]interface{}{
+							{
+								"type":     "group",
+								"identity": strings.Join(parts[3:], ":"),
+							},
+						})
+					}
 				} else {
 					return diag.Errorf("AAD identity couldn't be parsed - it is %s", m[4])
 				}
