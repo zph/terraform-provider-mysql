@@ -72,6 +72,7 @@ func resourceUser() *schema.Resource {
 				Optional:         true,
 				Sensitive:        true,
 				DiffSuppressFunc: NewEmptyStringSuppressFunc,
+				ConflictsWith:    []string{"plaintext_password", "password"},
 			},
 
 			"tls_option": {
