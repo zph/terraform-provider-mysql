@@ -125,13 +125,13 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 
 	if createObj == "AADUSER" {
 		if _, uuidErr := uuid.Parse(d.Get("aad_identity").(string)); uuidErr == nil {
-			// CREATE AADUSER "mysqlProtocolLoginName"@"mysqlHostRestriction" IDENTIFIED BY "identityId"
+			// CREATE AADUSER 'mysqlProtocolLoginName"@"mysqlHostRestriction' IDENTIFIED BY 'identityId'
 			stmtSQL = fmt.Sprintf("CREATE AADUSER '%s'@'%s' IDENTIFIED BY '%s'",
 				d.Get("user").(string),
 				d.Get("host").(string),
 				d.Get("aad_identity").(string))
 		} else {
-			// CREATE AADUSER "identityName"@"mysqlHostRestriction" AS "mysqlProtocolLoginName"
+			// CREATE AADUSER 'identityName"@"mysqlHostRestriction' AS 'mysqlProtocolLoginName'
 			stmtSQL = fmt.Sprintf("CREATE AADUSER '%s'@'%s' AS '%s'",
 				d.Get("aad_identity").(string),
 				d.Get("host").(string),
