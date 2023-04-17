@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"log"
 	"regexp"
 	"strings"
@@ -59,12 +60,38 @@ func resourceUser() *schema.Resource {
 				ConflictsWith:    []string{"plaintext_password", "password"},
 			},
 
+			"aad_identity": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				ForceNew: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"type": {
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: true,
+							Default:  "user",
+							ValidateFunc: validation.StringInSlice([]string{
+								"user",
+								"group",
+								"service_principal",
+							}, false),
+						},
+						"identity": {
+							Type:     schema.TypeString,
+							Required: true,
+							ForceNew: true,
+						},
+					},
+				},
+			},
+
 			"auth_string_hashed": {
 				Type:             schema.TypeString,
 				Optional:         true,
 				Sensitive:        true,
 				DiffSuppressFunc: NewEmptyStringSuppressFunc,
-				RequiredWith:     []string{"auth_plugin"},
 				ConflictsWith:    []string{"plaintext_password", "password"},
 			},
 
@@ -85,12 +112,20 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 
 	var authStm string
 	var auth string
+	var createObj = "USER"
+
 	if v, ok := d.GetOk("auth_plugin"); ok {
 		auth = v.(string)
 	}
 
 	if len(auth) > 0 {
-		if auth == "AWSAuthenticationPlugin" {
+		if auth == "aad_auth" {
+			// aad_auth is plugin but Microsoft uses another statement to create this kind of users
+			createObj = "AADUSER"
+			if _, ok := d.GetOk("aad_identity"); !ok {
+				return diag.Errorf("aad_identity is required for aad_auth")
+			}
+		} else if auth == "AWSAuthenticationPlugin" {
 			authStm = " IDENTIFIED WITH AWSAuthenticationPlugin as 'RDS'"
 		} else {
 			// mysql_no_login, auth_pam, ...
@@ -100,13 +135,36 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 	if v, ok := d.GetOk("auth_string_hashed"); ok {
 		hashed := v.(string)
 		if hashed != "" {
+			if authStm == "" {
+				return diag.Errorf("auth_string_hashed is not supported for auth plugin %s", auth)
+			}
 			authStm = fmt.Sprintf("%s AS '%s'", authStm, hashed)
 		}
 	}
 
-	stmtSQL := fmt.Sprintf("CREATE USER '%s'@'%s'",
-		d.Get("user").(string),
-		d.Get("host").(string))
+	var stmtSQL string
+
+	if createObj == "AADUSER" {
+		var aadIdentity = d.Get("aad_identity").(*schema.Set).List()[0].(map[string]interface{})
+
+		if aadIdentity["type"].(string) == "service_principal" {
+			// CREATE AADUSER 'mysqlProtocolLoginName"@"mysqlHostRestriction' IDENTIFIED BY 'identityId'
+			stmtSQL = fmt.Sprintf("CREATE AADUSER '%s'@'%s' IDENTIFIED BY '%s'",
+				d.Get("user").(string),
+				d.Get("host").(string),
+				aadIdentity["identity"].(string))
+		} else {
+			// CREATE AADUSER 'identityName"@"mysqlHostRestriction' AS 'mysqlProtocolLoginName'
+			stmtSQL = fmt.Sprintf("CREATE AADUSER '%s'@'%s' AS '%s'",
+				aadIdentity["identity"].(string),
+				d.Get("host").(string),
+				d.Get("user").(string))
+		}
+	} else {
+		stmtSQL = fmt.Sprintf("CREATE USER '%s'@'%s'",
+			d.Get("user").(string),
+			d.Get("host").(string))
+	}
 
 	var password string
 	if v, ok := d.GetOk("plaintext_password"); ok {
@@ -121,14 +179,23 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 
 	if authStm != "" {
 		stmtSQL = stmtSQL + authStm
-	} else {
+	} else if password != "" {
 		stmtSQL = stmtSQL + fmt.Sprintf(" IDENTIFIED BY '%s'", password)
 	}
 
 	requiredVersion, _ := version.NewVersion("5.7.0")
 
+	var updateStmtSql = ""
+
 	if getVersionFromMeta(ctx, meta).GreaterThan(requiredVersion) && d.Get("tls_option").(string) != "" {
-		stmtSQL += fmt.Sprintf(" REQUIRE %s", d.Get("tls_option").(string))
+		if createObj == "AADUSER" {
+			updateStmtSql = fmt.Sprintf("ALTER USER '%s'@'%s' REQUIRE %s",
+				d.Get("user").(string),
+				d.Get("host").(string),
+				d.Get("tls_option").(string))
+		} else {
+			stmtSQL += fmt.Sprintf(" REQUIRE %s", d.Get("tls_option").(string))
+		}
 	}
 
 	log.Println("Executing statement:", stmtSQL)
@@ -139,6 +206,15 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 
 	user := fmt.Sprintf("%s@%s", d.Get("user").(string), d.Get("host").(string))
 	d.SetId(user)
+
+	if updateStmtSql != "" {
+		log.Println("Executing statement:", updateStmtSql)
+		_, err = db.ExecContext(ctx, updateStmtSql)
+		if err != nil {
+			d.Set("tls_option", "")
+			return diag.Errorf("failed executing SQL: %v", err)
+		}
+	}
 
 	return nil
 }
@@ -257,8 +333,44 @@ func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) dia
 			d.Set("user", m[1])
 			d.Set("host", m[2])
 			d.Set("auth_plugin", m[3])
-			d.Set("auth_string_hashed", m[4])
 			d.Set("tls_option", m[5])
+
+			if m[3] == "aad_auth" {
+				// AADGroup:98e61c8d-e104-4f8c-b1a6-7ae873617fe6:upn:Doe_Family_Group
+				// AADUser:98e61c8d-e104-4f8c-b1a6-7ae873617fe6:upn:little.johny@does.onmicrosoft.com
+				// AADSP:98e61c8d-e104-4f8c-b1a6-7ae873617fe6:upn:mysqlUserName
+				parts := strings.Split(m[4], ":")
+				if parts[0] == "AADSP" {
+					// service principals are referenced by UUID only
+					d.Set("aad_identity", []map[string]interface{}{
+						{
+							"type":     "service_principal",
+							"identity": parts[1],
+						},
+					})
+				} else if len(parts) >= 4 {
+					// users and groups should be referenced by UPN / group name
+					if parts[0] == "AADUser" {
+						d.Set("aad_identity", []map[string]interface{}{
+							{
+								"type":     "user",
+								"identity": strings.Join(parts[3:], ":"),
+							},
+						})
+					} else {
+						d.Set("aad_identity", []map[string]interface{}{
+							{
+								"type":     "group",
+								"identity": strings.Join(parts[3:], ":"),
+							},
+						})
+					}
+				} else {
+					return diag.Errorf("AAD identity couldn't be parsed - it is %s", m[4])
+				}
+			} else {
+				d.Set("auth_string_hashed", m[4])
+			}
 			return nil
 		}
 

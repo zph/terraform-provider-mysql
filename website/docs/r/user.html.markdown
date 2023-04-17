@@ -47,6 +47,19 @@ resource "mysql_user" "nologin" {
 }
 ```
 
+## Example Usage with AzureAD Authentication Plugin
+
+```hcl
+resource "mysql_user" "aadupn" {
+  user = "aliasToUseWhenConnectiong"
+  auth_plugin = "aad_auth"
+  aad_identity {
+    type = "user" # user | group | service_principal
+    identity = "little.johny@doe.onmicrosoft.com" # upn | group name | client id of service principal
+  }
+}
+```
+
 ## Argument Reference
 
 The following arguments are supported:
@@ -57,6 +70,7 @@ The following arguments are supported:
 * `password` - (Optional) Deprecated alias of `plaintext_password`, whose value is *stored as plaintext in state*. Prefer to use `plaintext_password` instead, which stores the password as an unsalted hash. Conflicts with `auth_plugin`.
 * `auth_plugin` - (Optional) Use an [authentication plugin][ref-auth-plugins] to authenticate the user instead of using password authentication.  Description of the fields allowed in the block below. Conflicts with `password` and `plaintext_password`.  
 * `auth_string_hashed` - (Optional) Use an already hashed string as a parameter to `auth_plugin`. This can be used with passwords as well as with other auth strings.
+* `aad_identity` - (Optional) Required when `auth_plugin` is `aad_auth`. This should be block containing `type` and `identity`. `type` can be one of `user`, `group` and `service_principal`. `identity` then should containt either UPN of user, name of group or Client ID of service principal.
 * `tls_option` - (Optional) An TLS-Option for the `CREATE USER` or `ALTER USER` statement. The value is suffixed to `REQUIRE`. A value of 'SSL' will generate a `CREATE USER ... REQUIRE SSL` statement. See the [MYSQL `CREATE USER` documentation](https://dev.mysql.com/doc/refman/5.7/en/create-user.html) for more. Ignored if MySQL version is under 5.7.0.
 
 [ref-auth-plugins]: https://dev.mysql.com/doc/refman/5.7/en/authentication-plugins.html
@@ -75,6 +89,14 @@ The `auth_plugin` value supports:
   see [here][ref-mysql-no-login].
 
 [ref-mysql-no-login]: https://dev.mysql.com/doc/refman/5.7/en/no-login-pluggable-authentication.html
+
+* `aad_auth` - Uses `CREATE AADUSER` statement to create user instead of `CREATE USER` to create user
+   with [AzureAD authentication][ref-azure-aadauth] to [Azure Database for MySQL][ref-azure-mysql].
+   When specified, you need to specify `aad_identity`. For more information about AzureAD authentication into MySQL  
+   see [here][ref-azure-aadauth]. You have to use AAD authenticated administrator mysql session to use this plugin.
+
+[ref-azure-aadauth]: https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-azure-ad
+[ref-azure-mysql]: https://learn.microsoft.com/en-us/azure/mysql/
 
 * any other auth plugin supported by MySQL.
 ## Attributes Reference
