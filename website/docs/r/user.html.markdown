@@ -60,6 +60,8 @@ resource "mysql_user" "aadupn" {
 }
 ```
 
+~> **Note on Azure Database for MySQL Single Server resource:** If you want to use this for `service_principal` with older Azure Database for MySQL Single Server resource, you need to set param `aad_auth_validate_oids_in_tenant` to `OFF` in provider configuration. For more details see [this issue](https://github.com/petoju/terraform-provider-mysql/issues/79).
+
 ## Argument Reference
 
 The following arguments are supported:
