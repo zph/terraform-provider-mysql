@@ -338,9 +338,10 @@ func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) dia
 			if m[3] == "aad_auth" {
 				// AADGroup:98e61c8d-e104-4f8c-b1a6-7ae873617fe6:upn:Doe_Family_Group
 				// AADUser:98e61c8d-e104-4f8c-b1a6-7ae873617fe6:upn:little.johny@does.onmicrosoft.com
-				// AADSP:98e61c8d-e104-4f8c-b1a6-7ae873617fe6:upn:mysqlUserName
+				// AADSP:98e61c8d-e104-4f8c-b1a6-7ae873617fe6:upn:mysqlUserName - for MySQL Flexible Server
+				// AADApp:98e61c8d-e104-4f8c-b1a6-7ae873617fe6:upn:mysqlUserName - for MySQL Single Server
 				parts := strings.Split(m[4], ":")
-				if parts[0] == "AADSP" {
+				if parts[0] == "AADSP" || parts[0] == "AADApp" {
 					// service principals are referenced by UUID only
 					d.Set("aad_identity", []map[string]interface{}{
 						{
