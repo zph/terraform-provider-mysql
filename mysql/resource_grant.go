@@ -192,6 +192,7 @@ func CreateGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 	user := d.Get("user").(string)
 	host := d.Get("host").(string)
 	role := d.Get("role").(string)
+	grantOption := d.Get("grant").(bool)
 
 	userOrRole, isRole, err := userOrRole(user, host, role, hasRoles)
 	if err != nil {
@@ -200,23 +201,21 @@ func CreateGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 	database := d.Get("database").(string)
 	table := d.Get("table").(string)
 
-	grants, err := showGrants(ctx, db, userOrRole, database, table)
+	grant, err := showGrant(ctx, db, userOrRole, database, table, grantOption)
 	if err != nil {
 		return diag.Errorf("failed showing grants: %v", err)
 	}
 
-	for _, grant := range grants {
-		if len(grant.Privileges) == 0 {
-			continue
-		}
-
-		if hasPrivs {
-			if grant.Database == database && grant.Table == table {
+	if hasPrivs {
+		if len(grant.Privileges) >= 1 {
+			if grant.Database == database && grant.Table == table && grant.Grant == grantOption {
 				return diag.Errorf("user/role %s already has unmanaged grant to %s.%s - import it first", userOrRole, grant.Database, grant.Table)
 			}
-		} else {
+		}
+	} else {
+		if len(grant.Roles) >= 1 {
 			// Granting role is just role without DB & table.
-			if grant.Database == "" && grant.Table == "" {
+			if grant.Database == "" && grant.Table == "" && grant.Grant == grantOption {
 				return diag.Errorf("user/role %s already has unmanaged grant for roles %v - import it first", userOrRole, grant.Roles)
 			}
 		}
@@ -283,23 +282,23 @@ func ReadGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) di
 	}
 	database := d.Get("database").(string)
 	table := d.Get("table").(string)
+	grantOption := d.Get("grant").(bool)
 	rolesSet := d.Get("roles").(*schema.Set)
 	rolesCount := len(rolesSet.List())
 
-	var grants []*MySQLGrant
 	if rolesCount != 0 {
 		// For some reason, role can have still database / table, that
 		// makes no sense. Remove them when reading.
 		database = ""
 		table = ""
 	}
-	grants, err = showGrants(ctx, db, userOrRole, database, table)
+	grant, err := showGrant(ctx, db, userOrRole, database, table, grantOption)
 
 	if err != nil {
 		return diag.Errorf("error reading grant for %s: %v", userOrRole, err)
 	}
 
-	if len(grants) == 0 {
+	if len(grant.Privileges) == 0 && len(grant.Roles) == 0 {
 		log.Printf("[WARN] GRANT not found for %s (%s) - removing from state", userOrRole, err)
 		d.SetId("")
 		return nil
@@ -307,20 +306,17 @@ func ReadGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) di
 
 	var privileges []string
 	var roles []string
-	var grantOption bool
 
-	for _, grant := range grants {
-		if grant.Database == database && grant.Table == table {
-			privileges = makePrivs(setToArray(d.Get("privileges")), grant.Privileges)
-		}
-		// Granting role is just role without DB & table.
-		if grant.Database == "" && grant.Table == "" {
-			roles = grant.Roles
-		}
+	if grant.Database == database && grant.Table == table {
+		privileges = makePrivs(setToArray(d.Get("privileges")), grant.Privileges)
+	}
+	// Granting role is just role without DB & table.
+	if grant.Database == "" && grant.Table == "" {
+		roles = grant.Roles
+	}
 
-		if grant.Grant {
-			grantOption = true
-		}
+	if grant.Grant {
+		grantOption = true
 	}
 
 	d.Set("privileges", privileges)
@@ -379,11 +375,11 @@ func updatePrivileges(ctx context.Context, d *schema.ResourceData, db *sql.DB, u
 			revokes[i] = v.(string)
 		}
 
-		sql := fmt.Sprintf("REVOKE %s ON %s.%s FROM %s", strings.Join(revokes, ","), formatDatabaseName(database), formatTableName(table), user)
+		sqlCommand := fmt.Sprintf("REVOKE %s ON %s.%s FROM %s", strings.Join(revokes, ","), formatDatabaseName(database), formatTableName(table), user)
 
-		log.Printf("[DEBUG] SQL: %s", sql)
+		log.Printf("[DEBUG] SQL: %s", sqlCommand)
 
-		if _, err := db.ExecContext(ctx, sql); err != nil {
+		if _, err := db.ExecContext(ctx, sqlCommand); err != nil {
 			return err
 		}
 	}
@@ -395,11 +391,11 @@ func updatePrivileges(ctx context.Context, d *schema.ResourceData, db *sql.DB, u
 			grants[i] = v.(string)
 		}
 
-		sql := fmt.Sprintf("GRANT %s ON %s.%s TO %s", strings.Join(grants, ","), formatDatabaseName(database), formatTableName(table), user)
+		sqlCommand := fmt.Sprintf("GRANT %s ON %s.%s TO %s", strings.Join(grants, ","), formatDatabaseName(database), formatTableName(table), user)
 
-		log.Printf("[DEBUG] SQL: %s", sql)
+		log.Printf("[DEBUG] SQL: %s", sqlCommand)
 
-		if _, err := db.ExecContext(ctx, sql); err != nil {
+		if _, err := db.ExecContext(ctx, sqlCommand); err != nil {
 			return err
 		}
 	}
@@ -484,33 +480,30 @@ func isNonExistingGrant(err error) bool {
 }
 
 func ImportGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
-	userHostDatabaseTable := strings.SplitN(d.Id(), "@", 4)
+	userHostDatabaseTable := strings.Split(d.Id(), "@")
 
-	if len(userHostDatabaseTable) != 4 {
-		return nil, fmt.Errorf("wrong ID format %s - expected user@host@database@table where some parts can be empty)", d.Id())
+	if len(userHostDatabaseTable) != 4 && len(userHostDatabaseTable) != 5 {
+		return nil, fmt.Errorf("wrong ID format %s - expected user@host@database@table (and optionally ending @ to signify grant option) where some parts can be empty)", d.Id())
 	}
 
 	user := userHostDatabaseTable[0]
 	host := userHostDatabaseTable[1]
 	database := userHostDatabaseTable[2]
 	table := userHostDatabaseTable[3]
+	grantOption := len(userHostDatabaseTable) == 5
 
 	db, err := getDatabaseFromMeta(ctx, meta)
 	if err != nil {
 		return nil, err
 	}
 
-	grants, err := showGrants(ctx, db, fmt.Sprintf("'%s'@'%s'", user, host), database, table)
+	grant, err := showGrant(ctx, db, fmt.Sprintf("'%s'@'%s'", user, host), database, table, grantOption)
 
 	if err != nil {
 		return nil, err
 	}
 
-	results := []*schema.ResourceData{}
-
-	for _, grant := range grants {
-		results = append(results, restoreGrant(user, host, grant))
-	}
+	results := []*schema.ResourceData{restoreGrant(user, host, &grant)}
 
 	return results, nil
 }
@@ -533,15 +526,20 @@ func restoreGrant(user string, host string, grant *MySQLGrant) *schema.ResourceD
 	return d
 }
 
-func showGrants(ctx context.Context, db *sql.DB, user, database, table string) ([]*MySQLGrant, error) {
+func showGrant(ctx context.Context, db *sql.DB, user, database, table string, grantOption bool) (MySQLGrant, error) {
 	allGrants, err := showUserGrants(ctx, db, user)
 	if err != nil {
-		return nil, fmt.Errorf("showGrants - getting all grants failed: %w", err)
+		return MySQLGrant{}, fmt.Errorf("showGrant - getting all grants failed: %w", err)
 	}
-	grants := []*MySQLGrant{}
+	grants := MySQLGrant{
+		Database: database,
+		Table:    table,
+		Grant:    grantOption,
+	}
 	for _, grant := range allGrants {
-		if grant.Database == database && grant.Table == table {
-			grants = append(grants, grant)
+		if grant.Database == database && grant.Table == table && grant.Grant == grantOption {
+			grants.Privileges = append(grants.Privileges, grant.Privileges...)
+			grants.Roles = append(grants.Roles, grant.Roles...)
 		}
 	}
 	return grants, nil

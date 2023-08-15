@@ -241,10 +241,9 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 
 func afterConnectVersion(ctx context.Context, mysqlConf *MySQLConfiguration, db *sql.DB) (*version.Version, error) {
 	// Set up env so that we won't create users randomly.
-	fmt.Printf("AAA Running after connect\n")
 	currentVersion, err := serverVersion(db)
 	if err != nil {
-		return nil, fmt.Errorf("Failed getting server version: %v", err)
+		return nil, fmt.Errorf("failed getting server version: %v", err)
 	}
 
 	versionMinInclusive, _ := version.NewVersion("5.7.5")

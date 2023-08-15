@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"fmt"
+	"github.com/hashicorp/go-version"
 	"os"
 	"strings"
 	"testing"
@@ -146,6 +147,28 @@ func testAccPreCheckSkipMariaDB(t *testing.T) {
 
 	if strings.Contains(currentVersionString, "MariaDB") {
 		t.Skip("Skip on MariaDB")
+	}
+}
+
+func testAccPreCheckSkipNotMySQL8(t *testing.T) {
+	testAccPreCheck(t)
+
+	ctx := context.Background()
+	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
+	if err != nil {
+		t.Fatalf("Cannot connect to DB (SkipNotMySQL8): %v", err)
+		return
+	}
+
+	currentVersion, err := serverVersion(db)
+	if err != nil {
+		t.Fatalf("Cannot get DB version string (SkipNotMySQL8): %v", err)
+		return
+	}
+
+	versionMin, _ := version.NewVersion("8.0.0")
+	if currentVersion.LessThan(versionMin) {
+		t.Skip("Skip on MySQL8")
 	}
 }
 
