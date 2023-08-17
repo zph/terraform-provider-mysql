@@ -35,11 +35,11 @@ The following arguments are supported:
 
 * `default_character_set` - (Optional) The default character set to use when
   a table is created without specifying an explicit character set. Defaults
-  to "utf8".
+  to ``utf8mb4``.
 
 * `default_collation` - (Optional) The default collation to use when a table
   is created without specifying an explicit collation. Defaults to
-  ``utf8_general_ci``. Each character set has its own set of collations, so
+  ``utf8mb4_general_ci``. Each character set has its own set of collations, so
   changing the character set requires also changing the collation.
 
 Note that the defaults for character set and collation above do not respect
