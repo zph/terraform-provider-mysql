@@ -24,6 +24,10 @@ type MySQLGrant struct {
 	Grant      bool
 }
 
+func (m MySQLGrant) String() string {
+	return fmt.Sprintf("{Database=%v,Table=%v,Privileges=%v,Roles=%v,Grant=%v}", m.Database, m.Table, m.Privileges, m.Roles, m.Grant)
+}
+
 func resourceGrant() *schema.Resource {
 	return &schema.Resource{
 		CreateContext: CreateGrant,
@@ -537,7 +541,9 @@ func showGrant(ctx context.Context, db *sql.DB, user, database, table string, gr
 		Grant:    grantOption,
 	}
 	for _, grant := range allGrants {
-		if grant.Database == database && grant.Table == table && grant.Grant == grantOption {
+		// We must normalize database as it may contain something like PROCEDURE `asd` or the same without backticks.
+		// TODO: write tests or consider some other way to handle permissions to PROCEDURE/FUNCTION
+		if normalizeDatabase(grant.Database) == normalizeDatabase(database) && grant.Table == table && grant.Grant == grantOption {
 			grants.Privileges = append(grants.Privileges, grant.Privileges...)
 			grants.Roles = append(grants.Roles, grant.Roles...)
 		}
@@ -639,6 +645,16 @@ func normalizeUserHost(userHost string) string {
 	withoutBackticks := strings.ReplaceAll(withoutQuotes, "`", "")
 	withoutDblQuotes := strings.ReplaceAll(withoutBackticks, "\"", "")
 	return withoutDblQuotes
+}
+
+func normalizeDatabase(database string) string {
+	reProcedure := regexp.MustCompile("(?i)^(function|procedure) `(.*)$")
+	if reProcedure.MatchString(database) {
+		// This is only a hack - user can specify function / procedure as database.
+		database = reProcedure.ReplaceAllString(database, "$1 ${2}")
+	}
+
+	return database
 }
 
 func removeUselessPerms(grants []string) []string {
