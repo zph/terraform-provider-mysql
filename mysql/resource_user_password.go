@@ -33,6 +33,11 @@ func resourceUserPassword() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
+
+			"retain_old_password": {
+				Type:     schema.TypeBool,
+				Optional: true,
+			},
 		},
 	}
 }
@@ -54,7 +59,15 @@ func SetUserPassword(ctx context.Context, d *schema.ResourceData, meta interface
 		d.Set("plaintext_password", password)
 	}
 
-	stmtSQL, err := getSetPasswordStatement(ctx, meta)
+	retainPassword := d.Get("retain_old_password").(bool)
+	if retainPassword {
+		_, err := checkRetainCurrentPasswordSupport(ctx, meta)
+		if err != nil {
+			return diag.Errorf("%v", err)
+		}
+	}
+
+	stmtSQL, err := getSetPasswordStatement(ctx, meta, retainPassword)
 	if err != nil {
 		return diag.Errorf("failed getting password statement: %v", err)
 	}
