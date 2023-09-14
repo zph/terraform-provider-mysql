@@ -61,9 +61,9 @@ func SetUserPassword(ctx context.Context, d *schema.ResourceData, meta interface
 
 	retainPassword := d.Get("retain_old_password").(bool)
 	if retainPassword {
-		_, err := checkRetainCurrentPasswordSupport(ctx, meta)
+		err := checkRetainCurrentPasswordSupport(ctx, meta)
 		if err != nil {
-			return diag.Errorf("%v", err)
+			return diag.Errorf("cannot use retain_current_password: %v", err)
 		}
 	}
 
