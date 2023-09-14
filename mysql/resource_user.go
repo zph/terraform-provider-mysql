@@ -110,12 +110,12 @@ func resourceUser() *schema.Resource {
 	}
 }
 
-func checkRetainCurrentPasswordSupport(ctx context.Context, meta interface{}) (bool, error) {
+func checkRetainCurrentPasswordSupport(ctx context.Context, meta interface{}) error {
 	ver, _ := version.NewVersion("8.0.14")
 	if getVersionFromMeta(ctx, meta).LessThan(ver) {
-		return false, errors.New("cannot use retain_current_password with MySQL version < 8.0.14")
+		return errors.New("MySQL version must be at least 8.0.14")
 	}
-	return true, nil
+	return nil
 }
 
 func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -214,9 +214,9 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 
 	retainPassword := d.Get("retain_old_password").(bool)
 	if retainPassword {
-		_, err := checkRetainCurrentPasswordSupport(ctx, meta)
+		err := checkRetainCurrentPasswordSupport(ctx, meta)
 		if err != nil {
-			return diag.Errorf("%v", err)
+			return diag.Errorf("cannot use retain_current_password: %v", err)
 		}
 	}
 
@@ -298,9 +298,9 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 
 	retainPassword := d.Get("retain_old_password").(bool)
 	if retainPassword {
-		_, err := checkRetainCurrentPasswordSupport(ctx, meta)
+		err := checkRetainCurrentPasswordSupport(ctx, meta)
 		if err != nil {
-			return diag.Errorf("%v", err)
+			return diag.Errorf("cannot use retain_current_password: %v", err)
 		}
 	}
 
