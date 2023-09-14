@@ -313,6 +313,24 @@ func TestAccGrant_roleToUser(t *testing.T) {
 	})
 }
 
+func TestAccGrant_complexRoleGrants(t *testing.T) {
+	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipMariaDB(t)
+			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
+		},
+		Providers:    testAccProviders,
+		CheckDestroy: testAccGrantCheckDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccGrantConfigComplexRoleGrants(dbName),
+			},
+		},
+	})
+}
+
 func prepareTable(dbname string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		ctx := context.Background()
@@ -680,4 +698,47 @@ resource "mysql_grant" "test" {
   roles    = ["${mysql_role.test.name}"]
 }
 `, dbName, dbName, roleName)
+}
+
+func testAccGrantConfigComplexRoleGrants(user string) string {
+	return fmt.Sprintf(`
+	locals {
+		user = "%v"
+		host = "%%"
+	}
+
+	resource "mysql_user" "user" {
+		user = local.user
+		host = local.host
+	}
+
+	resource "mysql_role" "role1" {
+		name = "role1"
+	}
+
+	resource "mysql_role" "role2" {
+		name = "role2"
+	}
+
+	resource "mysql_grant" "adminuser_roles" {
+		user     = mysql_user.user.user
+		host     = mysql_user.user.host
+		database = "*"
+		grant    = true
+		roles    = [mysql_role.role1.name, mysql_role.role2.name]
+	}
+
+	resource "mysql_grant" "role_perms" {
+		role       = mysql_role.role1.name
+		database   = "mysql"
+		privileges = ["SELECT"]
+	}
+
+	resource "mysql_grant" "adminuser_privs" {
+		user     = mysql_user.user.user
+		host     = mysql_user.user.host
+		database   = "*"
+		grant      = true
+		privileges = ["SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "RELOAD", "PROCESS", "REFERENCES", "INDEX", "ALTER", "SHOW DATABASES", "CREATE TEMPORARY TABLES", "LOCK TABLES", "EXECUTE", "REPLICATION SLAVE", "REPLICATION CLIENT", "CREATE VIEW", "SHOW VIEW", "CREATE ROUTINE", "ALTER ROUTINE", "CREATE USER", "EVENT", "TRIGGER"]
+	}`, user)
 }
