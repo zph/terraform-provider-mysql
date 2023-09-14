@@ -245,9 +245,9 @@ func CreateGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 	if d.Get("grant").(bool) {
 		if rolesGranted == 0 {
 			stmtSQL += " WITH GRANT OPTION"
+		} else {
+			stmtSQL += " WITH ADMIN OPTION"
 		}
-		// TODO: consider WITH ADMIN OPTION here.
-		// However, there is no obvious way to revoke it, so not adding it here.
 	}
 
 	log.Println("Executing statement:", stmtSQL)
@@ -431,30 +431,19 @@ func DeleteGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 	}
 
 	roles := d.Get("roles").(*schema.Set)
-	rolesCount := len(roles.List())
-
 	privileges := d.Get("privileges").(*schema.Set)
-
-	if rolesCount == 0 {
-		sqlStatement := fmt.Sprintf("REVOKE GRANT OPTION ON %s.%s FROM %s",
-			database,
-			table,
-			userOrRole)
-
-		log.Printf("[DEBUG] SQL: %s", sqlStatement)
-		_, err = db.ExecContext(ctx, sqlStatement)
-		if err != nil {
-			if !isNonExistingGrant(err) {
-				return diag.Errorf("error revoking GRANT (%s): %s", sqlStatement, err)
-			}
-		}
-	}
+	grantOption := d.Get("grant").(bool)
 
 	whatToRevoke := fmt.Sprintf("ALL ON %s.%s", database, table)
 	if len(roles.List()) > 0 {
 		whatToRevoke = flattenList(roles.List(), "'%s'")
 	} else if len(privileges.List()) > 0 {
 		privilegeList := flattenList(privileges.List(), "%s")
+		if grantOption {
+			// For privilege grant (SELECT or so), we have to revoke GRANT OPTION
+			// for role grant, ADMIN OPTION is revoked when role is revoked.
+			privilegeList = fmt.Sprintf("%v, GRANT OPTION", privilegeList)
+		}
 		whatToRevoke = fmt.Sprintf("%s ON %s.%s", privilegeList, database, table)
 	}
 
@@ -543,8 +532,11 @@ func showGrant(ctx context.Context, db *sql.DB, user, database, table string, gr
 	for _, grant := range allGrants {
 		// We must normalize database as it may contain something like PROCEDURE `asd` or the same without backticks.
 		// TODO: write tests or consider some other way to handle permissions to PROCEDURE/FUNCTION
-		if normalizeDatabase(grant.Database) == normalizeDatabase(database) && grant.Table == table && grant.Grant == grantOption {
-			grants.Privileges = append(grants.Privileges, grant.Privileges...)
+		if grant.Grant == grantOption {
+			if normalizeDatabase(grant.Database) == normalizeDatabase(database) && grant.Table == table {
+				grants.Privileges = append(grants.Privileges, grant.Privileges...)
+			}
+			// Roles don't depend on database / table settings.
 			grants.Roles = append(grants.Roles, grant.Roles...)
 		}
 	}
@@ -571,7 +563,7 @@ func showUserGrants(ctx context.Context, db *sql.DB, user string) ([]*MySQLGrant
 
 	// Ex: GRANT `app_read`@`%`,`app_write`@`%` TO `rw_user1`@`localhost
 	reRole := regexp.MustCompile(`^GRANT (.+) TO`)
-	reGrant := regexp.MustCompile(`\bGRANT OPTION\b`)
+	reGrant := regexp.MustCompile(`\bGRANT OPTION\b|\bADMIN OPTION\b`)
 
 	for rows.Next() {
 		var rawGrant string
