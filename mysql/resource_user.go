@@ -2,15 +2,16 @@ package mysql
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"log"
 	"regexp"
 	"strings"
 
 	"github.com/hashicorp/go-version"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 func resourceUser() *schema.Resource {
@@ -100,8 +101,21 @@ func resourceUser() *schema.Resource {
 				Optional: true,
 				Default:  "NONE",
 			},
+
+			"retain_old_password": {
+				Type:     schema.TypeBool,
+				Optional: true,
+			},
 		},
 	}
+}
+
+func checkRetainCurrentPasswordSupport(ctx context.Context, meta interface{}) error {
+	ver, _ := version.NewVersion("8.0.14")
+	if getVersionFromMeta(ctx, meta).LessThan(ver) {
+		return errors.New("MySQL version must be at least 8.0.14")
+	}
+	return nil
 }
 
 func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -198,6 +212,14 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 		}
 	}
 
+	retainPassword := d.Get("retain_old_password").(bool)
+	if retainPassword {
+		err := checkRetainCurrentPasswordSupport(ctx, meta)
+		if err != nil {
+			return diag.Errorf("cannot use retain_current_password: %v", err)
+		}
+	}
+
 	log.Println("Executing statement:", stmtSQL)
 	_, err = db.ExecContext(ctx, stmtSQL)
 	if err != nil {
@@ -219,14 +241,18 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 	return nil
 }
 
-func getSetPasswordStatement(ctx context.Context, meta interface{}) (string, error) {
+func getSetPasswordStatement(ctx context.Context, meta interface{}, retainPassword bool) (string, error) {
+	if retainPassword {
+		return "ALTER USER ?@? IDENTIFIED BY ? RETAIN CURRENT PASSWORD", nil
+	}
+
 	/* ALTER USER syntax introduced in MySQL 5.7.6 deprecates SET PASSWORD (GH-8230) */
 	ver, _ := version.NewVersion("5.7.6")
 	if getVersionFromMeta(ctx, meta).LessThan(ver) {
 		return "SET PASSWORD FOR ?@? = PASSWORD(?)", nil
-	} else {
-		return "ALTER USER ?@? IDENTIFIED BY ?", nil
 	}
+
+	return "ALTER USER ?@? IDENTIFIED BY ?", nil
 }
 
 func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -270,8 +296,16 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 		newpw = nil
 	}
 
+	retainPassword := d.Get("retain_old_password").(bool)
+	if retainPassword {
+		err := checkRetainCurrentPasswordSupport(ctx, meta)
+		if err != nil {
+			return diag.Errorf("cannot use retain_current_password: %v", err)
+		}
+	}
+
 	if newpw != nil {
-		stmtSQL, err := getSetPasswordStatement(ctx, meta)
+		stmtSQL, err := getSetPasswordStatement(ctx, meta, retainPassword)
 		if err != nil {
 			return diag.Errorf("failed getting change password statement: %v", err)
 		}

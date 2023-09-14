@@ -172,6 +172,28 @@ func testAccPreCheckSkipNotMySQL8(t *testing.T) {
 	}
 }
 
+func testAccPreCheckSkipNotMySQLVersionMin(t *testing.T, minVersion string) {
+	testAccPreCheck(t)
+
+	ctx := context.Background()
+	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
+	if err != nil {
+		t.Fatalf("Cannot connect to DB (SkipNotMySQLVersionMin): %v", err)
+		return
+	}
+
+	currentVersion, err := serverVersion(db)
+	if err != nil {
+		t.Fatalf("Cannot get DB version string (SkipNotMySQLVersionMin): %v", err)
+		return
+	}
+
+	versionMin, _ := version.NewVersion(minVersion)
+	if currentVersion.LessThan(versionMin) {
+		t.Skipf("Skip on MySQL version less than %s", minVersion)
+	}
+}
+
 func testAccPreCheckSkipNotTiDB(t *testing.T) {
 	testAccPreCheck(t)
 

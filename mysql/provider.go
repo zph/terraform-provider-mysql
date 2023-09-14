@@ -339,6 +339,17 @@ func connectToMySQLInternal(ctx context.Context, conf *MySQLConfiguration) (*One
 	if connectionCache[dsn] != nil {
 		return connectionCache[dsn], nil
 	}
+
+	connection, err := createNewConnection(ctx, conf)
+	if err != nil {
+		return nil, fmt.Errorf("could not create new connection: %v", err)
+	}
+
+	connectionCache[dsn] = connection
+	return connectionCache[dsn], nil
+}
+
+func createNewConnection(ctx context.Context, conf *MySQLConfiguration) (*OneConnection, error) {
 	var db *sql.DB
 	var err error
 
@@ -353,7 +364,7 @@ func connectToMySQLInternal(ctx context.Context, conf *MySQLConfiguration) (*One
 	// This is particularly acute when provisioning a server and then immediately
 	// trying to provision a database on it.
 	retryError := resource.RetryContext(ctx, conf.ConnectRetryTimeoutSec, func() *resource.RetryError {
-		db, err = sql.Open(driverName, dsn)
+		db, err = sql.Open(driverName, conf.Config.FormatDSN())
 		if err != nil {
 			if mysqlErrorNumber(err) != 0 || cloudsqlErrorNumber(err) != 0 || ctx.Err() != nil {
 				return resource.NonRetryableError(err)
@@ -384,11 +395,10 @@ func connectToMySQLInternal(ctx context.Context, conf *MySQLConfiguration) (*One
 		return nil, fmt.Errorf("failed running after connect command: %v", err)
 	}
 
-	connectionCache[dsn] = &OneConnection{
+	return &OneConnection{
 		Db:      db,
 		Version: currentVersion,
-	}
-	return connectionCache[dsn], nil
+	}, nil
 }
 
 // 0 == not mysql error or not error at all.

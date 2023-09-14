@@ -231,7 +231,7 @@ func TestAccGrantComplexMySQL8(t *testing.T) {
 			testAccPreCheckSkipTiDB(t)
 			testAccPreCheckSkipRds(t)
 			testAccPreCheckSkipMariaDB(t)
-			testAccPreCheckSkipNotMySQL8(t)
+			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
 		},
 		Providers:    testAccProviders,
 		CheckDestroy: testAccGrantCheckDestroy,
@@ -262,7 +262,7 @@ func TestAccGrant_role(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckSkipRds(t)
-			testAccPreCheckSkipNotMySQL8(t)
+			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
 		},
 		Providers:    testAccProviders,
 		CheckDestroy: testAccGrantCheckDestroy,
@@ -296,7 +296,7 @@ func TestAccGrant_roleToUser(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckSkipRds(t)
-			testAccPreCheckSkipNotMySQL8(t)
+			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
 		},
 		Providers:    testAccProviders,
 		CheckDestroy: testAccGrantCheckDestroy,

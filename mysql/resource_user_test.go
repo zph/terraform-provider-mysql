@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -22,7 +23,7 @@ func TestAccUser_basic(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccUserExists("mysql_user.test"),
 					resource.TestCheckResourceAttr("mysql_user.test", "user", "jdoe"),
-					resource.TestCheckResourceAttr("mysql_user.test", "host", "example.com"),
+					resource.TestCheckResourceAttr("mysql_user.test", "host", "%"),
 					resource.TestCheckResourceAttr("mysql_user.test", "plaintext_password", hashSum("password")),
 					resource.TestCheckResourceAttr("mysql_user.test", "tls_option", "NONE"),
 				),
@@ -42,7 +43,7 @@ func TestAccUser_basic(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccUserExists("mysql_user.test"),
 					resource.TestCheckResourceAttr("mysql_user.test", "user", "jdoe"),
-					resource.TestCheckResourceAttr("mysql_user.test", "host", "example.com"),
+					resource.TestCheckResourceAttr("mysql_user.test", "host", "%"),
 					resource.TestCheckResourceAttr("mysql_user.test", "plaintext_password", hashSum("password2")),
 					resource.TestCheckResourceAttr("mysql_user.test", "tls_option", "NONE"),
 				),
@@ -83,6 +84,81 @@ func TestAccUser_auth(t *testing.T) {
 					resource.TestCheckResourceAttr("mysql_user.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_user.test", "auth_plugin", "mysql_no_login"),
 				),
+			},
+		},
+	})
+}
+
+func TestAccUser_authConnect(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheckSkipTiDB(t)
+			testAccPreCheckSkipMariaDB(t)
+			testAccPreCheckSkipRds(t)
+		},
+		Providers:    testAccProviders,
+		CheckDestroy: testAccUserCheckDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccUserConfig_basic,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserAuthValid("jdoe", "password"),
+				),
+			},
+			{
+				Config: testAccUserConfig_newPass,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserAuthValid("jdoe", "random"),
+				),
+				ExpectError: regexp.MustCompile(`.*Access denied for user 'jdoe'.*`),
+			},
+			{
+				Config: testAccUserConfig_newPass,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserAuthValid("jdoe", "password"),
+				),
+				ExpectError: regexp.MustCompile(`.*Access denied for user 'jdoe'.*`),
+			},
+			{
+				Config: testAccUserConfig_newPass,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserAuthValid("jdoe", "password2"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccUser_authConnectRetainOldPassword(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheckSkipTiDB(t)
+			testAccPreCheckSkipMariaDB(t)
+			testAccPreCheckSkipRds(t)
+			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.14")
+		},
+		Providers:    testAccProviders,
+		CheckDestroy: testAccUserCheckDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccUserConfig_basic_retain_old_password,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserAuthValid("jdoe", "password"),
+				),
+			},
+			{
+				Config: testAccUserConfig_newPass_retain_old_password,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserAuthValid("jdoe", "password"),
+					testAccUserAuthValid("jdoe", "password2"),
+				),
+			},
+			{
+				Config: testAccUserConfig_newNewPass_retain_old_password,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserAuthValid("jdoe", "password"),
+				),
+				ExpectError: regexp.MustCompile(`.*Access denied for user 'jdoe'.*`),
 			},
 		},
 	})
@@ -180,6 +256,24 @@ func testAccUserAuthExists(rn string) resource.TestCheckFunc {
 	}
 }
 
+func testAccUserAuthValid(user string, password string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		userConf := testAccProvider.Meta().(*MySQLConfiguration)
+		userConf.Config.User = user
+		userConf.Config.Passwd = password
+
+		ctx := context.Background()
+		connection, err := createNewConnection(ctx, userConf)
+		if err != nil {
+			return fmt.Errorf("could not create new connection: %v", err)
+		}
+
+		connection.Db.Close()
+
+		return nil
+	}
+}
+
 func testAccUserCheckDestroy(s *terraform.State) error {
 	ctx := context.Background()
 	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
@@ -209,15 +303,15 @@ func testAccUserCheckDestroy(s *terraform.State) error {
 const testAccUserConfig_basic = `
 resource "mysql_user" "test" {
     user = "jdoe"
-    host = "example.com"
+    host = "%"
     plaintext_password = "password"
 }
 `
 
 const testAccUserConfig_ssl = `
 resource "mysql_user" "test" {
-    user = "jdoe"
-    host = "example.com"
+	user = "jdoe"
+	host = "example.com"
 	plaintext_password = "password"
 	tls_option = "SSL"
 }
@@ -226,7 +320,7 @@ resource "mysql_user" "test" {
 const testAccUserConfig_newPass = `
 resource "mysql_user" "test" {
     user = "jdoe"
-    host = "example.com"
+    host = "%"
     plaintext_password = "password2"
 }
 `
@@ -263,5 +357,32 @@ resource "mysql_user" "test" {
 
     # Hash of "password"
     auth_string_hashed = "*2470C0C06DEE42FD1618BB99005ADCA2EC9D1E19"
+}
+`
+
+const testAccUserConfig_basic_retain_old_password = `
+resource "mysql_user" "test" {
+    user = "jdoe"
+    host = "%"
+    plaintext_password = "password"
+    retain_old_password = true
+}
+`
+
+const testAccUserConfig_newPass_retain_old_password = `
+resource "mysql_user" "test" {
+    user = "jdoe"
+    host = "%"
+    plaintext_password = "password2"
+    retain_old_password = true
+}
+`
+
+const testAccUserConfig_newNewPass_retain_old_password = `
+resource "mysql_user" "test" {
+    user = "jdoe"
+    host = "%"
+    plaintext_password = "password3"
+    retain_old_password = true
 }
 `
