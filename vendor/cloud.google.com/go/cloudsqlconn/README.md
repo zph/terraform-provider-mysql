@@ -6,6 +6,7 @@
 
 <h1 align="center">Cloud SQL Go Connector</h1>
 
+[![Open In Codelab][codelab-badge]][codelab]
 [![CI][ci-badge]][ci-build]
 [![Go Reference][pkg-badge]][pkg-docs]
 
@@ -13,9 +14,12 @@
 [ci-build]: https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/actions/workflows/tests.yaml?query=event%3Apush+branch%3Amain
 [pkg-badge]: https://pkg.go.dev/badge/cloud.google.com/go/cloudsqlconn.svg
 [pkg-docs]: https://pkg.go.dev/cloud.google.com/go/cloudsqlconn
+[codelab-badge]: https://img.shields.io/badge/Open%20In%20Codelab-blue?labelColor=grey&style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAyVBMVEX////////////////////////+8/L0oZrrTkHqQzXzlY13yKEPnVgdo2KHzqvw+fX4xMDtWk604MssqWz73NnvcWdKtYHS7eD85+ZowpayncOWapvVS0360MzD5tWW1LZxo/dChfSLaKHfR0FMhe2rY4TyiYBlm/bQ4Pz+7sD7xCPPthRJpkegwvl9q/fn8P7+9+D80VL7vASisCQsoU4spV393YHPwDm40ftNjPX7wBP95qHz9/7/++/b6P3+8tD8zUKIsvj81WJbutStAAAABnRSTlMAIKDw/zDiNY+eAAAA+klEQVR4AbzRRYICMRRF0VB5QLlrO+7uDvvfVKfSv91mnGlunDFWUDh+xJUCE4ocv+JFMZ/jD7zAFPxJYRx/4gz/uGpQKquaDsEwLdv5HrieJriAbwqB/yUII00qA7YpxcmHoKRrJAUSk2QOKLi5vdMk7x7CQ0CF9fgSPFUqlWpN09QyiG1REsugkqs3miW8cTIqHApyrTbedLq9vgzkCoMKGY4gjSdTYTY3F74M0G5VyADCckpWnbd3WG+oaAMdGt7uPj7UfvC2BC2wPIACMspvuzkCp60YPo9/+M328LKHcHiek6EmnRMMAUAw2RPMOASzHsHMSzD7AwCdmyeTDUqFKQAAAABJRU5ErkJggg==
+[codelab]: https://codelabs.developers.google.com/codelabs/cloud-sql-go-connector
 
 The _Cloud SQL Go Connector_ is a Cloud SQL connector designed for use with the
-Go language. Using a Cloud SQL connector provides the following benefits:
+Go language. Using a Cloud SQL connector provides a native alternative to the
+[Cloud SQL Auth Proxy][] while providing the following benefits:
 
 * **IAM Authorization:** uses IAM permissions to control who/what can connect to
   your Cloud SQL instances
@@ -28,9 +32,12 @@ Go language. Using a Cloud SQL connector provides the following benefits:
   [Cloud SQL’s automatic IAM DB AuthN][iam-db-authn] feature.
 
 [iam-db-authn]: https://cloud.google.com/sql/docs/postgres/authentication
+[Cloud SQL Auth Proxy]: https://cloud.google.com/sql/docs/postgres/sql-proxy
 
 For users migrating from the Cloud SQL Proxy drivers, see the [migration
 guide](./migration-guide.md).
+
+For a quick example, try out the Go Connector in a [Codelab][codelab].
 
 ## Installation
 
@@ -272,6 +279,53 @@ d, err := cloudsqlconn.NewDialer(
 )
 ```
 
+### Automatic IAM Database Authentication
+
+Connections using [Automatic IAM database authentication][] are supported when
+using Postgres or MySQL drivers.
+
+Make sure to [configure your Cloud SQL Instance to allow IAM authentication][configure-iam-authn]
+and [add an IAM database user][add-iam-user].
+
+A `Dialer` can be configured to connect to a Cloud SQL instance using
+automatic IAM database authentication with the `WithIAMAuthN` Option
+(recommended) or the `WithDialIAMAuthN` DialOption.
+
+```go
+d, err := cloudsqlconn.NewDialer(ctx, cloudsqlconn.WithIAMAuthN())
+```
+
+When configuring the DSN for IAM authentication, the `password` field can be
+omitted and the `user` field should be formatted as follows:
+> Postgres: For an IAM user account, this is the user's email address.
+> For a service account, it is the service account's email without the
+> `.gserviceaccount.com` domain suffix.
+>
+> MySQL: For an IAM user account, this is the user's email address, without
+> the `@` or domain name. For example, for `test-user@gmail.com`, set the
+> `user` field to `test-user`. For a service account, this is the service
+> account's email address without the `@project-id.iam.gserviceaccount.com`
+> suffix.
+
+Example DSNs using the `test-sa@test-project.iam.gserviceaccount.com`
+service account to connect can be found below.
+
+**Postgres**:
+
+```go
+dsn := "user=test-sa@test-project.iam dbname=mydb sslmode=disable"
+```
+
+**MySQL**:
+
+```go
+dsn := "user=test-sa dbname=mydb sslmode=disable"
+```
+
+[Automatic IAM database authentication]: https://cloud.google.com/sql/docs/postgres/authentication#automatic
+[configure-iam-authn]: https://cloud.google.com/sql/docs/postgres/create-edit-iam-instances#configure-iam-db-instance
+[add-iam-user]: https://cloud.google.com/sql/docs/postgres/create-manage-iam-users#creating-a-database-user
+
 ### Enabling Metrics and Tracing
 
 This library includes support for metrics and tracing using [OpenCensus][].
@@ -325,6 +379,50 @@ func main() {
     // ...
 }
 ```
+
+As OpenTelemetry has now reached feature parity with OpenCensus, the migration
+from OpenCensus to OpenTelemetry is strongly encouraged.
+[OpenTelemetry bridge](https://github.com/open-telemetry/opentelemetry-go/tree/main/bridge/opencensus)
+can be leveraged to migrate to OpenTelemetry without the need of replacing the
+OpenCensus APIs in this library. Example code is shown below for migrating an 
+application using the OpenTelemetry bridge for traces.
+
+```golang
+import (
+	texporter "github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace"
+	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/bridge/opencensus"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"google.golang.org/api/option"
+)
+
+func main() {
+	// trace.AlwaysSample() is expensive. Replacing it with your own
+	// sampler for production environments is recommended.
+	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
+
+	exporter, err := texporter.New(
+		texporter.WithTraceClientOptions([]option.ClientOption{option.WithTelemetryDisabled()}),
+		texporter.WithProjectID("mycoolproject"),
+	)
+	if err != nil {
+		// Handle error
+	}
+
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	otel.SetTracerProvider(tp)
+	tracer := tp.Tracer("Cloud SQL Go Connector Trace")
+	trace.DefaultTracer = opencensus.NewTracer(tracer)
+
+	// Use cloudsqlconn as usual.
+	// ...
+}
+```
+
+A known OpenTelemetry issue has been reported [here](https://github.com/googleapis/google-cloud-go/issues/7100).
+It shouldn't impact database operations.
+
 [OpenCensus]: https://opencensus.io/
 [exporter]: https://opencensus.io/exporters/
 [Cloud Monitoring]: https://cloud.google.com/monitoring
@@ -348,13 +446,15 @@ supported for 1 year.
 **Unsupported** - Any major version that has been deprecated for >=1 year is
 considered unsupported.
 
-## Supported Go Versions
+### Supported Go Versions
 
-We test and support at minimum, the latest three Go versions. Changes in 
-supported Go versions will be considered a minor change, and will be listed in
-the release notes.
+We follow the [Go Version Support Policy][go-policy] used by Google Cloud
+Libraries for Go.
+
+[go-policy]: https://github.com/googleapis/google-cloud-go#go-versions-supported
 
 ### Release cadence
+
 This project aims for a release on at least a monthly basis. If no new features
 or fixes have been added, a new PATCH version with the latest dependencies is
 released.

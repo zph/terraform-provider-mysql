@@ -1,11 +1,11 @@
 // Copyright 2020 Google LLC
-
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-
+//
 //     https://www.apache.org/licenses/LICENSE-2.0
-
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -34,14 +34,17 @@ import (
 type Option func(d *dialerConfig)
 
 type dialerConfig struct {
-	rsaKey              *rsa.PrivateKey
-	sqladminOpts        []apiopt.ClientOption
-	dialOpts            []DialOption
-	dialFunc            func(ctx context.Context, network, addr string) (net.Conn, error)
-	refreshTimeout      time.Duration
-	useIAMAuthN         bool
-	iamLoginTokenSource oauth2.TokenSource
-	useragents          []string
+	rsaKey                 *rsa.PrivateKey
+	sqladminOpts           []apiopt.ClientOption
+	dialOpts               []DialOption
+	dialFunc               func(ctx context.Context, network, addr string) (net.Conn, error)
+	refreshTimeout         time.Duration
+	useIAMAuthN            bool
+	iamLoginTokenSource    oauth2.TokenSource
+	useragents             []string
+	setCredentials         bool
+	setTokenSource         bool
+	setIAMAuthNTokenSource bool
 	// err tracks any dialer options that may have failed.
 	err error
 }
@@ -88,6 +91,7 @@ func WithCredentialsJSON(b []byte) Option {
 			return
 		}
 		d.iamLoginTokenSource = scoped.TokenSource
+		d.setCredentials = true
 	}
 }
 
@@ -114,7 +118,8 @@ func WithDefaultDialOptions(opts ...DialOption) Option {
 // WithTokenSource should not be used with WithIAMAuthNTokenSources.
 func WithTokenSource(s oauth2.TokenSource) Option {
 	return func(d *dialerConfig) {
-		d.iamLoginTokenSource = s
+		d.setTokenSource = true
+		d.setCredentials = true
 		d.sqladminOpts = append(d.sqladminOpts, apiopt.WithTokenSource(s))
 	}
 }
@@ -135,6 +140,8 @@ func WithTokenSource(s oauth2.TokenSource) Option {
 // not be used with WithTokenSource.
 func WithIAMAuthNTokenSources(apiTS, iamLoginTS oauth2.TokenSource) Option {
 	return func(d *dialerConfig) {
+		d.setIAMAuthNTokenSource = true
+		d.setCredentials = true
 		d.iamLoginTokenSource = iamLoginTS
 		d.sqladminOpts = append(d.sqladminOpts, apiopt.WithTokenSource(apiTS))
 	}
@@ -147,7 +154,8 @@ func WithRSAKey(k *rsa.PrivateKey) Option {
 	}
 }
 
-// WithRefreshTimeout returns an Option that sets a timeout on refresh operations. Defaults to 30s.
+// WithRefreshTimeout returns an Option that sets a timeout on refresh
+// operations. Defaults to 60s.
 func WithRefreshTimeout(t time.Duration) Option {
 	return func(d *dialerConfig) {
 		d.refreshTimeout = t
@@ -180,7 +188,8 @@ func WithQuotaProject(p string) Option {
 
 // WithDialFunc configures the function used to connect to the address on the
 // named network. This option is generally unnecessary except for advanced
-// use-cases.
+// use-cases. The function is used for all invocations of Dial. To configure
+// a dial function per individual calls to dial, use WithOneOffDialFunc.
 func WithDialFunc(dial func(ctx context.Context, network, addr string) (net.Conn, error)) Option {
 	return func(d *dialerConfig) {
 		d.dialFunc = dial
@@ -201,42 +210,58 @@ func WithIAMAuthN() Option {
 }
 
 // A DialOption is an option for configuring how a Dialer's Dial call is executed.
-type DialOption func(d *dialCfg)
+type DialOption func(d *dialConfig)
 
-type dialCfg struct {
-	tcpKeepAlive time.Duration
+type dialConfig struct {
+	dialFunc     func(ctx context.Context, network, addr string) (net.Conn, error)
 	ipType       string
-
-	refreshCfg cloudsql.RefreshCfg
+	tcpKeepAlive time.Duration
+	useIAMAuthN  bool
 }
 
 // DialOptions turns a list of DialOption instances into an DialOption.
 func DialOptions(opts ...DialOption) DialOption {
-	return func(cfg *dialCfg) {
+	return func(cfg *dialConfig) {
 		for _, opt := range opts {
 			opt(cfg)
 		}
 	}
 }
 
+// WithOneOffDialFunc configures the dial function on a one-off basis for an
+// individual call to Dial. To configure a dial function across all invocations
+// of Dial, use WithDialFunc.
+func WithOneOffDialFunc(dial func(ctx context.Context, network, addr string) (net.Conn, error)) DialOption {
+	return func(c *dialConfig) {
+		c.dialFunc = dial
+	}
+}
+
 // WithTCPKeepAlive returns a DialOption that specifies the tcp keep alive period for the connection returned by Dial.
 func WithTCPKeepAlive(d time.Duration) DialOption {
-	return func(cfg *dialCfg) {
+	return func(cfg *dialConfig) {
 		cfg.tcpKeepAlive = d
 	}
 }
 
 // WithPublicIP returns a DialOption that specifies a public IP will be used to connect.
 func WithPublicIP() DialOption {
-	return func(cfg *dialCfg) {
+	return func(cfg *dialConfig) {
 		cfg.ipType = cloudsql.PublicIP
 	}
 }
 
 // WithPrivateIP returns a DialOption that specifies a private IP (VPC) will be used to connect.
 func WithPrivateIP() DialOption {
-	return func(cfg *dialCfg) {
+	return func(cfg *dialConfig) {
 		cfg.ipType = cloudsql.PrivateIP
+	}
+}
+
+// WithPSC returns a DialOption that specifies a PSC endpoint will be used to connect.
+func WithPSC() DialOption {
+	return func(cfg *dialConfig) {
+		cfg.ipType = cloudsql.PSC
 	}
 }
 
@@ -244,20 +269,20 @@ func WithPrivateIP() DialOption {
 // otherwise falls back to private IP. This option is present for backwards
 // compatibility only and is not recommended for use in production.
 func WithAutoIP() DialOption {
-	return func(cfg *dialCfg) {
+	return func(cfg *dialConfig) {
 		cfg.ipType = cloudsql.AutoIP
 	}
 }
 
 // WithDialIAMAuthN allows you to enable or disable IAM Authentication for this
-// instance as descibed in the documentation for WithIAMAuthN. This value will
-// overide the Dialer-level configuration set with WithIAMAuthN.
+// instance as described in the documentation for WithIAMAuthN. This value will
+// override the Dialer-level configuration set with WithIAMAuthN.
 //
 // WARNING: This DialOption can cause a new Refresh operation to be triggered.
 // Toggling this option on or off between Dials may cause increased API usage
 // and/or delayed connection attempts.
 func WithDialIAMAuthN(b bool) DialOption {
-	return func(cfg *dialCfg) {
-		cfg.refreshCfg.UseIAMAuthN = b
+	return func(cfg *dialConfig) {
+		cfg.useIAMAuthN = b
 	}
 }
