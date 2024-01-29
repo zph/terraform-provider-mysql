@@ -24,6 +24,7 @@ import (
 
 	"golang.org/x/net/proxy"
 
+	cloudsqlconn "cloud.google.com/go/cloudsqlconn"
 	cloudsql "cloud.google.com/go/cloudsqlconn/mysql/mysql"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	azidentity "github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -137,6 +138,12 @@ func Provider() *schema.Provider {
 				Optional: true,
 				Default:  300,
 			},
+
+			"iam_database_authentication": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+			},
 		},
 
 		DataSourcesMap: map[string]*schema.Resource{
@@ -166,6 +173,7 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	var allowClearTextPasswords = authPlugin == cleartextPasswords
 	var allowNativePasswords = authPlugin == nativePasswords
 	var password = d.Get("password").(string)
+	var iam_auth = d.Get("iam_database_authentication").(bool)
 
 	proto := "tcp"
 	if len(endpoint) > 0 && endpoint[0] == '/' {
@@ -173,10 +181,16 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	} else if strings.HasPrefix(endpoint, "cloudsql://") {
 		proto = "cloudsql"
 		endpoint = strings.ReplaceAll(endpoint, "cloudsql://", "")
-		_, err := cloudsql.RegisterDriver("cloudsql")
+		var err error
+		if iam_auth {
+			_, err = cloudsql.RegisterDriver("cloudsql", cloudsqlconn.WithIAMAuthN())
+		} else {
+			_, err = cloudsql.RegisterDriver("cloudsql")
+		}
 		if err != nil {
 			return nil, diag.Errorf("failed to register driver %v", err)
 		}
+
 	} else if strings.HasPrefix(endpoint, "azure://") {
 		// Azure AD does not support native password authentication but go-sql-driver/mysql
 		// has to be configured only with ?allowClearTextPasswords=true not with allowNativePasswords=false in this case
