@@ -708,9 +708,7 @@ func ImportGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 		}
 	}
 
-	// No match found
-	results := []*schema.ResourceData{}
-	return results, nil
+	return nil, fmt.Errorf("Failed to find the grant to import: %v -- found %v", userHostDatabaseTable, grants)
 }
 
 // setDataFromGrant copies the values from MySQLGrant to the schema.ResourceData
@@ -749,6 +747,12 @@ func setDataFromGrant(grant MySQLGrant, d *schema.ResourceData) *schema.Resource
 		}
 	}
 
+	// We need to use the raw pointer to access Table / Database without wrapping them with backticks.
+	if tablePrivGrant, isTablePriv := grant.(*TablePrivilegeGrant); isTablePriv {
+		d.Set("table", tablePrivGrant.Table)
+		d.Set("database", tablePrivGrant.Database)
+	}
+
 	// This is a bit of a hack, since we don't have a way to distingush between users and roles
 	// from the grant itself. We can only infer it from the schema.
 	userOrRole := grant.GetUserOrRole()
@@ -758,6 +762,9 @@ func setDataFromGrant(grant MySQLGrant, d *schema.ResourceData) *schema.Resource
 		d.Set("user", userOrRole.Name)
 		d.Set("host", userOrRole.Host)
 	}
+
+	// This needs to happen for import to work.
+	d.SetId(grant.GetId())
 
 	return d
 }

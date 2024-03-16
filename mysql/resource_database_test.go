@@ -25,6 +25,13 @@ func TestAccDatabase(t *testing.T) {
 					"mysql_database.test", dbName,
 				),
 			},
+			{
+				Config:            testAccDatabaseConfig_basic(dbName),
+				ResourceName:      "mysql_database.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateId:     dbName,
+			},
 		},
 	})
 }
