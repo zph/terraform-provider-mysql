@@ -16,6 +16,7 @@ import (
 
 func TestAccGrant(t *testing.T) {
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
+	userName := fmt.Sprintf("jdoe-%s", dbName)
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckSkipRds(t) },
 		Providers:    testAccProviders,
@@ -25,7 +26,7 @@ func TestAccGrant(t *testing.T) {
 				Config: testAccGrantConfigBasic(dbName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccPrivilege("mysql_grant.test", "SELECT", true, false),
-					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
+					resource.TestCheckResourceAttr("mysql_grant.test", "user", userName),
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
 					resource.TestCheckResourceAttr("mysql_grant.test", "table", "*"),
@@ -35,10 +36,17 @@ func TestAccGrant(t *testing.T) {
 				Config: testAccGrantConfigBasic(dbName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccPrivilege("mysql_grant.test", "SELECT", true, false),
-					resource.TestCheckResourceAttr("mysql_grant.test", "user", fmt.Sprintf("jdoe-%s", dbName)),
+					resource.TestCheckResourceAttr("mysql_grant.test", "user", userName),
 					resource.TestCheckResourceAttr("mysql_grant.test", "host", "example.com"),
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
 				),
+			},
+			{
+				Config:            testAccGrantConfigBasic(dbName),
+				ResourceName:      "mysql_grant.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateId:     fmt.Sprintf("%v@%v@%v@%v", userName, "example.com", dbName, "*"),
 			},
 		},
 	})
@@ -265,6 +273,17 @@ func TestAccGrantComplex(t *testing.T) {
 					resource.TestCheckResourceAttr("mysql_grant.test", "database", dbName),
 					resource.TestCheckResourceAttr("mysql_grant.test", "table", "tbl"),
 				),
+			},
+			// Test import with grant option
+			{
+				Config:            testAccGrantConfigBasic(dbName),
+				ResourceName:      "mysql_grant.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				// TF (incorrectly) compares items directly without any kind of suppress function.
+				// So ALL should be "ALL PRIVILEGES". To avoid the issues, we'll ignore that here.
+				ImportStateVerifyIgnore: []string{"privileges.0"},
+				ImportStateId:           fmt.Sprintf("%v@%v@%v@%v@", fmt.Sprintf("jdoe-%s", dbName), "example.com", dbName, "tbl"),
 			},
 			// Finally, revoke all privileges
 			{
