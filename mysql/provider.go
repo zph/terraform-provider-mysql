@@ -306,6 +306,14 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		allowClearTextPasswords = true
 		azCredential, err := azidentity.NewDefaultAzureCredential(nil)
 		endpoint = strings.ReplaceAll(endpoint, "azure://", "")
+		azScope := "https://ossrdbms-aad.database.windows.net"
+		if os.Getenv("ARM_ENVIRONMENT") == "china" {
+			azScope = "https://ossrdbms-aad.database.chinacloudapi.cn"
+		} else if os.Getenv("ARM_ENVIRONMENT") == "german" {
+			azScope = "https://ossrdbms-aad.database.chinacloudapi.de"
+		} else if os.Getenv("ARM_ENVIRONMENT") == "usgovernment" {
+			azScope = "https://ossrdbms-aad.database.usgovcloudapi.net"
+		}
 
 		if err != nil {
 			return nil, diag.Errorf("failed to create Azure credential %v", err)
@@ -313,7 +321,7 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 
 		azToken, err := azCredential.GetToken(
 			ctx,
-			policy.TokenRequestOptions{Scopes: []string{"https://ossrdbms-aad.database.windows.net/.default"}},
+			policy.TokenRequestOptions{Scopes: []string{azScope + "/.default"}},
 		)
 
 		if err != nil {
