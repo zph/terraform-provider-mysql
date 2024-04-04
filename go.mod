@@ -1,4 +1,4 @@
-module github.com/terraform-providers/terraform-provider-mysql
+module github.com/petoju/terraform-provider-mysql/v3
 
 require (
 	cloud.google.com/go/cloudsqlconn v1.6.0
@@ -86,4 +86,4 @@ require (
 	google.golang.org/protobuf v1.33.0 // indirect
 )
 
-go 1.20
+go 1.21
