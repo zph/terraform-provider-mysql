@@ -33,19 +33,20 @@ provider "mysql" {
 Building The Provider
 ---------------------
 
-Clone repository to: `$GOPATH/src/github.com/terraform-providers/terraform-provider-mysql`
-
-```sh
-$ mkdir -p $GOPATH/src/github.com/terraform-providers; cd $GOPATH/src/github.com/terraform-providers
-$ git clone git@github.com:terraform-providers/terraform-provider-mysql
+If you want to reproduce a build (to verify my build confirms to sources),
+download the provider of any version first and find the correct go version:
+```
+egrep -a -o 'go1[0-9\.]+' path_to_the_provider_binary
 ```
 
-Enter the provider directory and build the provider
-
-```sh
-$ cd $GOPATH/src/github.com/terraform-providers/terraform-provider-mysql
-$ make build
+Clone the repository anywhere. Use `goreleaser` to build the packages for all architectures:
 ```
+goreleaser build --clean
+```
+
+Files in dist should match whatever is provided. If they don't, consider reading
+https://words.filippo.io/reproducing-go-binaries-byte-by-byte/ or open an issue here.
+
 
 Using the provider
 ----------------------
