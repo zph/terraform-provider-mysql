@@ -29,6 +29,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"cloud.google.com/go/cloudsqlconn/debug"
 	"cloud.google.com/go/cloudsqlconn/errtype"
 	"cloud.google.com/go/cloudsqlconn/instance"
 	"cloud.google.com/go/cloudsqlconn/internal/cloudsql"
@@ -52,6 +53,9 @@ const (
 )
 
 var (
+	// ErrDialerClosed is used when a caller invokes Dial after closing the
+	// Dialer.
+	ErrDialerClosed = errors.New("cloudsqlconn: dialer is closed")
 	// versionString indicates the version of this library.
 	//go:embed version.txt
 	versionString string
@@ -71,27 +75,40 @@ func getDefaultKeys() (*rsa.PrivateKey, error) {
 }
 
 type connectionInfoCache interface {
-	OpenConns() *uint64
-
-	ConnectInfo(context.Context, string) (string, *tls.Config, error)
-	InstanceEngineVersion(context.Context) (string, error)
+	ConnectionInfo(context.Context) (cloudsql.ConnectionInfo, error)
 	UpdateRefresh(*bool)
 	ForceRefresh()
 	io.Closer
+}
+
+// monitoredCache is a wrapper around a connectionInfoCache that tracks the
+// number of connections to the associated instance.
+type monitoredCache struct {
+	openConns uint64
+
+	connectionInfoCache
 }
 
 // A Dialer is used to create connections to Cloud SQL instances.
 //
 // Use NewDialer to initialize a Dialer.
 type Dialer struct {
-	lock sync.RWMutex
-	// instances map connection names (e.g., my-project:us-central1:my-instance)
-	// to *cloudsql.Instance types.
-	instances      map[instance.ConnName]connectionInfoCache
+	lock           sync.RWMutex
+	cache          map[instance.ConnName]monitoredCache
 	key            *rsa.PrivateKey
 	refreshTimeout time.Duration
+	// closed reports if the dialer has been closed.
+	closed chan struct{}
 
 	sqladmin *sqladmin.Service
+	logger   debug.Logger
+
+	// lazyRefresh determines what kind of caching is used for ephemeral
+	// certificates. When lazyRefresh is true, the dialer will use a lazy
+	// cache, refresh certificates only when a connection attempt needs a fresh
+	// certificate. Otherwise, a refresh ahead cache will be used. The refresh
+	// ahead cache assumes a background goroutine may run consistently.
+	lazyRefresh bool
 
 	// defaultDialConfig holds the constructor level DialOptions, so that it
 	// can be copied and mutated by the Dial function.
@@ -114,6 +131,10 @@ var (
 	errUseIAMTokenSource = errors.New("use WithIAMAuthNTokenSources instead of WithTokenSource be used when IAM AuthN is enabled")
 )
 
+type nullLogger struct{}
+
+func (nullLogger) Debugf(_ string, _ ...interface{}) {}
+
 // NewDialer creates a new Dialer.
 //
 // Initial calls to NewDialer make take longer than normal because generation of an
@@ -121,9 +142,11 @@ var (
 // RSA keypair is generated will be faster.
 func NewDialer(ctx context.Context, opts ...Option) (*Dialer, error) {
 	cfg := &dialerConfig{
-		refreshTimeout: cloudsql.RefreshTimeout,
-		dialFunc:       proxy.Dial,
-		useragents:     []string{userAgent},
+		refreshTimeout:  cloudsql.RefreshTimeout,
+		dialFunc:        proxy.Dial,
+		logger:          nullLogger{},
+		useragents:      []string{userAgent},
+		serviceUniverse: "googleapis.com",
 	}
 	for _, opt := range opts {
 		opt(cfg)
@@ -144,11 +167,16 @@ func NewDialer(ctx context.Context, opts ...Option) (*Dialer, error) {
 	// WithTokenSource or implicitly with WithCredentialsJSON etc., then use the
 	// default token source.
 	if !cfg.setCredentials {
-		ts, err := google.DefaultTokenSource(ctx, sqladmin.SqlserviceAdminScope)
+		c, err := google.FindDefaultCredentials(ctx, sqladmin.SqlserviceAdminScope)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create token source: %v", err)
+			return nil, fmt.Errorf("failed to create default credentials: %v", err)
 		}
-		cfg.sqladminOpts = append(cfg.sqladminOpts, option.WithTokenSource(ts))
+		ud, err := c.GetUniverseDomain()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get universe domain: %v", err)
+		}
+		cfg.credentialsUniverse = ud
+		cfg.sqladminOpts = append(cfg.sqladminOpts, option.WithTokenSource(c.TokenSource))
 		scoped, err := google.DefaultTokenSource(ctx, iamLoginScope)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create scoped token source: %v", err)
@@ -162,6 +190,22 @@ func NewDialer(ctx context.Context, opts ...Option) (*Dialer, error) {
 			return nil, fmt.Errorf("failed to generate RSA keys: %v", err)
 		}
 		cfg.rsaKey = key
+	}
+
+	if cfg.setUniverseDomain && cfg.setAdminAPIEndpoint {
+		return nil, errors.New(
+			"can not use WithAdminAPIEndpoint and WithUniverseDomain Options together, " +
+				"use WithAdminAPIEndpoint (it already contains the universe domain)",
+		)
+	}
+
+	if cfg.credentialsUniverse != "" && cfg.serviceUniverse != "" {
+		if cfg.credentialsUniverse != cfg.serviceUniverse {
+			return nil, fmt.Errorf(
+				"the configured service universe domain (%s) does not match the credential universe domain (%s)",
+				cfg.serviceUniverse, cfg.credentialsUniverse,
+			)
+		}
 	}
 
 	client, err := sqladmin.NewService(ctx, cfg.sqladminOpts...)
@@ -182,10 +226,13 @@ func NewDialer(ctx context.Context, opts ...Option) (*Dialer, error) {
 		return nil, err
 	}
 	d := &Dialer{
-		instances:         make(map[instance.ConnName]connectionInfoCache),
+		closed:            make(chan struct{}),
+		cache:             make(map[instance.ConnName]monitoredCache),
+		lazyRefresh:       cfg.lazyRefresh,
 		key:               cfg.rsaKey,
 		refreshTimeout:    cfg.refreshTimeout,
 		sqladmin:          client,
+		logger:            cfg.logger,
 		defaultDialConfig: dc,
 		dialerID:          uuid.New().String(),
 		iamTokenSource:    cfg.iamLoginTokenSource,
@@ -198,6 +245,11 @@ func NewDialer(ctx context.Context, opts ...Option) (*Dialer, error) {
 // icn argument must be the instance's connection name, which is in the format
 // "project-name:region:instance-name".
 func (d *Dialer) Dial(ctx context.Context, icn string, opts ...DialOption) (conn net.Conn, err error) {
+	select {
+	case <-d.closed:
+		return nil, ErrDialerClosed
+	default:
+	}
 	startTime := time.Now()
 	var endDial trace.EndSpanFunc
 	ctx, endDial = trace.StartSpan(ctx, "cloud.google.com/go/cloudsqlconn.Dial",
@@ -220,14 +272,15 @@ func (d *Dialer) Dial(ctx context.Context, icn string, opts ...DialOption) (conn
 
 	var endInfo trace.EndSpanFunc
 	ctx, endInfo = trace.StartSpan(ctx, "cloud.google.com/go/cloudsqlconn/internal.InstanceInfo")
-	i := d.instance(cn, &cfg.useIAMAuthN)
-	addr, tlsConfig, err := i.ConnectInfo(ctx, cfg.ipType)
+	c := d.connectionInfoCache(cn, &cfg.useIAMAuthN)
+	ci, err := c.ConnectionInfo(ctx)
 	if err != nil {
 		d.lock.Lock()
 		defer d.lock.Unlock()
+		d.logger.Debugf("[%v] Removing connection info from cache", cn.String())
 		// Stop all background refreshes
-		i.Close()
-		delete(d.instances, cn)
+		c.Close()
+		delete(d.cache, cn)
 		endInfo(err)
 		return nil, err
 	}
@@ -238,16 +291,18 @@ func (d *Dialer) Dial(ctx context.Context, icn string, opts ...DialOption) (conn
 	// The TLS handshake will not fail on an expired client certificate. It's
 	// not until the first read where the client cert error will be surfaced.
 	// So check that the certificate is valid before proceeding.
-	if invalidClientCert(tlsConfig) {
-		i.ForceRefresh()
+	if !validClientCert(cn, d.logger, ci.Expiration) {
+		d.logger.Debugf("[%v] Refreshing certificate now", cn.String())
+		c.ForceRefresh()
 		// Block on refreshed connection info
-		addr, tlsConfig, err = i.ConnectInfo(ctx, cfg.ipType)
+		ci, err = c.ConnectionInfo(ctx)
 		if err != nil {
 			d.lock.Lock()
 			defer d.lock.Unlock()
+			d.logger.Debugf("[%v] Removing connection info from cache", cn.String())
 			// Stop all background refreshes
-			i.Close()
-			delete(d.instances, cn)
+			c.Close()
+			delete(d.cache, cn)
 			return nil, err
 		}
 	}
@@ -255,15 +310,21 @@ func (d *Dialer) Dial(ctx context.Context, icn string, opts ...DialOption) (conn
 	var connectEnd trace.EndSpanFunc
 	ctx, connectEnd = trace.StartSpan(ctx, "cloud.google.com/go/cloudsqlconn/internal.Connect")
 	defer func() { connectEnd(err) }()
+	addr, err := ci.Addr(cfg.ipType)
+	if err != nil {
+		return nil, err
+	}
 	addr = net.JoinHostPort(addr, serverProxyPort)
 	f := d.dialFunc
 	if cfg.dialFunc != nil {
 		f = cfg.dialFunc
 	}
+	d.logger.Debugf("[%v] Dialing %v", cn.String(), addr)
 	conn, err = f(ctx, "tcp", addr)
 	if err != nil {
+		d.logger.Debugf("[%v] Dialing %v failed: %v", cn.String(), addr, err)
 		// refresh the instance info in case it caused the connection failure
-		i.ForceRefresh()
+		c.ForceRefresh()
 		return nil, errtype.NewDialError("failed to dial", cn.String(), err)
 	}
 	if c, ok := conn.(*net.TCPConn); ok {
@@ -275,38 +336,47 @@ func (d *Dialer) Dial(ctx context.Context, icn string, opts ...DialOption) (conn
 		}
 	}
 
-	tlsConn := tls.Client(conn, tlsConfig)
-	if err := tlsConn.HandshakeContext(ctx); err != nil {
+	tlsConn := tls.Client(conn, ci.TLSConfig())
+	err = tlsConn.HandshakeContext(ctx)
+	if err != nil {
+		d.logger.Debugf("[%v] TLS handshake failed: %v", cn.String(), err)
 		// refresh the instance info in case it caused the handshake failure
-		i.ForceRefresh()
+		c.ForceRefresh()
 		_ = tlsConn.Close() // best effort close attempt
 		return nil, errtype.NewDialError("handshake failed", cn.String(), err)
 	}
 
 	latency := time.Since(startTime).Milliseconds()
 	go func() {
-		n := atomic.AddUint64(i.OpenConns(), 1)
+		n := atomic.AddUint64(&c.openConns, 1)
 		trace.RecordOpenConnections(ctx, int64(n), d.dialerID, cn.String())
 		trace.RecordDialLatency(ctx, icn, d.dialerID, latency)
 	}()
 
 	return newInstrumentedConn(tlsConn, func() {
-		n := atomic.AddUint64(i.OpenConns(), ^uint64(0))
+		n := atomic.AddUint64(&c.openConns, ^uint64(0))
 		trace.RecordOpenConnections(context.Background(), int64(n), d.dialerID, cn.String())
 	}), nil
 }
 
-func invalidClientCert(c *tls.Config) bool {
-	// The following conditions should be impossible (no certs, nil leaf), but
-	// just in case there's an unknown edge case, check assumptions before
-	// proceeding.
-	if len(c.Certificates) == 0 {
-		return true
-	}
-	if c.Certificates[0].Leaf == nil {
-		return true
-	}
-	return time.Now().After(c.Certificates[0].Leaf.NotAfter)
+// validClientCert checks that the ephemeral client certificate retrieved from
+// the cache is unexpired. The time comparisons strip the monotonic clock value
+// to ensure an accurate result, even after laptop sleep.
+func validClientCert(cn instance.ConnName, l debug.Logger, expiration time.Time) bool {
+	// Use UTC() to strip monotonic clock value to guard against inaccurate
+	// comparisons, especially after laptop sleep.
+	// See the comments on the monotonic clock in the Go documentation for
+	// details: https://pkg.go.dev/time#hdr-Monotonic_Clocks
+	now := time.Now().UTC()
+	valid := expiration.UTC().After(now)
+	l.Debugf(
+		"[%v] Now = %v, Current cert expiration = %v",
+		cn.String(),
+		now.Format(time.RFC3339),
+		expiration.UTC().Format(time.RFC3339),
+	)
+	l.Debugf("[%v] Cert is valid = %v", cn.String(), valid)
+	return valid
 }
 
 // EngineVersion returns the engine type and version for the instance
@@ -318,12 +388,12 @@ func (d *Dialer) EngineVersion(ctx context.Context, icn string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	i := d.instance(cn, nil)
-	e, err := i.InstanceEngineVersion(ctx)
+	i := d.connectionInfoCache(cn, nil)
+	ci, err := i.ConnectionInfo(ctx)
 	if err != nil {
 		return "", err
 	}
-	return e, nil
+	return ci.DBVersion, nil
 }
 
 // Warmup starts the background refresh necessary to connect to the instance.
@@ -338,7 +408,7 @@ func (d *Dialer) Warmup(_ context.Context, icn string, opts ...DialOption) error
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	_ = d.instance(cn, &cfg.useIAMAuthN)
+	_ = d.connectionInfoCache(cn, &cfg.useIAMAuthN)
 	return nil
 }
 
@@ -373,38 +443,65 @@ func (i *instrumentedConn) Close() error {
 // needed to connect. Additional dial operations may succeed until the information
 // expires.
 func (d *Dialer) Close() error {
+	// Check if Close has already been called.
+	select {
+	case <-d.closed:
+		return nil
+	default:
+	}
+	close(d.closed)
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	for _, i := range d.instances {
+	for _, i := range d.cache {
 		i.Close()
 	}
 	return nil
 }
 
-// instance is a helper function for returning the appropriate instance object
-// in a threadsafe way. It will create a new instance object, modify the
-// existing one, or leave it unchanged as needed.
-func (d *Dialer) instance(cn instance.ConnName, useIAMAuthN *bool) connectionInfoCache {
+// connectionInfoCache is a helper function for returning the appropriate
+// connection info Cache in a threadsafe way. It will create a new cache,
+// modify the existing one, or leave it unchanged as needed.
+func (d *Dialer) connectionInfoCache(
+	cn instance.ConnName, useIAMAuthN *bool,
+) monitoredCache {
 	d.lock.RLock()
-	i, ok := d.instances[cn]
+	c, ok := d.cache[cn]
 	d.lock.RUnlock()
 	if !ok {
 		d.lock.Lock()
 		defer d.lock.Unlock()
 		// Recheck to ensure instance wasn't created or changed between locks
-		i, ok = d.instances[cn]
+		c, ok = d.cache[cn]
 		if !ok {
 			var useIAMAuthNDial bool
 			if useIAMAuthN != nil {
 				useIAMAuthNDial = *useIAMAuthN
 			}
-			i = cloudsql.NewInstance(cn, d.sqladmin, d.key,
-				d.refreshTimeout, d.iamTokenSource, d.dialerID, useIAMAuthNDial)
-			d.instances[cn] = i
+			d.logger.Debugf("[%v] Connection info added to cache", cn.String())
+			var cache connectionInfoCache
+			if d.lazyRefresh {
+				cache = cloudsql.NewLazyRefreshCache(
+					cn,
+					d.logger,
+					d.sqladmin, d.key,
+					d.refreshTimeout, d.iamTokenSource,
+					d.dialerID, useIAMAuthNDial,
+				)
+			} else {
+				cache = cloudsql.NewRefreshAheadCache(
+					cn,
+					d.logger,
+					d.sqladmin, d.key,
+					d.refreshTimeout, d.iamTokenSource,
+					d.dialerID, useIAMAuthNDial,
+				)
+			}
+			c = monitoredCache{connectionInfoCache: cache}
+			d.cache[cn] = c
 		}
 	}
 
-	i.UpdateRefresh(useIAMAuthN)
+	c.UpdateRefresh(useIAMAuthN)
 
-	return i
+	return c
 }

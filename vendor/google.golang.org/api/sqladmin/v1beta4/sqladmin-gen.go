@@ -333,6 +333,45 @@ func (s *AclEntry) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
 }
 
+// AcquireSsrsLeaseContext: Acquire SSRS lease context.
+type AcquireSsrsLeaseContext struct {
+	// Duration: Lease duration needed for the SSRS setup.
+	Duration string `json:"duration,omitempty"`
+
+	// ReportDatabase: The report database to be used for the SSRS setup.
+	ReportDatabase string `json:"reportDatabase,omitempty"`
+
+	// ServiceLogin: The username to be used as the service login to connect
+	// to the report database for SSRS setup.
+	ServiceLogin string `json:"serviceLogin,omitempty"`
+
+	// SetupLogin: The username to be used as the setup login to connect to
+	// the database server for SSRS setup.
+	SetupLogin string `json:"setupLogin,omitempty"`
+
+	// ForceSendFields is a list of field names (e.g. "Duration") to
+	// unconditionally include in API requests. By default, fields with
+	// empty or default values are omitted from API requests. However, any
+	// non-pointer, non-interface field appearing in ForceSendFields will be
+	// sent to the server regardless of whether the field is empty or not.
+	// This may be used to include empty fields in Patch requests.
+	ForceSendFields []string `json:"-"`
+
+	// NullFields is a list of field names (e.g. "Duration") to include in
+	// API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. However, any field with an
+	// empty value appearing in NullFields will be sent to the server as
+	// null. It is an error if a field in this list has a non-empty value.
+	// This may be used to include null fields in Patch requests.
+	NullFields []string `json:"-"`
+}
+
+func (s *AcquireSsrsLeaseContext) MarshalJSON() ([]byte, error) {
+	type NoMethod AcquireSsrsLeaseContext
+	raw := NoMethod(*s)
+	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+}
+
 // AdvancedMachineFeatures: Specifies options for controlling advanced
 // machine features.
 type AdvancedMachineFeatures struct {
@@ -443,6 +482,24 @@ type BackupConfiguration struct {
 	// TransactionLogRetentionDays: The number of days of transaction logs
 	// we retain for point in time restore, from 1-7.
 	TransactionLogRetentionDays int64 `json:"transactionLogRetentionDays,omitempty"`
+
+	// TransactionalLogStorageState: Output only. This value contains the
+	// storage location of transactional logs for the database for
+	// point-in-time recovery.
+	//
+	// Possible values:
+	//   "TRANSACTIONAL_LOG_STORAGE_STATE_UNSPECIFIED" - Unspecified.
+	//   "DISK" - The transaction logs for the instance are stored on a data
+	// disk.
+	//   "SWITCHING_TO_CLOUD_STORAGE" - The transaction logs for the
+	// instance are switching from being stored on a data disk to being
+	// stored in Cloud Storage.
+	//   "SWITCHED_TO_CLOUD_STORAGE" - The transaction logs for the instance
+	// are now stored in Cloud Storage. Previously, they were stored on a
+	// data disk.
+	//   "CLOUD_STORAGE" - The transaction logs for the instance are stored
+	// in Cloud Storage.
+	TransactionalLogStorageState string `json:"transactionalLogStorageState,omitempty"`
 
 	// ForceSendFields is a list of field names (e.g.
 	// "BackupRetentionSettings") to unconditionally include in API
@@ -914,6 +971,14 @@ type ConnectSettings struct {
 	// minor version is 35.
 	//   "MYSQL_8_0_36" - The database major version is MySQL 8.0 and the
 	// minor version is 36.
+	//   "MYSQL_8_0_37" - The database major version is MySQL 8.0 and the
+	// minor version is 37.
+	//   "MYSQL_8_0_38" - The database major version is MySQL 8.0 and the
+	// minor version is 38.
+	//   "MYSQL_8_0_39" - The database major version is MySQL 8.0 and the
+	// minor version is 39.
+	//   "MYSQL_8_0_40" - The database major version is MySQL 8.0 and the
+	// minor version is 40.
 	//   "SQLSERVER_2019_STANDARD" - The database version is SQL Server 2019
 	// Standard.
 	//   "SQLSERVER_2019_ENTERPRISE" - The database version is SQL Server
@@ -1192,6 +1257,14 @@ type DatabaseInstance struct {
 	// minor version is 35.
 	//   "MYSQL_8_0_36" - The database major version is MySQL 8.0 and the
 	// minor version is 36.
+	//   "MYSQL_8_0_37" - The database major version is MySQL 8.0 and the
+	// minor version is 37.
+	//   "MYSQL_8_0_38" - The database major version is MySQL 8.0 and the
+	// minor version is 38.
+	//   "MYSQL_8_0_39" - The database major version is MySQL 8.0 and the
+	// minor version is 39.
+	//   "MYSQL_8_0_40" - The database major version is MySQL 8.0 and the
+	// minor version is 40.
 	//   "SQLSERVER_2019_STANDARD" - The database version is SQL Server 2019
 	// Standard.
 	//   "SQLSERVER_2019_ENTERPRISE" - The database version is SQL Server
@@ -1231,6 +1304,9 @@ type DatabaseInstance struct {
 	// over to its secondary zone. WARNING: Changing this might restart the
 	// instance.
 	GceZone string `json:"gceZone,omitempty"`
+
+	// GeminiConfig: Gemini instance configuration.
+	GeminiConfig *GeminiInstanceConfig `json:"geminiConfig,omitempty"`
 
 	// InstanceType: The instance type.
 	//
@@ -1291,11 +1367,11 @@ type DatabaseInstance struct {
 	// of PSC instance.
 	PscServiceAttachmentLink string `json:"pscServiceAttachmentLink,omitempty"`
 
-	// Region: The geographical region. Can be: * `us-central` (`FIRST_GEN`
-	// instances only) * `us-central1` (`SECOND_GEN` instances only) *
-	// `asia-east1` or `europe-west1`. Defaults to `us-central` or
-	// `us-central1` depending on the instance type. The region cannot be
-	// changed after instance creation.
+	// Region: The geographical region of the Cloud SQL instance. It can be
+	// one of the regions
+	// (https://cloud.google.com/sql/docs/mysql/locations#location-r) where
+	// Cloud SQL operates: For example, `asia-east1`, `europe-west1`, and
+	// `us-central1`. The default value is `us-central1`.
 	Region string `json:"region,omitempty"`
 
 	// ReplicaConfiguration: Configuration specific to failover replicas and
@@ -1304,6 +1380,12 @@ type DatabaseInstance struct {
 
 	// ReplicaNames: The replicas of the instance.
 	ReplicaNames []string `json:"replicaNames,omitempty"`
+
+	// ReplicationCluster: The pair of a primary instance and disaster
+	// recovery (DR) replica. A DR replica is a cross-region replica that
+	// you designate for failover in the event that the primary instance has
+	// regional failure.
+	ReplicationCluster *ReplicationCluster `json:"replicationCluster,omitempty"`
 
 	// RootPassword: Initial root password. Use only on creation. You must
 	// set root passwords before you can connect to PostgreSQL instances.
@@ -1342,9 +1424,10 @@ type DatabaseInstance struct {
 	//
 	// Possible values:
 	//   "SQL_NETWORK_ARCHITECTURE_UNSPECIFIED"
-	//   "NEW_NETWORK_ARCHITECTURE" - Instance is a Tenancy Unit (TU)
-	// instance.
-	//   "OLD_NETWORK_ARCHITECTURE" - Instance is an Umbrella instance.
+	//   "NEW_NETWORK_ARCHITECTURE" - The instance uses the new network
+	// architecture.
+	//   "OLD_NETWORK_ARCHITECTURE" - The instance uses the old network
+	// architecture.
 	SqlNetworkArchitecture string `json:"sqlNetworkArchitecture,omitempty"`
 
 	// State: The current serving state of the Cloud SQL instance.
@@ -1950,6 +2033,9 @@ type ExportContextSqlExportOptions struct {
 	// MysqlExportOptions: Options for exporting from MySQL.
 	MysqlExportOptions *ExportContextSqlExportOptionsMysqlExportOptions `json:"mysqlExportOptions,omitempty"`
 
+	// Parallel: Optional. Whether or not the export should be parallel.
+	Parallel bool `json:"parallel,omitempty"`
+
 	// SchemaOnly: Export only schemas.
 	SchemaOnly bool `json:"schemaOnly,omitempty"`
 
@@ -1957,6 +2043,9 @@ type ExportContextSqlExportOptions struct {
 	// database. If you specify tables, specify one and only one database.
 	// For PostgreSQL instances, you can specify only one table.
 	Tables []string `json:"tables,omitempty"`
+
+	// Threads: Optional. The number of threads to use for parallel export.
+	Threads int64 `json:"threads,omitempty"`
 
 	// ForceSendFields is a list of field names (e.g. "MysqlExportOptions")
 	// to unconditionally include in API requests. By default, fields with
@@ -2116,6 +2205,14 @@ type Flag struct {
 	// minor version is 35.
 	//   "MYSQL_8_0_36" - The database major version is MySQL 8.0 and the
 	// minor version is 36.
+	//   "MYSQL_8_0_37" - The database major version is MySQL 8.0 and the
+	// minor version is 37.
+	//   "MYSQL_8_0_38" - The database major version is MySQL 8.0 and the
+	// minor version is 38.
+	//   "MYSQL_8_0_39" - The database major version is MySQL 8.0 and the
+	// minor version is 39.
+	//   "MYSQL_8_0_40" - The database major version is MySQL 8.0 and the
+	// minor version is 40.
 	//   "SQLSERVER_2019_STANDARD" - The database version is SQL Server 2019
 	// Standard.
 	//   "SQLSERVER_2019_ENTERPRISE" - The database version is SQL Server
@@ -2229,6 +2326,53 @@ func (s *FlagsListResponse) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
 }
 
+// GeminiInstanceConfig: Gemini configuration.
+type GeminiInstanceConfig struct {
+	// ActiveQueryEnabled: Output only. Whether active query is enabled.
+	ActiveQueryEnabled bool `json:"activeQueryEnabled,omitempty"`
+
+	// Entitled: Output only. Whether Gemini is enabled.
+	Entitled bool `json:"entitled,omitempty"`
+
+	// FlagRecommenderEnabled: Output only. Whether flag recommender is
+	// enabled.
+	FlagRecommenderEnabled bool `json:"flagRecommenderEnabled,omitempty"`
+
+	// GoogleVacuumMgmtEnabled: Output only. Whether vacuum management is
+	// enabled.
+	GoogleVacuumMgmtEnabled bool `json:"googleVacuumMgmtEnabled,omitempty"`
+
+	// IndexAdvisorEnabled: Output only. Whether index advisor is enabled.
+	IndexAdvisorEnabled bool `json:"indexAdvisorEnabled,omitempty"`
+
+	// OomSessionCancelEnabled: Output only. Whether oom session cancel is
+	// enabled.
+	OomSessionCancelEnabled bool `json:"oomSessionCancelEnabled,omitempty"`
+
+	// ForceSendFields is a list of field names (e.g. "ActiveQueryEnabled")
+	// to unconditionally include in API requests. By default, fields with
+	// empty or default values are omitted from API requests. However, any
+	// non-pointer, non-interface field appearing in ForceSendFields will be
+	// sent to the server regardless of whether the field is empty or not.
+	// This may be used to include empty fields in Patch requests.
+	ForceSendFields []string `json:"-"`
+
+	// NullFields is a list of field names (e.g. "ActiveQueryEnabled") to
+	// include in API requests with the JSON null value. By default, fields
+	// with empty values are omitted from API requests. However, any field
+	// with an empty value appearing in NullFields will be sent to the
+	// server as null. It is an error if a field in this list has a
+	// non-empty value. This may be used to include null fields in Patch
+	// requests.
+	NullFields []string `json:"-"`
+}
+
+func (s *GeminiInstanceConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod GeminiInstanceConfig
+	raw := NoMethod(*s)
+	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+}
+
 // GenerateEphemeralCertRequest: Ephemeral certificate creation request.
 type GenerateEphemeralCertRequest struct {
 	// AccessToken: Optional. Access token to include in the signed
@@ -2334,6 +2478,10 @@ type ImportContext struct {
 
 	// Kind: This is always `sql#importContext`.
 	Kind string `json:"kind,omitempty"`
+
+	// SqlImportOptions: Optional. Options for importing data from SQL
+	// statements.
+	SqlImportOptions *ImportContextSqlImportOptions `json:"sqlImportOptions,omitempty"`
 
 	// Uri: Path to the import file in Cloud Storage, in the form
 	// `gs://bucketName/fileName`. Compressed gzip files (.gz) are supported
@@ -2514,6 +2662,38 @@ func (s *ImportContextCsvImportOptions) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
 }
 
+// ImportContextSqlImportOptions: Optional. Options for importing data
+// from SQL statements.
+type ImportContextSqlImportOptions struct {
+	// Parallel: Optional. Whether or not the import should be parallel.
+	Parallel bool `json:"parallel,omitempty"`
+
+	// Threads: Optional. The number of threads to use for parallel import.
+	Threads int64 `json:"threads,omitempty"`
+
+	// ForceSendFields is a list of field names (e.g. "Parallel") to
+	// unconditionally include in API requests. By default, fields with
+	// empty or default values are omitted from API requests. However, any
+	// non-pointer, non-interface field appearing in ForceSendFields will be
+	// sent to the server regardless of whether the field is empty or not.
+	// This may be used to include empty fields in Patch requests.
+	ForceSendFields []string `json:"-"`
+
+	// NullFields is a list of field names (e.g. "Parallel") to include in
+	// API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. However, any field with an
+	// empty value appearing in NullFields will be sent to the server as
+	// null. It is an error if a field in this list has a non-empty value.
+	// This may be used to include null fields in Patch requests.
+	NullFields []string `json:"-"`
+}
+
+func (s *ImportContextSqlImportOptions) MarshalJSON() ([]byte, error) {
+	type NoMethod ImportContextSqlImportOptions
+	raw := NoMethod(*s)
+	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+}
+
 // InsightsConfig: Insights configuration. This specifies when Cloud SQL
 // Insights feature is enabled and optional configuration.
 type InsightsConfig struct {
@@ -2596,6 +2776,38 @@ type InstanceReference struct {
 
 func (s *InstanceReference) MarshalJSON() ([]byte, error) {
 	type NoMethod InstanceReference
+	raw := NoMethod(*s)
+	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+}
+
+// InstancesAcquireSsrsLeaseRequest: Request to acquire an SSRS lease
+// for an instance.
+type InstancesAcquireSsrsLeaseRequest struct {
+	// AcquireSsrsLeaseContext: Contains details about the acquire SSRS
+	// lease operation.
+	AcquireSsrsLeaseContext *AcquireSsrsLeaseContext `json:"acquireSsrsLeaseContext,omitempty"`
+
+	// ForceSendFields is a list of field names (e.g.
+	// "AcquireSsrsLeaseContext") to unconditionally include in API
+	// requests. By default, fields with empty or default values are omitted
+	// from API requests. However, any non-pointer, non-interface field
+	// appearing in ForceSendFields will be sent to the server regardless of
+	// whether the field is empty or not. This may be used to include empty
+	// fields in Patch requests.
+	ForceSendFields []string `json:"-"`
+
+	// NullFields is a list of field names (e.g. "AcquireSsrsLeaseContext")
+	// to include in API requests with the JSON null value. By default,
+	// fields with empty values are omitted from API requests. However, any
+	// field with an empty value appearing in NullFields will be sent to the
+	// server as null. It is an error if a field in this list has a
+	// non-empty value. This may be used to include null fields in Patch
+	// requests.
+	NullFields []string `json:"-"`
+}
+
+func (s *InstancesAcquireSsrsLeaseRequest) MarshalJSON() ([]byte, error) {
+	type NoMethod InstancesAcquireSsrsLeaseRequest
 	raw := NoMethod(*s)
 	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
 }
@@ -3013,9 +3225,8 @@ type IpConfiguration struct {
 	// PscConfig: PSC settings for this instance.
 	PscConfig *PscConfig `json:"pscConfig,omitempty"`
 
-	// RequireSsl: Use `ssl_mode` instead for MySQL and PostgreSQL. SQL
-	// Server uses this flag. Whether SSL/TLS connections over IP are
-	// enforced. If set to false, then allow both non-SSL/non-TLS and
+	// RequireSsl: Use `ssl_mode` instead. Whether SSL/TLS connections over
+	// IP are enforced. If set to false, then allow both non-SSL/non-TLS and
 	// SSL/TLS connections. For SSL/TLS connections, the client certificate
 	// won't be verified. If set to true, then only allow connections
 	// encrypted with SSL/TLS and with valid client certificates. If you
@@ -3024,21 +3235,21 @@ type IpConfiguration struct {
 	// legacy `require_ssl` flag.
 	RequireSsl bool `json:"requireSsl,omitempty"`
 
-	// SslMode: Specify how SSL/TLS is enforced in database connections.
-	// MySQL and PostgreSQL use the `ssl_mode` flag. If you must use the
-	// `require_ssl` flag for backward compatibility, then only the
-	// following value pairs are valid: *
+	// SslMode: Specify how SSL/TLS is enforced in database connections. If
+	// you must use the `require_ssl` flag for backward compatibility, then
+	// only the following value pairs are valid: For PostgreSQL and MySQL: *
 	// `ssl_mode=ALLOW_UNENCRYPTED_AND_ENCRYPTED` and `require_ssl=false` *
 	// `ssl_mode=ENCRYPTED_ONLY` and `require_ssl=false` *
 	// `ssl_mode=TRUSTED_CLIENT_CERTIFICATE_REQUIRED` and `require_ssl=true`
-	// The value of `ssl_mode` gets priority over the value of
-	// `require_ssl`. For example, for the pair `ssl_mode=ENCRYPTED_ONLY`
-	// and `require_ssl=false`, the `ssl_mode=ENCRYPTED_ONLY` means only
-	// accept SSL connections, while the `require_ssl=false` means accept
-	// both non-SSL and SSL connections. MySQL and PostgreSQL databases
-	// respect `ssl_mode` in this case and accept only SSL connections. SQL
-	// Server uses the `require_ssl` flag. You can set the value for this
-	// flag to `true` or `false`.
+	// For SQL Server: * `ssl_mode=ALLOW_UNENCRYPTED_AND_ENCRYPTED` and
+	// `require_ssl=false` * `ssl_mode=ENCRYPTED_ONLY` and
+	// `require_ssl=true` The value of `ssl_mode` gets priority over the
+	// value of `require_ssl`. For example, for the pair
+	// `ssl_mode=ENCRYPTED_ONLY` and `require_ssl=false`, the
+	// `ssl_mode=ENCRYPTED_ONLY` means only accept SSL connections, while
+	// the `require_ssl=false` means accept both non-SSL and SSL
+	// connections. MySQL and PostgreSQL databases respect `ssl_mode` in
+	// this case and accept only SSL connections.
 	//
 	// Possible values:
 	//   "SSL_MODE_UNSPECIFIED" - The SSL mode is unknown.
@@ -3053,7 +3264,14 @@ type IpConfiguration struct {
 	//   "TRUSTED_CLIENT_CERTIFICATE_REQUIRED" - Only allow connections
 	// encrypted with SSL/TLS and with valid client certificates. When this
 	// value is used, the legacy `require_ssl` flag must be true or cleared
-	// to avoid the conflict between values of two flags.
+	// to avoid the conflict between values of two flags. PostgreSQL clients
+	// or users that connect using IAM database authentication must use
+	// either the [Cloud SQL Auth
+	// Proxy](https://cloud.google.com/sql/docs/postgres/connect-auth-proxy)
+	// or [Cloud SQL
+	// Connectors](https://cloud.google.com/sql/docs/postgres/connect-connect
+	// ors) to enforce client identity verification. This value is not
+	// applicable to SQL Server.
 	SslMode string `json:"sslMode,omitempty"`
 
 	// ForceSendFields is a list of field names (e.g. "AllocatedIpRange") to
@@ -3399,6 +3617,10 @@ func (s *OnPremisesConfiguration) MarshalJSON() ([]byte, error) {
 // return an Operation resource, only the fields relevant to the
 // operation are populated in the resource.
 type Operation struct {
+	// AcquireSsrsLeaseContext: The context for acquire SSRS lease
+	// operation, if applicable.
+	AcquireSsrsLeaseContext *AcquireSsrsLeaseContext `json:"acquireSsrsLeaseContext,omitempty"`
+
 	// ApiWarning: An Admin API warning message.
 	ApiWarning *ApiWarning `json:"apiWarning,omitempty"`
 
@@ -3489,6 +3711,14 @@ type Operation struct {
 	// database for auto recovery.
 	//   "REENCRYPT" - Re-encrypts CMEK instances with latest key version.
 	//   "SWITCHOVER" - Switches over to replica instance from primary.
+	//   "ACQUIRE_SSRS_LEASE" - Acquire a lease for the setup of SQL Server
+	// Reporting Services (SSRS).
+	//   "RELEASE_SSRS_LEASE" - Release a lease for the setup of SQL Server
+	// Reporting Services (SSRS).
+	//   "RECONFIGURE_OLD_PRIMARY" - Reconfigures old primary after a
+	// promote replica operation. Effect of a promote operation to the old
+	// primary is executed in this operation, asynchronously from the
+	// promote replica operation executed to the replica.
 	OperationType string `json:"operationType,omitempty"`
 
 	// SelfLink: The URI of this resource.
@@ -3525,20 +3755,22 @@ type Operation struct {
 	// server.
 	googleapi.ServerResponse `json:"-"`
 
-	// ForceSendFields is a list of field names (e.g. "ApiWarning") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g.
+	// "AcquireSsrsLeaseContext") to unconditionally include in API
+	// requests. By default, fields with empty or default values are omitted
+	// from API requests. However, any non-pointer, non-interface field
+	// appearing in ForceSendFields will be sent to the server regardless of
+	// whether the field is empty or not. This may be used to include empty
+	// fields in Patch requests.
 	ForceSendFields []string `json:"-"`
 
-	// NullFields is a list of field names (e.g. "ApiWarning") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "AcquireSsrsLeaseContext")
+	// to include in API requests with the JSON null value. By default,
+	// fields with empty values are omitted from API requests. However, any
+	// field with an empty value appearing in NullFields will be sent to the
+	// server as null. It is an error if a field in this list has a
+	// non-empty value. This may be used to include null fields in Patch
+	// requests.
 	NullFields []string `json:"-"`
 }
 
@@ -3748,8 +3980,8 @@ type PasswordValidationPolicy struct {
 	// numeric, and non-alphanumeric characters.
 	Complexity string `json:"complexity,omitempty"`
 
-	// DisallowCompromisedCredentials: Disallow credentials that have been
-	// previously compromised by a public data breach.
+	// DisallowCompromisedCredentials: This field is deprecated and will be
+	// removed in a future version of the API.
 	DisallowCompromisedCredentials bool `json:"disallowCompromisedCredentials,omitempty"`
 
 	// DisallowUsernameSubstring: Disallow username as a part of the
@@ -3905,6 +4137,43 @@ type ReplicaConfiguration struct {
 
 func (s *ReplicaConfiguration) MarshalJSON() ([]byte, error) {
 	type NoMethod ReplicaConfiguration
+	raw := NoMethod(*s)
+	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+}
+
+// ReplicationCluster: Primary-DR replica pair
+type ReplicationCluster struct {
+	// DrReplica: Output only. read-only field that indicates if the replica
+	// is a dr_replica; not set for a primary.
+	DrReplica bool `json:"drReplica,omitempty"`
+
+	// FailoverDrReplicaName: Optional. If the instance is a primary
+	// instance, then this field identifies the disaster recovery (DR)
+	// replica. A DR replica is an optional configuration for Enterprise
+	// Plus edition instances. If the instance is a read replica, then the
+	// field is not set. Users can set this field to set a designated DR
+	// replica for a primary. Removing this field removes the DR replica.
+	FailoverDrReplicaName string `json:"failoverDrReplicaName,omitempty"`
+
+	// ForceSendFields is a list of field names (e.g. "DrReplica") to
+	// unconditionally include in API requests. By default, fields with
+	// empty or default values are omitted from API requests. However, any
+	// non-pointer, non-interface field appearing in ForceSendFields will be
+	// sent to the server regardless of whether the field is empty or not.
+	// This may be used to include empty fields in Patch requests.
+	ForceSendFields []string `json:"-"`
+
+	// NullFields is a list of field names (e.g. "DrReplica") to include in
+	// API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. However, any field with an
+	// empty value appearing in NullFields will be sent to the server as
+	// null. It is an error if a field in this list has a non-empty value.
+	// This may be used to include null fields in Patch requests.
+	NullFields []string `json:"-"`
+}
+
+func (s *ReplicationCluster) MarshalJSON() ([]byte, error) {
+	type NoMethod ReplicationCluster
 	raw := NoMethod(*s)
 	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
 }
@@ -4138,6 +4407,12 @@ type Settings struct {
 	//   "ENTERPRISE_PLUS" - The instance is an Enterprise Plus edition.
 	Edition string `json:"edition,omitempty"`
 
+	// EnableGoogleMlIntegration: Optional. When this parameter is set to
+	// true, Cloud SQL instances can connect to Vertex AI to pass requests
+	// for real-time predictions and insights to the AI. The default value
+	// is false. This applies only to Cloud SQL for PostgreSQL instances.
+	EnableGoogleMlIntegration bool `json:"enableGoogleMlIntegration,omitempty"`
+
 	// InsightsConfig: Insights configuration, for now relevant only for
 	// Postgres.
 	InsightsConfig *InsightsConfig `json:"insightsConfig,omitempty"`
@@ -4369,6 +4644,18 @@ type SqlExternalSyncSettingError struct {
 	// from the source to the destination.
 	//   "UNABLE_TO_VERIFY_DEFINERS" - Unable to verify definers on the
 	// source for MySQL.
+	//   "SUBSCRIPTION_CALCULATION_STATUS" - If a time out occurs while the
+	// subscription counts are calculated, then this value is set to 1.
+	// Otherwise, this value is set to 2.
+	//   "PG_SUBSCRIPTION_COUNT" - Count of subscriptions needed to sync
+	// source data for PostgreSQL database.
+	//   "PG_SYNC_PARALLEL_LEVEL" - Final parallel level that is used to do
+	// migration.
+	//   "INSUFFICIENT_DISK_SIZE" - The disk size of the replica instance is
+	// smaller than the data size of the source instance.
+	//   "INSUFFICIENT_MACHINE_TIER" - The data size of the source instance
+	// is greater than 1 TB, the number of cores of the replica instance is
+	// less than 8, and the memory of the replica is less than 32 GB.
 	Type string `json:"type,omitempty"`
 
 	// ForceSendFields is a list of field names (e.g. "Detail") to
@@ -4390,6 +4677,38 @@ type SqlExternalSyncSettingError struct {
 
 func (s *SqlExternalSyncSettingError) MarshalJSON() ([]byte, error) {
 	type NoMethod SqlExternalSyncSettingError
+	raw := NoMethod(*s)
+	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+}
+
+// SqlInstancesAcquireSsrsLeaseResponse: Acquire SSRS lease response.
+type SqlInstancesAcquireSsrsLeaseResponse struct {
+	// OperationId: The unique identifier for this operation.
+	OperationId string `json:"operationId,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the
+	// server.
+	googleapi.ServerResponse `json:"-"`
+
+	// ForceSendFields is a list of field names (e.g. "OperationId") to
+	// unconditionally include in API requests. By default, fields with
+	// empty or default values are omitted from API requests. However, any
+	// non-pointer, non-interface field appearing in ForceSendFields will be
+	// sent to the server regardless of whether the field is empty or not.
+	// This may be used to include empty fields in Patch requests.
+	ForceSendFields []string `json:"-"`
+
+	// NullFields is a list of field names (e.g. "OperationId") to include
+	// in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. However, any field with
+	// an empty value appearing in NullFields will be sent to the server as
+	// null. It is an error if a field in this list has a non-empty value.
+	// This may be used to include null fields in Patch requests.
+	NullFields []string `json:"-"`
+}
+
+func (s *SqlInstancesAcquireSsrsLeaseResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod SqlInstancesAcquireSsrsLeaseResponse
 	raw := NoMethod(*s)
 	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
 }
@@ -4471,6 +4790,39 @@ func (s *SqlInstancesGetLatestRecoveryTimeResponse) MarshalJSON() ([]byte, error
 	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
 }
 
+// SqlInstancesReleaseSsrsLeaseResponse: The response for the release of
+// the SSRS lease.
+type SqlInstancesReleaseSsrsLeaseResponse struct {
+	// OperationId: The operation ID.
+	OperationId string `json:"operationId,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the
+	// server.
+	googleapi.ServerResponse `json:"-"`
+
+	// ForceSendFields is a list of field names (e.g. "OperationId") to
+	// unconditionally include in API requests. By default, fields with
+	// empty or default values are omitted from API requests. However, any
+	// non-pointer, non-interface field appearing in ForceSendFields will be
+	// sent to the server regardless of whether the field is empty or not.
+	// This may be used to include empty fields in Patch requests.
+	ForceSendFields []string `json:"-"`
+
+	// NullFields is a list of field names (e.g. "OperationId") to include
+	// in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. However, any field with
+	// an empty value appearing in NullFields will be sent to the server as
+	// null. It is an error if a field in this list has a non-empty value.
+	// This may be used to include null fields in Patch requests.
+	NullFields []string `json:"-"`
+}
+
+func (s *SqlInstancesReleaseSsrsLeaseResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod SqlInstancesReleaseSsrsLeaseResponse
+	raw := NoMethod(*s)
+	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+}
+
 // SqlInstancesRescheduleMaintenanceRequestBody: Reschedule options for
 // maintenance windows.
 type SqlInstancesRescheduleMaintenanceRequestBody struct {
@@ -4506,6 +4858,16 @@ type SqlInstancesResetReplicaSizeRequest struct {
 }
 
 type SqlInstancesStartExternalSyncRequest struct {
+	// MigrationType: Optional. MigrationType decides if the migration is a
+	// physical file based migration or logical migration.
+	//
+	// Possible values:
+	//   "MIGRATION_TYPE_UNSPECIFIED" - If no migration type is specified it
+	// will be defaulted to LOGICAL.
+	//   "LOGICAL" - Logical Migrations
+	//   "PHYSICAL" - Physical file based Migrations
+	MigrationType string `json:"migrationType,omitempty"`
+
 	// MysqlSyncConfig: MySQL-specific settings for start external sync.
 	MysqlSyncConfig *MySqlSyncConfig `json:"mysqlSyncConfig,omitempty"`
 
@@ -4534,7 +4896,7 @@ type SqlInstancesStartExternalSyncRequest struct {
 	//   "MAX" - Maximum parallel level.
 	SyncParallelLevel string `json:"syncParallelLevel,omitempty"`
 
-	// ForceSendFields is a list of field names (e.g. "MysqlSyncConfig") to
+	// ForceSendFields is a list of field names (e.g. "MigrationType") to
 	// unconditionally include in API requests. By default, fields with
 	// empty or default values are omitted from API requests. However, any
 	// non-pointer, non-interface field appearing in ForceSendFields will be
@@ -4542,13 +4904,12 @@ type SqlInstancesStartExternalSyncRequest struct {
 	// This may be used to include empty fields in Patch requests.
 	ForceSendFields []string `json:"-"`
 
-	// NullFields is a list of field names (e.g. "MysqlSyncConfig") to
-	// include in API requests with the JSON null value. By default, fields
-	// with empty values are omitted from API requests. However, any field
-	// with an empty value appearing in NullFields will be sent to the
-	// server as null. It is an error if a field in this list has a
-	// non-empty value. This may be used to include null fields in Patch
-	// requests.
+	// NullFields is a list of field names (e.g. "MigrationType") to include
+	// in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. However, any field with
+	// an empty value appearing in NullFields will be sent to the server as
+	// null. It is an error if a field in this list has a non-empty value.
+	// This may be used to include null fields in Patch requests.
 	NullFields []string `json:"-"`
 }
 
@@ -4559,6 +4920,16 @@ func (s *SqlInstancesStartExternalSyncRequest) MarshalJSON() ([]byte, error) {
 }
 
 type SqlInstancesVerifyExternalSyncSettingsRequest struct {
+	// MigrationType: Optional. MigrationType field decides if the migration
+	// is a physical file based migration or logical migration
+	//
+	// Possible values:
+	//   "MIGRATION_TYPE_UNSPECIFIED" - If no migration type is specified it
+	// will be defaulted to LOGICAL.
+	//   "LOGICAL" - Logical Migrations
+	//   "PHYSICAL" - Physical file based Migrations
+	MigrationType string `json:"migrationType,omitempty"`
+
 	// MysqlSyncConfig: Optional. MySQL-specific settings for start external
 	// sync.
 	MysqlSyncConfig *MySqlSyncConfig `json:"mysqlSyncConfig,omitempty"`
@@ -4574,6 +4945,17 @@ type SqlInstancesVerifyExternalSyncSettingsRequest struct {
 	// snapshot of the primary instance's data
 	SyncMode string `json:"syncMode,omitempty"`
 
+	// SyncParallelLevel: Optional. Parallel level for initial data sync.
+	// Currently only applicable for PostgreSQL.
+	//
+	// Possible values:
+	//   "EXTERNAL_SYNC_PARALLEL_LEVEL_UNSPECIFIED" - Unknown sync parallel
+	// level. Will be defaulted to OPTIMAL.
+	//   "MIN" - Minimal parallel level.
+	//   "OPTIMAL" - Optimal parallel level.
+	//   "MAX" - Maximum parallel level.
+	SyncParallelLevel string `json:"syncParallelLevel,omitempty"`
+
 	// VerifyConnectionOnly: Flag to enable verifying connection only
 	VerifyConnectionOnly bool `json:"verifyConnectionOnly,omitempty"`
 
@@ -4581,7 +4963,7 @@ type SqlInstancesVerifyExternalSyncSettingsRequest struct {
 	// replication setup only
 	VerifyReplicationOnly bool `json:"verifyReplicationOnly,omitempty"`
 
-	// ForceSendFields is a list of field names (e.g. "MysqlSyncConfig") to
+	// ForceSendFields is a list of field names (e.g. "MigrationType") to
 	// unconditionally include in API requests. By default, fields with
 	// empty or default values are omitted from API requests. However, any
 	// non-pointer, non-interface field appearing in ForceSendFields will be
@@ -4589,13 +4971,12 @@ type SqlInstancesVerifyExternalSyncSettingsRequest struct {
 	// This may be used to include empty fields in Patch requests.
 	ForceSendFields []string `json:"-"`
 
-	// NullFields is a list of field names (e.g. "MysqlSyncConfig") to
-	// include in API requests with the JSON null value. By default, fields
-	// with empty values are omitted from API requests. However, any field
-	// with an empty value appearing in NullFields will be sent to the
-	// server as null. It is an error if a field in this list has a
-	// non-empty value. This may be used to include null fields in Patch
-	// requests.
+	// NullFields is a list of field names (e.g. "MigrationType") to include
+	// in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. However, any field with
+	// an empty value appearing in NullFields will be sent to the server as
+	// null. It is an error if a field in this list has a non-empty value.
+	// This may be used to include null fields in Patch requests.
 	NullFields []string `json:"-"`
 }
 
@@ -7514,6 +7895,165 @@ func (c *FlagsListCall) Do(opts ...googleapi.CallOption) (*FlagsListResponse, er
 
 }
 
+// method id "sql.instances.acquireSsrsLease":
+
+type InstancesAcquireSsrsLeaseCall struct {
+	s                                *Service
+	project                          string
+	instance                         string
+	instancesacquiressrsleaserequest *InstancesAcquireSsrsLeaseRequest
+	urlParams_                       gensupport.URLParams
+	ctx_                             context.Context
+	header_                          http.Header
+}
+
+// AcquireSsrsLease: Acquire a lease for the setup of SQL Server
+// Reporting Services (SSRS).
+//
+//   - instance: Cloud SQL instance ID. This doesn't include the project
+//     ID. It's composed of lowercase letters, numbers, and hyphens, and
+//     it must start with a letter. The total length must be 98 characters
+//     or less (Example: instance-id).
+//   - project: ID of the project that contains the instance (Example:
+//     project-id).
+func (r *InstancesService) AcquireSsrsLease(project string, instance string, instancesacquiressrsleaserequest *InstancesAcquireSsrsLeaseRequest) *InstancesAcquireSsrsLeaseCall {
+	c := &InstancesAcquireSsrsLeaseCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.instance = instance
+	c.instancesacquiressrsleaserequest = instancesacquiressrsleaserequest
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *InstancesAcquireSsrsLeaseCall) Fields(s ...googleapi.Field) *InstancesAcquireSsrsLeaseCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method. Any
+// pending HTTP request will be aborted if the provided context is
+// canceled.
+func (c *InstancesAcquireSsrsLeaseCall) Context(ctx context.Context) *InstancesAcquireSsrsLeaseCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns an http.Header that can be modified by the caller to
+// add HTTP headers to the request.
+func (c *InstancesAcquireSsrsLeaseCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *InstancesAcquireSsrsLeaseCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := make(http.Header)
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
+	for k, v := range c.header_ {
+		reqHeaders[k] = v
+	}
+	reqHeaders.Set("User-Agent", c.s.userAgent())
+	var body io.Reader = nil
+	body, err := googleapi.WithoutDataWrapper.JSONReader(c.instancesacquiressrsleaserequest)
+	if err != nil {
+		return nil, err
+	}
+	reqHeaders.Set("Content-Type", "application/json")
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "sql/v1beta4/projects/{project}/instances/{instance}/acquireSsrsLease")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":  c.project,
+		"instance": c.instance,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "sql.instances.acquireSsrsLease" call.
+// Exactly one of *SqlInstancesAcquireSsrsLeaseResponse or error will be
+// non-nil. Any non-2xx status code is an error. Response headers are in
+// either *SqlInstancesAcquireSsrsLeaseResponse.ServerResponse.Header or
+// (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *InstancesAcquireSsrsLeaseCall) Do(opts ...googleapi.CallOption) (*SqlInstancesAcquireSsrsLeaseResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &SqlInstancesAcquireSsrsLeaseResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+	// {
+	//   "description": "Acquire a lease for the setup of SQL Server Reporting Services (SSRS).",
+	//   "flatPath": "sql/v1beta4/projects/{project}/instances/{instance}/acquireSsrsLease",
+	//   "httpMethod": "POST",
+	//   "id": "sql.instances.acquireSsrsLease",
+	//   "parameterOrder": [
+	//     "project",
+	//     "instance"
+	//   ],
+	//   "parameters": {
+	//     "instance": {
+	//       "description": "Required. Cloud SQL instance ID. This doesn't include the project ID. It's composed of lowercase letters, numbers, and hyphens, and it must start with a letter. The total length must be 98 characters or less (Example: instance-id).",
+	//       "location": "path",
+	//       "required": true,
+	//       "type": "string"
+	//     },
+	//     "project": {
+	//       "description": "Required. ID of the project that contains the instance (Example: project-id).",
+	//       "location": "path",
+	//       "required": true,
+	//       "type": "string"
+	//     }
+	//   },
+	//   "path": "sql/v1beta4/projects/{project}/instances/{instance}/acquireSsrsLease",
+	//   "request": {
+	//     "$ref": "InstancesAcquireSsrsLeaseRequest"
+	//   },
+	//   "response": {
+	//     "$ref": "SqlInstancesAcquireSsrsLeaseResponse"
+	//   },
+	//   "scopes": [
+	//     "https://www.googleapis.com/auth/cloud-platform",
+	//     "https://www.googleapis.com/auth/sqlservice.admin"
+	//   ]
+	// }
+
+}
+
 // method id "sql.instances.addServerCa":
 
 type InstancesAddServerCaCall struct {
@@ -9879,6 +10419,155 @@ func (c *InstancesReencryptCall) Do(opts ...googleapi.CallOption) (*Operation, e
 	//   },
 	//   "response": {
 	//     "$ref": "Operation"
+	//   },
+	//   "scopes": [
+	//     "https://www.googleapis.com/auth/cloud-platform",
+	//     "https://www.googleapis.com/auth/sqlservice.admin"
+	//   ]
+	// }
+
+}
+
+// method id "sql.instances.releaseSsrsLease":
+
+type InstancesReleaseSsrsLeaseCall struct {
+	s          *Service
+	project    string
+	instance   string
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// ReleaseSsrsLease: Release a lease for the setup of SQL Server
+// Reporting Services (SSRS).
+//
+//   - instance: The Cloud SQL instance ID. This doesn't include the
+//     project ID. It's composed of lowercase letters, numbers, and
+//     hyphens, and it must start with a letter. The total length must be
+//     98 characters or less (Example: instance-id).
+//   - project: The ID of the project that contains the instance (Example:
+//     project-id).
+func (r *InstancesService) ReleaseSsrsLease(project string, instance string) *InstancesReleaseSsrsLeaseCall {
+	c := &InstancesReleaseSsrsLeaseCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.instance = instance
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *InstancesReleaseSsrsLeaseCall) Fields(s ...googleapi.Field) *InstancesReleaseSsrsLeaseCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method. Any
+// pending HTTP request will be aborted if the provided context is
+// canceled.
+func (c *InstancesReleaseSsrsLeaseCall) Context(ctx context.Context) *InstancesReleaseSsrsLeaseCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns an http.Header that can be modified by the caller to
+// add HTTP headers to the request.
+func (c *InstancesReleaseSsrsLeaseCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *InstancesReleaseSsrsLeaseCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := make(http.Header)
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
+	for k, v := range c.header_ {
+		reqHeaders[k] = v
+	}
+	reqHeaders.Set("User-Agent", c.s.userAgent())
+	var body io.Reader = nil
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "sql/v1beta4/projects/{project}/instances/{instance}/releaseSsrsLease")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":  c.project,
+		"instance": c.instance,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "sql.instances.releaseSsrsLease" call.
+// Exactly one of *SqlInstancesReleaseSsrsLeaseResponse or error will be
+// non-nil. Any non-2xx status code is an error. Response headers are in
+// either *SqlInstancesReleaseSsrsLeaseResponse.ServerResponse.Header or
+// (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *InstancesReleaseSsrsLeaseCall) Do(opts ...googleapi.CallOption) (*SqlInstancesReleaseSsrsLeaseResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &SqlInstancesReleaseSsrsLeaseResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+	// {
+	//   "description": "Release a lease for the setup of SQL Server Reporting Services (SSRS).",
+	//   "flatPath": "sql/v1beta4/projects/{project}/instances/{instance}/releaseSsrsLease",
+	//   "httpMethod": "POST",
+	//   "id": "sql.instances.releaseSsrsLease",
+	//   "parameterOrder": [
+	//     "project",
+	//     "instance"
+	//   ],
+	//   "parameters": {
+	//     "instance": {
+	//       "description": "Required. The Cloud SQL instance ID. This doesn't include the project ID. It's composed of lowercase letters, numbers, and hyphens, and it must start with a letter. The total length must be 98 characters or less (Example: instance-id).",
+	//       "location": "path",
+	//       "required": true,
+	//       "type": "string"
+	//     },
+	//     "project": {
+	//       "description": "Required. The ID of the project that contains the instance (Example: project-id).",
+	//       "location": "path",
+	//       "required": true,
+	//       "type": "string"
+	//     }
+	//   },
+	//   "path": "sql/v1beta4/projects/{project}/instances/{instance}/releaseSsrsLease",
+	//   "response": {
+	//     "$ref": "SqlInstancesReleaseSsrsLeaseResponse"
 	//   },
 	//   "scopes": [
 	//     "https://www.googleapis.com/auth/cloud-platform",

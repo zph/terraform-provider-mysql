@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.9.0](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/compare/v1.8.1...v1.9.0) (2024-04-16)
+
+
+### Features
+
+* add support for a lazy refresh ([#772](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/issues/772)) ([931150f](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/commit/931150f492cb461cf623a9bbafae6f704b9c5a36)), closes [#770](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/issues/770)
+
+
+### Bug Fixes
+
+* return a friendly error if the dialer is closed ([#766](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/issues/766)) ([d1c13e0](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/commit/d1c13e039a29ccbc085e2d3ca8451f83825e8d32))
+
+## [1.8.1](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/compare/v1.8.0...v1.8.1) (2024-03-12)
+
+
+### Bug Fixes
+
+* strip monotonic clock reading in cert check ([#750](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/issues/750)) ([6ae33b0](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/commit/6ae33b0a6e281293823e75ff97a51575c053bf9f)), closes [#749](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/issues/749)
+
+## [1.8.0](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/compare/v1.7.0...v1.8.0) (2024-03-08)
+
+
+### Features
+
+* add support for TPC ([#732](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/issues/732)) ([b7364d9](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/commit/b7364d93cc93893b2af8eeda6cdf9cf36aaf9d67))
+
+## [1.7.0](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/compare/v1.6.0...v1.7.0) (2024-02-13)
+
+
+### Features
+
+* add support for debug logging ([#726](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/issues/726)) ([d8ca89e](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/commit/d8ca89e4403e2e3cf6ac278a19b4d93b77797ec6))
+* add support for Go 1.22 ([#723](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/issues/723)) ([ebe31dc](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/commit/ebe31dcaf2ec215470ce3b224732f4ff6282ba22))
+
+
+### Bug Fixes
+
+* ensure background refresh is closed cleanly ([#715](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/issues/715)) ([0b4c342](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/commit/0b4c3420bb5158cab63c51158e109b3bea926b59))
+
 ## [1.6.0](https://github.com/GoogleCloudPlatform/cloud-sql-go-connector/compare/v1.5.2...v1.6.0) (2024-01-17)
 
 
