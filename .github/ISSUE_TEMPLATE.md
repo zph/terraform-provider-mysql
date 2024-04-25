@@ -9,6 +9,9 @@ Run `terraform -v` to show the version. If you are not running the latest versio
 
 You can find the latest version mentioned here: https://registry.terraform.io/providers/petoju/mysql/latest
 
+### MySQL version and settings
+Provide us with your DB version and non-standard DB settings. Did you add or change some `sql_mode` or some other config? Mention it.
+
 ### Terraform Configuration Files
 In the ideal case, provide narrowed-down reproducer of your case. This should be a complete module with config connecting to localhost demonstrating the issue.
 
