@@ -386,8 +386,15 @@ func afterConnectVersion(ctx context.Context, mysqlConf *MySQLConfiguration, db 
 	versionMaxExclusive, _ := version.NewVersion("8.0.0")
 	if currentVersion.GreaterThanOrEqual(versionMinInclusive) &&
 		currentVersion.LessThan(versionMaxExclusive) {
-		// CONCAT and setting works even if there is no value.
-		_, err = db.ExecContext(ctx, `SET SESSION sql_mode=CONCAT(@@sql_mode, ',NO_AUTO_CREATE_USER')`)
+		// We set NO_AUTO_CREATE_USER to prevent provider from creating user when creating grants. Newer MySQL has it automatically.
+		// We don't want any other modes, esp. not ANSI_QUOTES.
+		_, err = db.ExecContext(ctx, `SET SESSION sql_mode='NO_AUTO_CREATE_USER'`)
+		if err != nil {
+			return nil, fmt.Errorf("failed setting SQL mode: %v", err)
+		}
+	} else {
+		// We don't want any modes, esp. not ANSI_QUOTES.
+		_, err = db.ExecContext(ctx, `SET SESSION sql_mode=''`)
 		if err != nil {
 			return nil, fmt.Errorf("failed setting SQL mode: %v", err)
 		}
