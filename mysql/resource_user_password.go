@@ -141,7 +141,7 @@ func ReadUserPassword(ctx context.Context, d *schema.ResourceData, meta interfac
 	}
 
 	// User doesn't exist. Password is certainly wrong in mysql, destroy the resource.
-	log.Printf("User and host doesn't exist %s@%s", d.Get("user").(string), d.Get("host").(string))
+	log.Printf("[DEBUG] User and host doesn't exist %s@%s", d.Get("user").(string), d.Get("host").(string))
 	d.SetId("")
 	return nil
 }

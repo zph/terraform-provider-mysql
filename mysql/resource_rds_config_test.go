@@ -65,7 +65,7 @@ func testAccRDSCheckDestroy() resource.TestCheckFunc {
 
 		stmtSQL := "call mysql.rds_show_configuration"
 
-		log.Println("Executing query:", stmtSQL)
+		log.Println("[DEBUG] Executing query:", stmtSQL)
 		rows, err := db.QueryContext(ctx, stmtSQL)
 		if err != nil {
 			return err

@@ -522,15 +522,15 @@ func CreateGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 		return diag.Errorf("failed showing grants: %v", err)
 	}
 	if conflictingGrant != nil {
-		return diag.Errorf("user/role %s already has grant %v - ", grant.GetUserOrRole(), conflictingGrant)
+		return diag.Errorf("user/role %#v already has grant %v - ", grant.GetUserOrRole(), conflictingGrant)
 	}
 
 	stmtSQL := grant.SQLGrantStatement()
 
-	log.Println("Executing statement:", stmtSQL)
+	log.Println("[DEBUG] Executing statement:", stmtSQL)
 	_, err = db.ExecContext(ctx, stmtSQL)
 	if err != nil {
-		return diag.Errorf("Error running SQL (%s): %s", stmtSQL, err)
+		return diag.Errorf("Error running SQL (%v): %v", stmtSQL, err)
 	}
 
 	d.SetId(grant.GetId())
@@ -553,7 +553,7 @@ func ReadGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) di
 		return diag.Errorf("ReadGrant - getting all grants failed: %v", err)
 	}
 	if grantFromDb == nil {
-		log.Printf("[WARN] GRANT not found for %s - removing from state", grantFromTf.GetUserOrRole())
+		log.Printf("[WARN] GRANT not found for %#v - removing from state", grantFromTf.GetUserOrRole())
 		d.SetId("")
 		return nil
 	}
@@ -609,7 +609,7 @@ func updatePrivileges(ctx context.Context, db *sql.DB, d *schema.ResourceData, g
 			return fmt.Errorf("grant does not support partial privilege revokes")
 		}
 		sqlCommand := partialRevoker.SQLPartialRevokePrivilegesStatement(privsToRevoke)
-		log.Printf("[DEBUG] SQL: %s", sqlCommand)
+		log.Printf("[DEBUG] SQL for partial revoke: %s", sqlCommand)
 
 		if _, err := db.ExecContext(ctx, sqlCommand); err != nil {
 			return err
@@ -619,7 +619,7 @@ func updatePrivileges(ctx context.Context, db *sql.DB, d *schema.ResourceData, g
 	// Do a full grant if anything has been added
 	if len(grantIfs) > 0 {
 		sqlCommand := grant.SQLGrantStatement()
-		log.Printf("[DEBUG] SQL: %s", sqlCommand)
+		log.Printf("[DEBUG] SQL to re-grant privileges: %s", sqlCommand)
 
 		if _, err := db.ExecContext(ctx, sqlCommand); err != nil {
 			return err
@@ -646,7 +646,7 @@ func DeleteGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 	defer grantCreateMutex.Unlock(grant.GetUserOrRole().IDString())
 
 	sqlStatement := grant.SQLRevokeStatement()
-	log.Printf("[DEBUG] SQL: %s", sqlStatement)
+	log.Printf("[DEBUG] SQL to delete grant: %s", sqlStatement)
 	_, err = db.ExecContext(ctx, sqlStatement)
 	if err != nil {
 		if !isNonExistingGrant(err) {
@@ -696,12 +696,12 @@ func ImportGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 
 	db, err := getDatabaseFromMeta(ctx, meta)
 	if err != nil {
-		return nil, fmt.Errorf("Got error while getting database from meta: %w", err)
+		return nil, fmt.Errorf("got error while getting database from meta: %w", err)
 	}
 
 	grants, err := showUserGrants(ctx, db, userOrRole)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to showUserGrants in import: %w", err)
+		return nil, fmt.Errorf("failed to showUserGrants in import: %w", err)
 	}
 	for _, foundGrant := range grants {
 		if grantsConflict(desiredGrant, foundGrant) {
@@ -711,7 +711,7 @@ func ImportGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 		}
 	}
 
-	return nil, fmt.Errorf("Failed to find the grant to import: %v -- found %v", userHostDatabaseTable, grants)
+	return nil, fmt.Errorf("failed to find the grant to import: %v -- found %#v", userHostDatabaseTable, grants)
 }
 
 // setDataFromGrant copies the values from MySQLGrant to the schema.ResourceData
@@ -776,7 +776,7 @@ func combineGrants(grantA MySQLGrant, grantB MySQLGrant) (MySQLGrant, error) {
 	// Check if the grants cover the same user, table, database
 	// If not, throw an error because they are unmergeable
 	if !grantsConflict(grantA, grantB) {
-		return nil, fmt.Errorf("Unable to combine MySQLGrant %s with %s because they don't cover the same table/database/user", grantA, grantB)
+		return nil, fmt.Errorf("unable to combine MySQLGrant %s with %s because they don't cover the same table/database/user", grantA, grantB)
 	}
 
 	// We can combine grants with privileges
@@ -795,7 +795,7 @@ func combineGrants(grantA MySQLGrant, grantB MySQLGrant) (MySQLGrant, error) {
 		return grantA, nil
 	}
 
-	return nil, fmt.Errorf("Unable to combine MySQLGrant %s of type %T with %s of type %T", grantA, grantA, grantB, grantB)
+	return nil, fmt.Errorf("unable to combine MySQLGrant %s of type %T with %s of type %T", grantA, grantA, grantB, grantB)
 }
 
 func getMatchingGrant(ctx context.Context, db *sql.DB, desiredGrant MySQLGrant) (MySQLGrant, error) {
@@ -809,6 +809,7 @@ func getMatchingGrant(ctx context.Context, db *sql.DB, desiredGrant MySQLGrant) 
 		// Check if the grants cover the same user, table, database
 		// If not, continue
 		if !grantsConflict(desiredGrant, dbGrant) {
+			log.Printf("[DEBUG] Skipping grant %#v as it doesn't match %#v", dbGrant, desiredGrant)
 			continue
 		}
 
@@ -817,7 +818,7 @@ func getMatchingGrant(ctx context.Context, db *sql.DB, desiredGrant MySQLGrant) 
 		if result != nil {
 			result, err = combineGrants(result, dbGrant)
 			if err != nil {
-				return nil, fmt.Errorf("Failed to combine grants in getMatchingGrant: %w", err)
+				return nil, fmt.Errorf("failed to combine grants in getMatchingGrant: %w", err)
 			}
 		} else {
 			result = dbGrant
@@ -894,12 +895,12 @@ func parseGrantFromRow(grantStr string) (MySQLGrant, error) {
 
 		userOrRole, err := parseUserOrRoleFromRow(procedureMatches[4])
 		if err != nil {
-			return nil, fmt.Errorf("Failed to parseUserOrRole for procedure grant: %w", err)
+			return nil, fmt.Errorf("failed to parseUserOrRole for procedure grant: %w", err)
 		}
 
 		database, callable, err := parseDatabaseQualifiedObject(procedureMatches[3])
 		if err != nil {
-			return nil, fmt.Errorf("Failed to parseDatabaseQualifiedObject for procedure grant: %w", err)
+			return nil, fmt.Errorf("failed to parseDatabaseQualifiedObject for procedure grant: %w", err)
 		}
 
 		grant := &ProcedurePrivilegeGrant{
@@ -911,7 +912,7 @@ func parseGrantFromRow(grantStr string) (MySQLGrant, error) {
 			UserOrRole:   *userOrRole,
 			TLSOption:    tlsOption,
 		}
-		log.Printf("[DEBUG] Got: %s, parsed grant is %s: %v", grantStr, reflect.TypeOf(grant), grant)
+		log.Printf("[DEBUG] Got procedure parsed grant: %s, parsed grant is %s: %v", grantStr, reflect.TypeOf(grant), grant)
 		return grant, nil
 	} else if tableMatches := tableGrantRegex.FindStringSubmatch(grantStr); len(tableMatches) == 4 {
 		privsStr := tableMatches[1]
@@ -925,12 +926,12 @@ func parseGrantFromRow(grantStr string) (MySQLGrant, error) {
 
 		userOrRole, err := parseUserOrRoleFromRow(tableMatches[3])
 		if err != nil {
-			return nil, fmt.Errorf("Failed to parseUserOrRole for table grant: %w", err)
+			return nil, fmt.Errorf("failed to parseUserOrRole for table grant: %w", err)
 		}
 
 		database, table, err := parseDatabaseQualifiedObject(tableMatches[2])
 		if err != nil {
-			return nil, fmt.Errorf("Failed to parseDatabaseQualifiedObject for table grant: %w", err)
+			return nil, fmt.Errorf("failed to parseDatabaseQualifiedObject for table grant: %w", err)
 		}
 
 		grant := &TablePrivilegeGrant{
@@ -941,7 +942,7 @@ func parseGrantFromRow(grantStr string) (MySQLGrant, error) {
 			UserOrRole: *userOrRole,
 			TLSOption:  tlsOption,
 		}
-		log.Printf("[DEBUG] Got: %s, parsed grant is %s: %v", grantStr, reflect.TypeOf(grant), grant)
+		log.Printf("[DEBUG] Got table parsed grant: %s, parsed grant is %s: %v", grantStr, reflect.TypeOf(grant), grant)
 		return grant, nil
 	} else if roleMatches := roleGrantRegex.FindStringSubmatch(grantStr); len(roleMatches) == 3 {
 		rolesStart := strings.Split(roleMatches[1], ",")
@@ -953,7 +954,7 @@ func parseGrantFromRow(grantStr string) (MySQLGrant, error) {
 
 		userOrRole, err := parseUserOrRoleFromRow(roleMatches[2])
 		if err != nil {
-			return nil, fmt.Errorf("Failed to parseUserOrRole for role grant: %w", err)
+			return nil, fmt.Errorf("failed to parseUserOrRole for role grant: %w", err)
 		}
 
 		grant := &RoleGrant{
@@ -974,7 +975,7 @@ func showUserGrants(ctx context.Context, db *sql.DB, userOrRole UserOrRole) ([]M
 	grants := []MySQLGrant{}
 
 	sqlStatement := fmt.Sprintf("SHOW GRANTS FOR %s", userOrRole.SQLString())
-	log.Printf("[DEBUG] SQL: %s", sqlStatement)
+	log.Printf("[DEBUG] SQL to show grants: %s", sqlStatement)
 	rows, err := db.QueryContext(ctx, sqlStatement)
 
 	if isNonExistingGrant(err) {
@@ -996,7 +997,7 @@ func showUserGrants(ctx context.Context, db *sql.DB, userOrRole UserOrRole) ([]M
 
 		parsedGrant, err := parseGrantFromRow(rawGrant)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to parseGrantFromRow: %w", err)
+			return nil, fmt.Errorf("failed to parseGrantFromRow: %w", err)
 		}
 		if parsedGrant == nil {
 			continue
@@ -1012,7 +1013,7 @@ func showUserGrants(ctx context.Context, db *sql.DB, userOrRole UserOrRole) ([]M
 		grants = append(grants, parsedGrant)
 
 	}
-	log.Printf("[DEBUG] Parsed grants are: %s", grants)
+	log.Printf("[DEBUG] Parsed grants are: %#v", grants)
 	return grants, nil
 }
 

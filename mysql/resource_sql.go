@@ -42,7 +42,7 @@ func CreateSql(ctx context.Context, d *schema.ResourceData, meta interface{}) di
 	name := d.Get("name").(string)
 	createSql := d.Get("create_sql").(string)
 
-	log.Println("Executing SQL", createSql)
+	log.Println("[DEBUG] Executing SQL", createSql)
 
 	_, err = db.ExecContext(ctx, createSql)
 	if err != nil {
@@ -65,7 +65,7 @@ func DeleteSql(ctx context.Context, d *schema.ResourceData, meta interface{}) di
 	}
 	deleteSql := d.Get("delete_sql").(string)
 
-	log.Println("Executing SQL:", deleteSql)
+	log.Println("[DEBUG] Executing SQL:", deleteSql)
 
 	_, err = db.ExecContext(ctx, deleteSql)
 	if err != nil {

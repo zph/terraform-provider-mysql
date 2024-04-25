@@ -220,7 +220,7 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 		}
 	}
 
-	log.Println("Executing statement:", stmtSQL)
+	log.Println("[DEBUG] Executing statement:", stmtSQL)
 	_, err = db.ExecContext(ctx, stmtSQL)
 	if err != nil {
 		return diag.Errorf("failed executing SQL: %v", err)
@@ -230,7 +230,7 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 	d.SetId(user)
 
 	if updateStmtSql != "" {
-		log.Println("Executing statement:", updateStmtSql)
+		log.Println("[DEBUG] Executing statement:", updateStmtSql)
 		_, err = db.ExecContext(ctx, updateStmtSql)
 		if err != nil {
 			d.Set("tls_option", "")
@@ -279,7 +279,7 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 				authString,
 				d.Get("tls_option").(string))
 
-			log.Println("Executing query:", stmtSQL)
+			log.Println("[DEBUG] Executing query:", stmtSQL)
 			_, err := db.ExecContext(ctx, stmtSQL)
 			if err != nil {
 				return diag.Errorf("failed running query: %v", err)
@@ -310,7 +310,7 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 			return diag.Errorf("failed getting change password statement: %v", err)
 		}
 
-		log.Println("Executing query:", stmtSQL)
+		log.Println("[DEBUG] Executing query:", stmtSQL)
 		_, err = db.ExecContext(ctx, stmtSQL,
 			d.Get("user").(string),
 			d.Get("host").(string),
@@ -329,7 +329,7 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 			d.Get("host").(string),
 			d.Get("tls_option").(string))
 
-		log.Println("Executing query:", stmtSQL)
+		log.Println("[DEBUG] Executing query:", stmtSQL)
 		_, err := db.ExecContext(ctx, stmtSQL)
 		if err != nil {
 			return diag.Errorf("failed setting require tls option: %v", err)
@@ -421,7 +421,7 @@ func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) dia
 		stmtSQL := fmt.Sprintf("SELECT USER FROM mysql.user WHERE USER='%s'",
 			d.Get("user").(string))
 
-		log.Println("Executing statement:", stmtSQL)
+		log.Println("[DEBUG] Executing statement:", stmtSQL)
 
 		rows, err := db.QueryContext(ctx, stmtSQL)
 		if err != nil {
@@ -448,7 +448,7 @@ func DeleteUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 
 	stmtSQL := fmt.Sprintf("DROP USER ?@?")
 
-	log.Println("Executing statement:", stmtSQL)
+	log.Println("[DEBUG] Executing statement:", stmtSQL)
 
 	_, err = db.ExecContext(ctx, stmtSQL,
 		d.Get("user").(string),
