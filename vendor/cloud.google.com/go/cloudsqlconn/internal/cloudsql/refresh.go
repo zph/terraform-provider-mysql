@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"cloud.google.com/go/cloudsqlconn/debug"
 	"cloud.google.com/go/cloudsqlconn/errtype"
 	"cloud.google.com/go/cloudsqlconn/instance"
 	"cloud.google.com/go/cloudsqlconn/internal/trace"
@@ -224,83 +225,19 @@ func fetchEphemeralCert(
 	return c, nil
 }
 
-// createTLSConfig returns a *tls.Config for connecting securely to the Cloud SQL instance.
-func createTLSConfig(inst instance.ConnName, m metadata, cert tls.Certificate) *tls.Config {
-	certs := x509.NewCertPool()
-	certs.AddCert(m.serverCaCert)
-
-	cfg := &tls.Config{
-		ServerName:   inst.String(),
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      certs,
-		// We need to set InsecureSkipVerify to true due to
-		// https://github.com/GoogleCloudPlatform/cloudsql-proxy/issues/194
-		// https://tip.golang.org/doc/go1.11#crypto/x509
-		//
-		// Since we have a secure channel to the Cloud SQL API which we use to retrieve the
-		// certificates, we instead need to implement our own VerifyPeerCertificate function
-		// that will verify that the certificate is OK.
-		InsecureSkipVerify:    true,
-		VerifyPeerCertificate: genVerifyPeerCertificateFunc(inst, certs),
-		MinVersion:            tls.VersionTLS13,
-	}
-	return cfg
-}
-
-// genVerifyPeerCertificateFunc creates a VerifyPeerCertificate func that
-// verifies that the peer certificate is in the cert pool. We need to define
-// our own because CloudSQL instances use the instance name (e.g.,
-// my-project:my-instance) instead of a valid domain name for the certificate's
-// Common Name.
-func genVerifyPeerCertificateFunc(cn instance.ConnName, pool *x509.CertPool) func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-	return func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-		if len(rawCerts) == 0 {
-			return errtype.NewDialError("no certificate to verify", cn.String(), nil)
-		}
-
-		cert, err := x509.ParseCertificate(rawCerts[0])
-		if err != nil {
-			return errtype.NewDialError("failed to parse X.509 certificate", cn.String(), err)
-		}
-
-		opts := x509.VerifyOptions{Roots: pool}
-		if _, err = cert.Verify(opts); err != nil {
-			return errtype.NewDialError("failed to verify certificate", cn.String(), err)
-		}
-
-		certInstanceName := fmt.Sprintf("%s:%s", cn.Project(), cn.Name())
-		if cert.Subject.CommonName != certInstanceName {
-			return errtype.NewDialError(
-				fmt.Sprintf("certificate had CN %q, expected %q",
-					cert.Subject.CommonName, certInstanceName),
-				cn.String(),
-				nil,
-			)
-		}
-		return nil
-	}
-}
-
 // newRefresher creates a Refresher.
 func newRefresher(
+	l debug.Logger,
 	svc *sqladmin.Service,
 	ts oauth2.TokenSource,
 	dialerID string,
 ) refresher {
 	return refresher{
 		dialerID: dialerID,
+		logger:   l,
 		client:   svc,
 		ts:       ts,
 	}
-}
-
-// refreshResult contains all the resulting data from the refresh operation.
-type refreshResult struct {
-	ipAddrs      map[string]string
-	serverCaCert *x509.Certificate
-	version      string
-	conf         *tls.Config
-	expiry       time.Time
 }
 
 // refresher manages the SQL Admin API access to instance metadata and to
@@ -308,16 +245,17 @@ type refreshResult struct {
 type refresher struct {
 	// dialerID is the unique ID of the associated dialer.
 	dialerID string
+	logger   debug.Logger
 	client   *sqladmin.Service
 	// ts is the TokenSource used for IAM DB AuthN.
 	ts oauth2.TokenSource
 }
 
-// performRefresh immediately performs a full refresh operation using the Cloud
+// ConnectionInfo immediately performs a full refresh operation using the Cloud
 // SQL Admin API.
-func (r refresher) performRefresh(
+func (r refresher) ConnectionInfo(
 	ctx context.Context, cn instance.ConnName, k *rsa.PrivateKey, iamAuthNDial bool,
-) (rr refreshResult, err error) {
+) (ci ConnectionInfo, err error) {
 
 	var refreshEnd trace.EndSpanFunc
 	ctx, refreshEnd = trace.StartSpan(ctx, "cloud.google.com/go/cloudsqlconn/internal.RefreshConnection",
@@ -361,15 +299,15 @@ func (r refresher) performRefresh(
 	select {
 	case r := <-mdC:
 		if r.err != nil {
-			return refreshResult{}, fmt.Errorf("failed to get instance: %w", r.err)
+			return ConnectionInfo{}, fmt.Errorf("failed to get instance: %w", r.err)
 		}
 		md = r.md
 	case <-ctx.Done():
-		return rr, fmt.Errorf("refresh failed: %w", ctx.Err())
+		return ci, fmt.Errorf("refresh failed: %w", ctx.Err())
 	}
 	if iamAuthNDial {
 		if vErr := supportsAutoIAMAuthN(md.version); vErr != nil {
-			return refreshResult{}, vErr
+			return ConnectionInfo{}, vErr
 		}
 	}
 
@@ -377,25 +315,20 @@ func (r refresher) performRefresh(
 	select {
 	case r := <-ecC:
 		if r.err != nil {
-			return refreshResult{}, fmt.Errorf("fetch ephemeral cert failed: %w", r.err)
+			return ConnectionInfo{}, fmt.Errorf("fetch ephemeral cert failed: %w", r.err)
 		}
 		ec = r.ec
 	case <-ctx.Done():
-		return refreshResult{}, fmt.Errorf("refresh failed: %w", ctx.Err())
+		return ConnectionInfo{}, fmt.Errorf("refresh failed: %w", ctx.Err())
 	}
 
-	c := createTLSConfig(cn, md, ec)
-	var expiry time.Time
-	// This should never not be the case, but we check to avoid a potential nil-pointer
-	if len(c.Certificates) > 0 {
-		expiry = c.Certificates[0].Leaf.NotAfter
-	}
-	return refreshResult{
-		ipAddrs:      md.ipAddrs,
-		serverCaCert: md.serverCaCert,
-		version:      md.version,
-		conf:         c,
-		expiry:       expiry,
+	return ConnectionInfo{
+		addrs:             md.ipAddrs,
+		ServerCaCert:      md.serverCaCert,
+		ClientCertificate: ec,
+		Expiration:        ec.Leaf.NotAfter,
+		DBVersion:         md.version,
+		ConnectionName:    cn,
 	}, nil
 }
 

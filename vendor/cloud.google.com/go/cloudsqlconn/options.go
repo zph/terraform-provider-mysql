@@ -17,11 +17,12 @@ package cloudsqlconn
 import (
 	"context"
 	"crypto/rsa"
-	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
+	"cloud.google.com/go/cloudsqlconn/debug"
 	"cloud.google.com/go/cloudsqlconn/errtype"
 	"cloud.google.com/go/cloudsqlconn/internal/cloudsql"
 	"golang.org/x/oauth2"
@@ -40,8 +41,14 @@ type dialerConfig struct {
 	dialFunc               func(ctx context.Context, network, addr string) (net.Conn, error)
 	refreshTimeout         time.Duration
 	useIAMAuthN            bool
+	logger                 debug.Logger
+	lazyRefresh            bool
 	iamLoginTokenSource    oauth2.TokenSource
 	useragents             []string
+	credentialsUniverse    string
+	serviceUniverse        string
+	setAdminAPIEndpoint    bool
+	setUniverseDomain      bool
 	setCredentials         bool
 	setTokenSource         bool
 	setIAMAuthNTokenSource bool
@@ -63,7 +70,7 @@ func WithOptions(opts ...Option) Option {
 // authentication.
 func WithCredentialsFile(filename string) Option {
 	return func(d *dialerConfig) {
-		b, err := ioutil.ReadFile(filename)
+		b, err := os.ReadFile(filename)
 		if err != nil {
 			d.err = errtype.NewConfigError(err.Error(), "n/a")
 			return
@@ -82,6 +89,12 @@ func WithCredentialsJSON(b []byte) Option {
 			d.err = errtype.NewConfigError(err.Error(), "n/a")
 			return
 		}
+		ud, err := c.GetUniverseDomain()
+		if err != nil {
+			d.err = errtype.NewConfigError(err.Error(), "n/a")
+			return
+		}
+		d.credentialsUniverse = ud
 		d.sqladminOpts = append(d.sqladminOpts, apiopt.WithCredentials(c))
 
 		// Create another set of credentials scoped to login only
@@ -176,6 +189,18 @@ func WithHTTPClient(client *http.Client) Option {
 func WithAdminAPIEndpoint(url string) Option {
 	return func(d *dialerConfig) {
 		d.sqladminOpts = append(d.sqladminOpts, apiopt.WithEndpoint(url))
+		d.setAdminAPIEndpoint = true
+		d.serviceUniverse = ""
+	}
+}
+
+// WithUniverseDomain configures the underlying SQL Admin API client to use
+// the provided universe domain. Enables Trusted Partner Cloud (TPC).
+func WithUniverseDomain(ud string) Option {
+	return func(d *dialerConfig) {
+		d.sqladminOpts = append(d.sqladminOpts, apiopt.WithUniverseDomain(ud))
+		d.serviceUniverse = ud
+		d.setUniverseDomain = true
 	}
 }
 
@@ -206,6 +231,27 @@ func WithDialFunc(dial func(ctx context.Context, network, addr string) (net.Conn
 func WithIAMAuthN() Option {
 	return func(d *dialerConfig) {
 		d.useIAMAuthN = true
+	}
+}
+
+// WithDebugLogger configures a debug lgoger for reporting on internal
+// operations. By default the debug logger is disabled.
+func WithDebugLogger(l debug.Logger) Option {
+	return func(d *dialerConfig) {
+		d.logger = l
+	}
+}
+
+// WithLazyRefresh configures the dialer to refresh certificates on an
+// as-needed basis. If a certificate is expired when a connection request
+// occurs, the Go Connector will block the attempt and refresh the certificate
+// immediately. This option is useful when running the Go Connector in
+// environments where the CPU may be throttled, thus preventing a background
+// goroutine from running consistently (e.g., in Cloud Run the CPU is throttled
+// outside of a request context causing the background refresh to fail).
+func WithLazyRefresh() Option {
+	return func(d *dialerConfig) {
+		d.lazyRefresh = true
 	}
 }
 
