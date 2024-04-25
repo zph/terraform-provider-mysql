@@ -80,7 +80,7 @@ func testAccDefaultRoles(rn string, roles ...string) resource.TestCheckFunc {
 		}
 
 		stmtSQL := fmt.Sprintf("SELECT default_role_user from mysql.default_roles where CONCAT(user, '@', host) = '%s'", rs.Primary.ID)
-		log.Println("Executing statement:", stmtSQL)
+		log.Println("[DEBUG] Executing statement:", stmtSQL)
 		rows, err := db.Query(stmtSQL)
 		if err != nil {
 			return fmt.Errorf("error reading user default roles: %w", err)
@@ -129,7 +129,7 @@ func testAccDefaultRolesCheckDestroy(s *terraform.State) error {
 		}
 
 		stmtSQL := fmt.Sprintf("SELECT count(*) FROM mysql.default_roles WHERE CONCAT(user, '@', host) = '%s'", rs.Primary.ID)
-		log.Println("Executing statement:", stmtSQL)
+		log.Println("[DEBUG] Executing statement:", stmtSQL)
 		var count int
 		err := db.QueryRow(stmtSQL).Scan(&count)
 		if err != nil {

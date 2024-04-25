@@ -68,7 +68,7 @@ func alterUserDefaultRoles(ctx context.Context, db *sql.DB, user, host string, r
 		stmtSQL += "NONE"
 	}
 
-	log.Println("Executing statement:", stmtSQL)
+	log.Println("[DEBUG] Executing statement:", stmtSQL)
 	_, err := db.ExecContext(ctx, stmtSQL)
 	if err != nil {
 		return fmt.Errorf("failed executing SQL: %w", err)
@@ -142,7 +142,7 @@ func ReadDefaultRoles(ctx context.Context, d *schema.ResourceData, meta interfac
 
 	stmtSQL := "SELECT default_role_user FROM mysql.default_roles WHERE user = ? AND host = ?"
 
-	log.Println("Executing statement:", stmtSQL)
+	log.Println("[DEBUG] Executing statement:", stmtSQL)
 
 	rows, err := db.QueryContext(ctx, stmtSQL, d.Get("user").(string), d.Get("host").(string))
 	if err != nil {

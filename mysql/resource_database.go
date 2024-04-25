@@ -55,7 +55,7 @@ func CreateDatabase(ctx context.Context, d *schema.ResourceData, meta interface{
 	}
 
 	stmtSQL := databaseConfigSQL("CREATE", d)
-	log.Println("Executing statement:", stmtSQL)
+	log.Println("[DEBUG] Executing statement:", stmtSQL)
 
 	_, err = db.ExecContext(ctx, stmtSQL)
 	if err != nil {
@@ -74,7 +74,7 @@ func UpdateDatabase(ctx context.Context, d *schema.ResourceData, meta interface{
 	}
 
 	stmtSQL := databaseConfigSQL("ALTER", d)
-	log.Println("Executing statement:", stmtSQL)
+	log.Println("[DEBUG] Executing statement:", stmtSQL)
 
 	_, err = db.ExecContext(ctx, stmtSQL)
 	if err != nil {
@@ -98,7 +98,7 @@ func ReadDatabase(ctx context.Context, d *schema.ResourceData, meta interface{})
 	name := d.Id()
 	stmtSQL := "SHOW CREATE DATABASE " + quoteIdentifier(name)
 
-	log.Println("Executing query:", stmtSQL)
+	log.Println("[DEBUG] Executing query:", stmtSQL)
 	var createSQL, _database string
 	err = db.QueryRowContext(ctx, stmtSQL).Scan(&_database, &createSQL)
 	if err != nil {
@@ -160,7 +160,7 @@ func DeleteDatabase(ctx context.Context, d *schema.ResourceData, meta interface{
 
 	name := d.Id()
 	stmtSQL := "DROP DATABASE " + quoteIdentifier(name)
-	log.Println("Executing statement:", stmtSQL)
+	log.Println("[DEBUG] Executing statement:", stmtSQL)
 
 	_, err = db.ExecContext(ctx, stmtSQL)
 	if err != nil {

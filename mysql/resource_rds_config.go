@@ -47,7 +47,7 @@ func CreateRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface
 	}
 
 	for _, stmtSQL := range RDSConfigSQL(d) {
-		log.Println("Executing statement:", stmtSQL)
+		log.Println("[DEBUG] Executing statement:", stmtSQL)
 
 		_, err = db.ExecContext(ctx, stmtSQL)
 		if err != nil {
@@ -67,7 +67,7 @@ func UpdateRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface
 	}
 
 	for _, stmtSQL := range RDSConfigSQL(d) {
-		log.Println("Executing statement:", stmtSQL)
+		log.Println("[DEBUG] Executing statement:", stmtSQL)
 
 		_, err = db.ExecContext(ctx, stmtSQL)
 		if err != nil {
@@ -86,7 +86,7 @@ func ReadRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface{}
 
 	stmtSQL := "call mysql.rds_show_configuration"
 
-	log.Println("Executing query:", stmtSQL)
+	log.Println("[DEBUG] Executing query:", stmtSQL)
 	rows, err := db.QueryContext(ctx, stmtSQL)
 	if err != nil {
 		return diag.Errorf("Error reading RDS config from DB: %v", err)
@@ -138,7 +138,7 @@ func DeleteRDSConfig(ctx context.Context, d *schema.ResourceData, meta interface
 
 	stmtsSQL := []string{"call mysql.rds_set_configuration('binlog retention hours', NULL)", "call mysql.rds_set_configuration('target delay', 0)"}
 	for _, stmtSQL := range stmtsSQL {
-		log.Println("Executing statement:", stmtSQL)
+		log.Println("[DEBUG] Executing statement:", stmtSQL)
 
 		_, err = db.ExecContext(ctx, stmtSQL)
 		if err != nil {
