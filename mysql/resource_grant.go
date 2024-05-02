@@ -828,7 +828,7 @@ func getMatchingGrant(ctx context.Context, db *sql.DB, desiredGrant MySQLGrant) 
 }
 
 var (
-	kUserOrRoleRegex = regexp.MustCompile("['`]?([^'`]+)['`]?(?:@['`]?([^'`]+)['`]?)?")
+	kUserOrRoleRegex = regexp.MustCompile("['`\"]?([^'`\"]+)['`\"]?(?:@['`\"]?([^'`\"]+)['`\"]?)?")
 )
 
 func parseUserOrRoleFromRow(userOrRoleStr string) (*UserOrRole, error) {
@@ -849,7 +849,7 @@ func parseUserOrRoleFromRow(userOrRoleStr string) (*UserOrRole, error) {
 }
 
 var (
-	kDatabaseAndObjectRegex = regexp.MustCompile("['`]?([^'`]+)['`]?\\.['`]?([^'`]+)['`]?")
+	kDatabaseAndObjectRegex = regexp.MustCompile("['`\"]?([^'`\"]+)['`\"]?\\.['`\"]?([^'`\"]+)['`\"]?")
 )
 
 func parseDatabaseQualifiedObject(objectRef string) (string, string, error) {
