@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
@@ -88,7 +89,7 @@ func ReadGlobalVariable(ctx context.Context, d *schema.ResourceData, meta interf
 	var name, value string
 	err = stmt.QueryRow(d.Id()).Scan(&name, &value)
 
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		d.SetId("")
 		return diag.Errorf("error during show global variables: %s", err)
 	}

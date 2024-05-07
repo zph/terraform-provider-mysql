@@ -26,10 +26,10 @@ import (
 	"golang.org/x/net/proxy"
 	"golang.org/x/oauth2"
 
-	cloudsqlconn "cloud.google.com/go/cloudsqlconn"
+	"cloud.google.com/go/cloudsqlconn"
 	cloudsql "cloud.google.com/go/cloudsqlconn/mysql/mysql"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
-	azidentity "github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 )
 
 const (

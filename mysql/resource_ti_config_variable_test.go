@@ -193,7 +193,7 @@ func testAccGetConfigVar(varName string, varType string, db *sql.DB) (string, st
 
 	err = stmt.QueryRow(varName, varType).Scan(&resType, &resInstance, &resName, &resValue)
 
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "nil", "nil", err
 	}
 

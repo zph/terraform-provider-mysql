@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"regexp"
@@ -214,7 +215,7 @@ func testAccUserExists(rn string) resource.TestCheckFunc {
 		var count int
 		err = db.QueryRow(stmtSQL).Scan(&count)
 		if err != nil {
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				return fmt.Errorf("expected 1 row reading user but got no rows")
 			}
 			return fmt.Errorf("error reading user: %s", err)
@@ -246,7 +247,7 @@ func testAccUserAuthExists(rn string) resource.TestCheckFunc {
 		var count int
 		err = db.QueryRow(stmtSQL).Scan(&count)
 		if err != nil {
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				return fmt.Errorf("expected 1 row reading user but got no rows")
 			}
 			return fmt.Errorf("error reading user: %s", err)
@@ -292,8 +293,9 @@ func testAccUserCheckDestroy(s *terraform.State) error {
 		if err != nil {
 			return fmt.Errorf("error issuing query: %s", err)
 		}
-		defer rows.Close()
-		if rows.Next() {
+		haveNext := rows.Next()
+		rows.Close()
+		if haveNext {
 			return fmt.Errorf("user still exists after destroy")
 		}
 	}

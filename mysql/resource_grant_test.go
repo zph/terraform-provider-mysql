@@ -855,7 +855,7 @@ func prepareProcedure(dbname string, procedureName string) resource.TestCheckFun
 		_, err = db.ExecContext(ctx, fmt.Sprintf("USE `%s`", dbname))
 		log.Printf("[DEBUG] SQL: %s", dbname)
 		if err != nil {
-			return fmt.Errorf("Error selecting database %s: %s", dbname, err)
+			return fmt.Errorf("error selecting database %s: %s", dbname, err)
 		}
 
 		// Check if the procedure exists
@@ -868,7 +868,7 @@ WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = 'PROCEDURE'
 		log.Printf("[DEBUG] SQL: %s", checkExistenceSQL)
 		err = db.QueryRowContext(ctx, checkExistenceSQL, dbname, procedureName).Scan(&exists)
 		if err != nil {
-			return fmt.Errorf("Error checking existence of procedure %s: %s", procedureName, err)
+			return fmt.Errorf("error checking existence of procedure %s: %s", procedureName, err)
 		}
 
 		if exists > 0 {
@@ -1041,7 +1041,7 @@ func testAccCheckProcedureGrant(resourceName, userName, hostName, procedureName 
 
 		// Compare the result with the expected outcome
 		if found != expected {
-			return fmt.Errorf("Grant for procedure %s does not match expected state: %v", procedureName, expected)
+			return fmt.Errorf("grant for procedure %s does not match expected state: %v", procedureName, expected)
 		}
 
 		return nil
