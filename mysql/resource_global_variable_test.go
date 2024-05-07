@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"regexp"
 	"testing"
@@ -153,7 +154,7 @@ func testAccGetGlobalVar(varName string, db *sql.DB) (string, error) {
 	var value string
 	err = stmt.QueryRow(varName).Scan(&name, &value)
 
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", err
 	}
 

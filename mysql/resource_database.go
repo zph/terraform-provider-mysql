@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
@@ -134,7 +135,7 @@ func ReadDatabase(ctx context.Context, d *schema.ResourceData, meta interface{})
 		}
 
 		if res != nil {
-			if res == sql.ErrNoRows {
+			if errors.Is(res, sql.ErrNoRows) {
 				return diag.Errorf("charset %s has no default collation", defaultCharset)
 			}
 

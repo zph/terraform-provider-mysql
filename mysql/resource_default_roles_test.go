@@ -21,7 +21,7 @@ func TestAccDefaultRoles_basic(t *testing.T) {
 		CheckDestroy:      testAccDefaultRolesCheckDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccDefaultRoles_basic,
+				Config: testAccDefaultRolesBasic,
 				Check: resource.ComposeTestCheckFunc(
 					testAccDefaultRoles("mysql_default_roles.test", "role1"),
 					resource.TestCheckResourceAttr("mysql_default_roles.test", "roles.#", "1"),
@@ -29,7 +29,7 @@ func TestAccDefaultRoles_basic(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccDefaultRoles_multiple,
+				Config: testAccDefaultRolesMultiple,
 				Check: resource.ComposeTestCheckFunc(
 					testAccDefaultRoles("mysql_default_roles.test", "role1", "role2"),
 					resource.TestCheckResourceAttr("mysql_default_roles.test", "roles.#", "2"),
@@ -38,21 +38,21 @@ func TestAccDefaultRoles_basic(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccDefaultRoles_none,
+				Config: testAccDefaultRolesNone,
 				Check: resource.ComposeTestCheckFunc(
 					testAccDefaultRoles("mysql_default_roles.test"),
 					resource.TestCheckResourceAttr("mysql_default_roles.test", "roles.#", "0"),
 				),
 			},
 			{
-				Config:            testAccDefaultRoles_basic,
+				Config:            testAccDefaultRolesBasic,
 				ResourceName:      "mysql_default_roles.test",
 				ImportState:       true,
 				ImportStateVerify: true,
 				ImportStateId:     fmt.Sprintf("%v@%v", "jdoe", "%"),
 			},
 			{
-				Config:            testAccDefaultRoles_multiple,
+				Config:            testAccDefaultRolesMultiple,
 				ResourceName:      "mysql_default_roles.test",
 				ImportState:       true,
 				ImportStateVerify: true,
@@ -142,7 +142,7 @@ func testAccDefaultRolesCheckDestroy(s *terraform.State) error {
 	return nil
 }
 
-const testAccDefaultRoles_basic = `
+const testAccDefaultRolesBasic = `
 resource "mysql_role" "role1" {
 	name = "role1"
 }
@@ -166,7 +166,7 @@ resource "mysql_default_roles" "test" {
 }
 `
 
-const testAccDefaultRoles_multiple = `
+const testAccDefaultRolesMultiple = `
 resource "mysql_role" "role1" {
 	name = "role1"
 }
@@ -194,7 +194,7 @@ resource "mysql_default_roles" "test" {
 }
 `
 
-const testAccDefaultRoles_none = `
+const testAccDefaultRolesNone = `
 resource "mysql_user" "test" {
 	user = "jdoe"
 	host = "%"
