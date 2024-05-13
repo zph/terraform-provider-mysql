@@ -293,7 +293,7 @@ func (t *RoleGrant) GrantOption() bool {
 }
 
 func (t *RoleGrant) SQLGrantStatement() string {
-	stmtSql := fmt.Sprintf("GRANT %s TO %s", strings.Join(t.Roles, ", "), t.UserOrRole.SQLString())
+	stmtSql := fmt.Sprintf("GRANT '%s' TO %s", strings.Join(t.Roles, "', '"), t.UserOrRole.SQLString())
 	if t.TLSOption != "" && strings.ToLower(t.TLSOption) != "none" {
 		stmtSql += fmt.Sprintf(" REQUIRE %s", t.TLSOption)
 	}
@@ -304,7 +304,7 @@ func (t *RoleGrant) SQLGrantStatement() string {
 }
 
 func (t *RoleGrant) SQLRevokeStatement() string {
-	return fmt.Sprintf("REVOKE %s FROM %s", strings.Join(t.Roles, ", "), t.UserOrRole.SQLString())
+	return fmt.Sprintf("REVOKE '%s' FROM %s", strings.Join(t.Roles, "', '"), t.UserOrRole.SQLString())
 }
 
 func (t *RoleGrant) GetRoles() []string {
