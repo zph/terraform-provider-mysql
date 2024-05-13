@@ -326,7 +326,7 @@ func TestAccGrantComplexMySQL8(t *testing.T) {
 
 func TestAccGrant_role(t *testing.T) {
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
-	roleName := fmt.Sprintf("TFRole%d", rand.Intn(100))
+	roleName := fmt.Sprintf("TFRole-exp%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
@@ -361,7 +361,7 @@ func TestAccGrant_role(t *testing.T) {
 
 func TestAccGrant_roleToUser(t *testing.T) {
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
-	roleName := fmt.Sprintf("TFRole%d", rand.Intn(100))
+	roleName := fmt.Sprintf("TFRole-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
