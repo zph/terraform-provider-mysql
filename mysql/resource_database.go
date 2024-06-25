@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 	"strings"
 
-	"github.com/hashicorp/go-version"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
@@ -116,23 +116,22 @@ func ReadDatabase(ctx context.Context, d *schema.ResourceData, meta interface{})
 		// MySQL doesn't return the collation if it's the default one for
 		// the charset, so if we don't have a collation we need to go
 		// hunt for the default.
-		stmtSQL := "SHOW COLLATION WHERE `Charset` = ? AND `Default` = 'Yes'"
+		stmtSQL := "SELECT COLLATION_NAME, CHARACTER_SET_NAME FROM INFORMATION_SCHEMA.COLLATIONS WHERE CHARACTER_SET_NAME = ? AND `IS_DEFAULT` = 'Yes';"
+		/*
+			Mysql (5.7, 8.0), TiDB (6.x, 7.x) example:
+			> SELECT COLLATION_NAME, CHARACTER_SET_NAME FROM INFORMATION_SCHEMA.COLLATIONS WHERE CHARACTER_SET_NAME = 'utf8mb4' AND `IS_DEFAULT` = 'Yes';
+
+					+--------------------+--------------------+
+					| COLLATION_NAME     | CHARACTER_SET_NAME |
+					+--------------------+--------------------+
+					| utf8mb4_0900_ai_ci | utf8mb4            |
+					+--------------------+--------------------+
+
+
+		*/
 		var empty interface{}
 
-		requiredVersion, _ := version.NewVersion("8.0.0")
-
-		serverVersionString, err := serverVersionString(db)
-		if err != nil {
-			return diag.Errorf("could not get error version string: %v", err)
-		}
-
-		// MySQL 8 returns more data in a row.
-		var res error
-		if !strings.Contains(serverVersionString, "MariaDB") && getVersionFromMeta(ctx, meta).GreaterThan(requiredVersion) {
-			res = db.QueryRow(stmtSQL, defaultCharset).Scan(&defaultCollation, &empty, &empty, &empty, &empty, &empty, &empty)
-		} else {
-			res = db.QueryRow(stmtSQL, defaultCharset).Scan(&defaultCollation, &empty, &empty, &empty, &empty, &empty)
-		}
+		res := db.QueryRow(stmtSQL, defaultCharset).Scan(&defaultCollation, &empty)
 
 		if res != nil {
 			if errors.Is(res, sql.ErrNoRows) {
