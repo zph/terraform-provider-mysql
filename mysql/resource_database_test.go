@@ -106,11 +106,21 @@ func testAccDatabaseCheckFull(rn string, name string, charset string, collation 
 			return fmt.Errorf("error reading database: %s", err)
 		}
 
-		if strings.Index(createSQL, fmt.Sprintf("CHARACTER SET %s", charset)) == -1 {
+		if !strings.Contains(createSQL, fmt.Sprintf("CHARACTER SET %s", charset)) {
 			return fmt.Errorf("database default charset isn't %s", charset)
 		}
-		if strings.Index(createSQL, fmt.Sprintf("COLLATE %s", collation)) == -1 {
-			return fmt.Errorf("database default collation isn't %s", collation)
+		// TiDB does not include the COLLATE reference in `SHOW CREATE DATABASE`
+		// so perform a lookup based on the charset to find default collation
+		if !strings.Contains(createSQL, fmt.Sprintf("COLLATE %s", collation)) {
+			sql := `SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLLATIONS WHERE IS_DEFAULT = 'Yes' AND CHARACTER_SET_NAME = ?;`
+			var fetchedCollation string
+			err = db.QueryRow(sql, charset).Scan(&fetchedCollation)
+			if err != nil {
+				return fmt.Errorf("database default collation expected %s vs actual %s with error: %e", collation, fetchedCollation, err)
+			}
+			if fetchedCollation != collation {
+				return fmt.Errorf("database default collation expected %s vs actual %s", collation, fetchedCollation)
+			}
 		}
 
 		return nil

@@ -130,7 +130,7 @@ function run_tikv() {
 		-v /etc/localtime:/etc/localtime:ro \
 		-h tikv \
 		--network "$DOCKER_NETWORK" \
-		pingcap/tikv:v4.0.0 \
+		pingcap/tikv:$TAG_VERSION \
 		--addr="0.0.0.0:20160" \
 		--advertise-addr="tikv:20160" \
 		--status-addr="0.0.0.0:20180" \
