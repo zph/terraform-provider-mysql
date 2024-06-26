@@ -65,6 +65,13 @@ $ make bin
 $ $GOPATH/bin/terraform-provider-mysql
 ...
 ```
+### Ensure local requirements are present:
+
+1. Docker environment
+2. mysql-client binary which can be installed on Mac with `brew install mysql-client@8.0`
+   1. Then add it to your path OR `brew link mysql-client@8.0`
+
+### Running tests
 
 In order to test the provider, you can simply run `make test`.
 
