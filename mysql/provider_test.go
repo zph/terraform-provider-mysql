@@ -190,7 +190,6 @@ func testAccPreCheckSkipNotMySQL8(t *testing.T) {
 
 		t.Skip("Skip on MySQL8")
 	}
-	fmt.Printf(`CURRENT VERSION: %+v\n`, currentVersion)
 }
 
 func testAccPreCheckSkipNotMySQLVersionMin(t *testing.T, minVersion string) {
