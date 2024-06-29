@@ -297,10 +297,10 @@ func TestAccGrantComplexMySQL8(t *testing.T) {
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
-			testAccPreCheckSkipTiDB(t)
 			testAccPreCheckSkipRds(t)
 			testAccPreCheckSkipMariaDB(t)
 			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
+			testAccPreCheckSkipTiDB(t)
 		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGrantCheckDestroy,
@@ -369,6 +369,7 @@ func TestAccGrant_roleToUser(t *testing.T) {
 			testAccPreCheck(t)
 			testAccPreCheckSkipRds(t)
 			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
+			testAccPreCheckSkipTiDB(t)
 		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGrantCheckDestroy,
@@ -392,6 +393,7 @@ func TestAccGrant_complexRoleGrants(t *testing.T) {
 			testAccPreCheck(t)
 			testAccPreCheckSkipMariaDB(t)
 			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
+			testAccPreCheckSkipTiDB(t)
 		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGrantCheckDestroy,
@@ -1075,12 +1077,12 @@ func TestAllowDuplicateUsersDifferentTables(t *testing.T) {
 	resource "mysql_database" "test" {
 	  name = "%s"
 	}
-	
+
 	resource "mysql_user" "test" {
 	  user     = "jdoe-%s"
 	  host     = "example.com"
 	}
-	
+
 	resource "mysql_grant" "grant1" {
 	  user       = "${mysql_user.test.user}"
 	  host       = "${mysql_user.test.host}"
@@ -1088,7 +1090,7 @@ func TestAllowDuplicateUsersDifferentTables(t *testing.T) {
       table      = "table1"
 	  privileges = ["UPDATE", "SELECT"]
 	}
-	
+
 	resource "mysql_grant" "grant2" {
 	  user       = "${mysql_user.test.user}"
 	  host       = "${mysql_user.test.host}"
@@ -1140,12 +1142,12 @@ func TestDisallowDuplicateUsersSameTable(t *testing.T) {
 	resource "mysql_database" "test" {
 	  name = "%s"
 	}
-	
+
 	resource "mysql_user" "test" {
 	  user     = "jdoe-%s"
 	  host     = "example.com"
 	}
-	
+
 	resource "mysql_grant" "grant1" {
 	  user       = "${mysql_user.test.user}"
 	  host       = "${mysql_user.test.host}"
@@ -1153,7 +1155,7 @@ func TestDisallowDuplicateUsersSameTable(t *testing.T) {
       table      = "table1"
 	  privileges = ["UPDATE", "SELECT"]
 	}
-	
+
 	resource "mysql_grant" "grant2" {
 	  user       = "${mysql_user.test.user}"
 	  host       = "${mysql_user.test.host}"

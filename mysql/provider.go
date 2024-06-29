@@ -542,6 +542,25 @@ func serverVersionString(db *sql.DB) (string, error) {
 	return versionString, nil
 }
 
+// serverTiDB returns:
+// - it is a TiDB instance
+// - tidbVersion
+// - mysqlCompatibilityVersion
+// - err
+func serverTiDB(db *sql.DB) (bool, string, string, error) {
+	currentVersionString, err := serverVersionString(db)
+	if err != nil {
+		return false, "", "", err
+	}
+
+	if strings.Contains(currentVersionString, "TiDB") {
+		versions := strings.SplitN(currentVersionString, "-", 3)
+		return true, versions[2], versions[0], nil
+	}
+
+	return false, "", "", nil
+}
+
 func serverRds(db *sql.DB) (bool, error) {
 	var metadataVersionString string
 	err := db.QueryRow("SELECT @@GLOBAL.datadir").Scan(&metadataVersionString)

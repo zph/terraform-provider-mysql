@@ -3,10 +3,11 @@ package mysql
 import (
 	"context"
 	"fmt"
-	"github.com/hashicorp/go-version"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/hashicorp/go-version"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
@@ -153,6 +154,10 @@ func testAccPreCheckSkipMariaDB(t *testing.T) {
 }
 
 func testAccPreCheckSkipNotMySQL8(t *testing.T) {
+	testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
+}
+
+func testAccPreCheckSkipNotMySQLVersionMin(t *testing.T, minVersion string) {
 	testAccPreCheck(t)
 
 	ctx := context.Background()
@@ -168,31 +173,26 @@ func testAccPreCheckSkipNotMySQL8(t *testing.T) {
 		return
 	}
 
-	versionMin, _ := version.NewVersion("8.0.0")
-	if currentVersion.LessThan(versionMin) {
-		t.Skip("Skip on MySQL8")
-	}
-}
-
-func testAccPreCheckSkipNotMySQLVersionMin(t *testing.T, minVersion string) {
-	testAccPreCheck(t)
-
-	ctx := context.Background()
-	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
-	if err != nil {
-		t.Fatalf("Cannot connect to DB (SkipNotMySQLVersionMin): %v", err)
-		return
-	}
-
-	currentVersion, err := serverVersion(db)
-	if err != nil {
-		t.Fatalf("Cannot get DB version string (SkipNotMySQLVersionMin): %v", err)
-		return
-	}
-
 	versionMin, _ := version.NewVersion(minVersion)
 	if currentVersion.LessThan(versionMin) {
-		t.Skipf("Skip on MySQL version less than %s", minVersion)
+		// TiDB 7.x series advertises as 8.0 mysql so we batch its testing strategy with Mysql8
+		isTiDB, tidbVersion, mysqlCompatibilityVersion, err := serverTiDB(db)
+		if err != nil {
+			t.Fatalf("Cannot get DB version string (SkipNotMySQL8): %v", err)
+			return
+		}
+		if isTiDB {
+			mysqlVersion, err := version.NewVersion(mysqlCompatibilityVersion)
+			if err != nil {
+				t.Fatalf("Cannot get DB version string for TiDB (SkipNotMySQL8): %s %s %v", tidbVersion, mysqlCompatibilityVersion, err)
+				return
+			}
+			if mysqlVersion.LessThan(versionMin) {
+				t.Skip("Skip on MySQL8")
+			}
+		}
+
+		t.Skip("Skip on MySQL8")
 	}
 }
 

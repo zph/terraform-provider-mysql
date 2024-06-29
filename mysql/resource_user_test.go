@@ -133,7 +133,6 @@ func TestAccUser_authConnect(t *testing.T) {
 func TestAccUser_authConnectRetainOldPassword(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
-			testAccPreCheckSkipTiDB(t)
 			testAccPreCheckSkipMariaDB(t)
 			testAccPreCheckSkipRds(t)
 			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.14")
