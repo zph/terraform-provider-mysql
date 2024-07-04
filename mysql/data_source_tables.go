@@ -3,9 +3,8 @@ package mysql
 import (
 	"context"
 	"fmt"
-	"log"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"log"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/id"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -24,9 +23,9 @@ func dataSourceTables() *schema.Resource {
 				Optional: true,
 			},
 			"tables": {
-				Type:     schema.TypeMap,
+				Type:     schema.TypeList,
 				Computed: true,
-				Elem:     &schema.Schema{Type: schema.TypeMap},
+				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 		},
 	}
