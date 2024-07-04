@@ -68,6 +68,7 @@ func resourceTiResourceGroup() *schema.Resource {
 				Required: true,
 				ForceNew: true,
 			},
+			// TODO: allow a centralized way to check if there's capacity remaining to use
 			"resource_units": {
 				Type:     schema.TypeInt,
 				Required: true,
@@ -82,10 +83,9 @@ func resourceTiResourceGroup() *schema.Resource {
 				//},
 			},
 			"priority": {
-				Type:     schema.TypeString,
-				Default:  DefaultResourceGroup.Priority,
-				ForceNew: false,
-				// TiDB has these as capitalized but we lowercase for user consistency
+				Type:         schema.TypeString,
+				Default:      DefaultResourceGroup.Priority,
+				ForceNew:     false,
 				ValidateFunc: validation.StringInSlice([]string{"high", "medium", "low"}, false),
 				Optional:     true,
 			},
@@ -95,15 +95,46 @@ func resourceTiResourceGroup() *schema.Resource {
 				ForceNew: false,
 				Optional: true,
 			},
+			/*
+				QUERY_LIMIT=(EXEC_ELAPSED='60s', ACTION=KILL, WATCH=EXACT DURATION='10m')
+			*/
 			"query_limit": {
 				Type:     schema.TypeString,
 				Default:  DefaultResourceGroup.QueryLimit,
 				ForceNew: false,
 				Optional: true,
-				// TODO: add validation
-				// ValidateFunc: validation.StringInSlice([]string{"HIGH", "MEDIUM", "LOW"}, true),
+				/*
+
+				ValidateFunc: func(i interface{}, s string) ([]string, []error) {
+					arg := i.(string)
+					pieces := strings.Split(arg, ",")
+					for _, p := range pieces {
+						kv := strings.SplitN(strings.TrimSpace(p), "=", 2)
+						k := kv[0]
+						v := kv[1]
+						switch(k) {
+						case "EXEC_ELAPSED":
+							// must be 60s format
+							// regex for \d+s
+							break
+						case "ACTION":
+							options := []string{"DRYRUN", "COOLDOWN", "KILL"}
+							slice.Includes()
+
+							break
+						case "WATCH":
+							// WATCH=SIMILAR DURATION '60s' where SIMILAR | EXACT | PLAN
+							break
+						default:
+							// throw error
+
+
+						}
+					}
+					*/
+				},
 			},
-			// TODO: include query limits and background
+			// TODO: include background
 		},
 	}
 }
@@ -211,7 +242,13 @@ func DeleteResourceGroup(ctx context.Context, d *schema.ResourceData, meta inter
 func getResourceGroupFromDB(db *sql.DB, name string) (ResourceGroup, error) {
 	rg := ResourceGroup{Name: name}
 
-	query := `SELECT NAME, RU_PER_SEC, LOWER(PRIORITY), if(BURSTABLE = 'YES', TRUE, FALSE), IFNULL(QUERY_LIMIT,"()") FROM information_schema.resource_groups WHERE NAME = ?`
+	/*
+		Coerce types on SQL side into good types for golang
+		Burstable is a varchar(3) so we coerce to BOOLEAN
+		QUERY_LIMIT is nullable in DB, but we coerce to standard "empty" string type of "()"
+		Lowercase priority for less configuration variability
+	*/
+	query := `SELECT NAME, RU_PER_SEC, LOWER(PRIORITY), BURSTABLE = 'YES' as BURSTABLE, IFNULL(QUERY_LIMIT,"()") FROM information_schema.resource_groups WHERE NAME = ?`
 
 	ctx := context.Background()
 	tflog.SetField(ctx, "query", query)
