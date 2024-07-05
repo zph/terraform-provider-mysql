@@ -1,4 +1,4 @@
-name: Build and Release
+name: Tests
 on:
   # # Indicates I want to run this workflow on all branches, PR, and tags
   push:
@@ -22,46 +22,3 @@ jobs:
           sudo apt-get -f -y install mysql-client
       - name: Run tests {{ matrix.target }}
         run: make ${{ matrix.target }}
-
-  release:
-    name: Release
-    needs: [tests]
-    # Can't use non-semvar for the testing tag
-    # https://github.com/orgs/goreleaser/discussions/3708
-    if: ( startsWith( github.ref, 'refs/tags/v' ) ||
-            startsWith(github.ref, 'refs/tags/v0.0.0-rc') )
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout Git repo
-        uses: actions/checkout@v4
-
-      # Goreleaser
-      - name: Set up Go
-        uses: actions/setup-go@v4
-      - name: Ensure  GPG_TTY
-        run: export GPG_TTY=$(tty)
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        # Get TTY inside docker image on Github Actions
-        # https://github.com/actions/runner/issues/241#issuecomment-556556163
-        # https://github.com/castle-engine/castle-engine-docker/commit/c2e0caf3fd1e736c9473a12210dc612b615f5e37
-        shell: 'script --return --quiet --log-out /dev/null --command "bash -e {0}"'
-        with:
-          distribution: goreleaser
-          version: '~> v2'
-          # Run goreleaser and ignore non-committed files (downloaded artifacts)
-          args: release --clean --skip=validate --verbose
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  terraform-provider-release:
-    name: 'Terraform Provider Release'
-    # Get TTY inside docker image on Github Actions
-    # https://github.com/actions/runner/issues/241#issuecomment-556556163
-    # https://github.com/castle-engine/castle-engine-docker/commit/c2e0caf3fd1e736c9473a12210dc612b615f5e37
-    shell: 'script --return --quiet --log-out /dev/null --command "bash -e {0}"'
-    uses: hashicorp/ghaction-terraform-provider-release/.github/workflows/community.yml@v5
-    secrets:
-      gpg-private-key: '${{ secrets.GPG_PRIVATE_KEY }}'
-    with:
-      setup-go-version-file: 'go.mod'
