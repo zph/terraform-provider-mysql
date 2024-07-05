@@ -7,6 +7,22 @@ on:
   pull_request:
     branches: [ "master" ]
 jobs:
+  tests:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ["vet", "testversion5.6", "testversion5.7", "testversion8.0", "testpercona5.7", "testpercona8.0", "testmariadb10.3", "testmariadb10.8", "testmariadb10.10", "testtidb6.1.0", "testtidb7.5.2"]
+    steps:
+      - name: Checkout Git repo
+        uses: actions/checkout@v3
+      - name: Install mysql client
+        command: |
+          sudo apt-get update
+          sudo apt-get -f -y install mysql-client
+      - name: Run tests {{ matrix.target }}
+        command: make {{ matrix.target }}
+
   release:
     name: Release
     needs: [build]
