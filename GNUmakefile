@@ -6,6 +6,9 @@ TERRAFORM_VERSION=0.14.7
 TERRAFORM_OS=$(shell uname -s | tr A-Z a-z)
 TEST_USER=root
 TEST_PASSWORD=my-secret-pw
+DATESTAMP=$(shell date "+%Y%m%d%H%M%S")
+SHA_SHORT=$(shell git describe --match=FORCE_NEVER_MATCH --always --abbrev=40 --dirty --abbrev)
+MOST_RECENT_UPSTREAM_TAG=$(shell git for-each-ref refs/tags --sort=-taggerdate --format="%(refname)" | head -1 | grep -E -o "v\d+\.\d+\.\d+")
 
 OS_ARCH=linux_amd64
 # Set correct OS_ARCH on Mac
@@ -151,4 +154,11 @@ re-install:
 	cd examples && rm -rf .terraform
 	cd examples && terraform init
 
-.PHONY: build test testacc vet fmt fmtcheck errcheck vendor-status test-compile website website-test
+format-tag:
+	@echo $(MOST_RECENT_UPSTREAM_TAG)-$(DATESTAMP)-$(SHA_SHORT)
+
+tag:
+	@echo git tag -a $(MOST_RECENT_UPSTREAM_TAG)-$(DATESTAMP)-$(SHA_SHORT) -m $(MOST_RECENT_UPSTREAM_TAG)-$(DATESTAMP)-$(SHA_SHORT)
+	@git tag -a $(MOST_RECENT_UPSTREAM_TAG)-$(DATESTAMP)-$(SHA_SHORT) -m $(MOST_RECENT_UPSTREAM_TAG)-$(DATESTAMP)-$(SHA_SHORT)
+
+.PHONY: build test testacc vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag
