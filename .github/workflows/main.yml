@@ -15,7 +15,7 @@ jobs:
         target: ["vet", "testversion5.6", "testversion5.7", "testversion8.0", "testpercona5.7", "testpercona8.0", "testmariadb10.3", "testmariadb10.8", "testmariadb10.10", "testtidb6.1.0", "testtidb7.5.2"]
     steps:
       - name: Checkout Git repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install mysql client
         run: |
           sudo apt-get update
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Git repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # Goreleaser
       - name: Set up Go
