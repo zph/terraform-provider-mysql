@@ -39,10 +39,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: latest
+          version: '~> v2'
           # Run goreleaser and ignore non-committed files (downloaded artifacts)
           args: release --clean --skip=validate --verbose
         env:
