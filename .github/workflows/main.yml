@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v4
-      - name: Running {{ matrix.command }}
+      - name: Running ${{ matrix.command }}
         run: ${{ matrix.command }}
 
   tests:
@@ -35,9 +35,11 @@ jobs:
         - testmariadb10.3
         - testmariadb10.8
         - testmariadb10.10
+        # Track https://github.com/pingcap/tidb/tags
         - testtidb6.1.0
         - testtidb6.5.3
-        - testtidb6.5.10
+        # Fails because not yet available? 20240705
+        # - testtidb6.5.10
         - testtidb7.1.5
         - testtidb7.5.2
         - testtidb8.1.0

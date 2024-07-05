@@ -1,3 +1,44 @@
+zph/terraform-provider-mysql
+
+# Purpose
+
+zph fork of terraform-provider-mysql exists for the following goals:
+1. To design and trial TiDB integrations or patches before committing upstream
+2. To validate design changes for the project before offering upstream.
+
+Changes here are intended to be upstreamed to petoju's fork to avoid ecosystem
+fragmentation. We will update this readme if those design choices change.
+
+## Release Naming
+
+zph fork will use release naming in the following form:
+
+v3.0.62-20240705125429-3c7af6a
+
+{petoju version}-{date}-{sha}
+
+This indicates that the base is v3.0.62 from petoju, with modifications from zph
+repo using {sha} and built on {date}.
+
+It allows for keeping patches alive on this fork until they land upstream and are
+released there.
+
+## Security / Chain of Custody
+
+We sign releases with a GPG key currently using goreleaser locally on the personal
+equipment of @ZPH. As the maintainer of this fork, I, @ZPH, attest that the builds
+represent the exact SHA of the version control with no alterations.
+
+The near term goal is to setup github actions to provide this guarantee
+so that even if I were a malicious actor or coerced,
+I could not introduce opaque security issues into binary releases.
+
+In the meantime, I certify by my professional reputation and career as:
+https://www.linkedin.com/in/zph/ that appropriate safeguards are being taken.
+
+## Original Readme
+Below is from petoju/terraform-provider-mysql:
+
 **This repository is an unofficial fork**
 
 The fork is mostly based of the official (now archived) repo.
