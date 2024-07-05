@@ -72,15 +72,6 @@ func resourceTiResourceGroup() *schema.Resource {
 			"resource_units": {
 				Type:     schema.TypeInt,
 				Required: true,
-				// TODO: validate
-				//ValidateFunc: func(val any, key string) (warns []string, errs []error) {
-				//	value := val.(string)
-				//	match, _ := regexp.MatchString("(^`(.*)`$|')", value)
-				//	if match {
-				//		errs = append(errs, fmt.Errorf("%q is badly formatted. %q cant contain any ' string or `<value>`, got: %s", key, key, value))
-				//	}
-				//	return
-				//},
 			},
 			"priority": {
 				Type:         schema.TypeString,
@@ -103,39 +94,8 @@ func resourceTiResourceGroup() *schema.Resource {
 				Default:  DefaultResourceGroup.QueryLimit,
 				ForceNew: false,
 				Optional: true,
-				/*
-
-				ValidateFunc: func(i interface{}, s string) ([]string, []error) {
-					arg := i.(string)
-					pieces := strings.Split(arg, ",")
-					for _, p := range pieces {
-						kv := strings.SplitN(strings.TrimSpace(p), "=", 2)
-						k := kv[0]
-						v := kv[1]
-						switch(k) {
-						case "EXEC_ELAPSED":
-							// must be 60s format
-							// regex for \d+s
-							break
-						case "ACTION":
-							options := []string{"DRYRUN", "COOLDOWN", "KILL"}
-							slice.Includes()
-
-							break
-						case "WATCH":
-							// WATCH=SIMILAR DURATION '60s' where SIMILAR | EXACT | PLAN
-							break
-						default:
-							// throw error
-
-
-						}
-					}
-					*/
-				},
 			},
-			// TODO: include background
-		},
+		}
 	}
 }
 
