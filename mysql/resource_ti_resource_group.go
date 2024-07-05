@@ -95,7 +95,7 @@ func resourceTiResourceGroup() *schema.Resource {
 				ForceNew: false,
 				Optional: true,
 			},
-		}
+		},
 	}
 }
 
