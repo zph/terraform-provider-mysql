@@ -25,7 +25,7 @@ jobs:
 
   release:
     name: Release
-    needs: [build]
+    needs: [tests]
     # Can't use non-semvar for the testing tag
     # https://github.com/orgs/goreleaser/discussions/3708
     if: ( startsWith( github.ref, 'refs/tags/v' ) ||
@@ -34,11 +34,6 @@ jobs:
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v3
-
-      # Download all artifacts
-      - uses: actions/download-artifact@v3
-        with:
-          path: artifacts
 
       # Goreleaser
       - name: Set up Go
