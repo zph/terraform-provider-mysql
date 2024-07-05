@@ -17,11 +17,11 @@ jobs:
       - name: Checkout Git repo
         uses: actions/checkout@v3
       - name: Install mysql client
-        command: |
+        run: |
           sudo apt-get update
           sudo apt-get -f -y install mysql-client
       - name: Run tests {{ matrix.target }}
-        command: make {{ matrix.target }}
+        run: make {{ matrix.target }}
 
   release:
     name: Release
