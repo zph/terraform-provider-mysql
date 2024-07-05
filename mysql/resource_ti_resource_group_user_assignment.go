@@ -51,7 +51,7 @@ func CreateOrUpdateResourceGroupUser(ctx context.Context, d *schema.ResourceData
 	_, _, err = readUserFromDB(db, user)
 	if err != nil {
 		d.SetId("")
-		return diag.Errorf(`error getting user %s`, err)
+		return diag.Errorf(`must create user first before assigning to resource group | getting user %s | error %s`, user, err)
 	}
 
 	sql := fmt.Sprintf("ALTER USER `%s` RESOURCE GROUP `%s`", user, resourceGroup)
