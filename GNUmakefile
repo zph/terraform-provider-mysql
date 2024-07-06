@@ -161,4 +161,6 @@ tag:
 	@echo git tag -a $(MOST_RECENT_UPSTREAM_TAG)-$(DATESTAMP)-$(SHA_SHORT) -m $(MOST_RECENT_UPSTREAM_TAG)-$(DATESTAMP)-$(SHA_SHORT)
 	@git tag -a $(MOST_RECENT_UPSTREAM_TAG)-$(DATESTAMP)-$(SHA_SHORT) -m $(MOST_RECENT_UPSTREAM_TAG)-$(DATESTAMP)-$(SHA_SHORT)
 
+release:
+	@goreleaser release --clean --verbose
 .PHONY: build test testacc vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag
