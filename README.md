@@ -13,7 +13,7 @@ fragmentation. We will update this readme if those design choices change.
 
 zph fork will use release naming in the following form:
 
-v3.0.62-20240705125429-3c7af6a
+v3.0.62-20240705-3c7af6a
 
 {petoju version}-{date}-{sha}
 

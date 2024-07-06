@@ -6,7 +6,7 @@ TERRAFORM_VERSION=0.14.7
 TERRAFORM_OS=$(shell uname -s | tr A-Z a-z)
 TEST_USER=root
 TEST_PASSWORD=my-secret-pw
-DATESTAMP=$(shell date "+%Y%m%d%H%M%S")
+DATESTAMP=$(shell date "+%Y%m%d")
 SHA_SHORT=$(shell git describe --match=FORCE_NEVER_MATCH --always --abbrev=40 --dirty --abbrev)
 MOST_RECENT_UPSTREAM_TAG=$(shell git for-each-ref refs/tags --sort=-taggerdate --format="%(refname)" | head -1 | grep -E -o "v\d+\.\d+\.\d+")
 
