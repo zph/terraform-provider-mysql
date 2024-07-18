@@ -95,14 +95,14 @@ func ReadResourceGroupUser(ctx context.Context, d *schema.ResourceData, meta int
 }
 
 func DeleteResourceGroupUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	name := d.Get("name").(string)
+	user := d.Get("user").(string)
 	// TODO: should we re-assert that it's part of the expected resourceGroup first? I think no bc plan should read it
 
 	db, err := getDatabaseFromMeta(ctx, meta)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	deleteQuery := fmt.Sprintf("ALTER USER `%s` RESOURCE GROUP `default`", name)
+	deleteQuery := fmt.Sprintf("ALTER USER `%s` RESOURCE GROUP `default`", user)
 	_, err = db.Exec(deleteQuery)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return diag.Errorf("error during drop resource group (%s): %s", d.Id(), err)
