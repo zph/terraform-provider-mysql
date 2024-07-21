@@ -48,7 +48,7 @@ func CreateOrUpdateResourceGroupUser(ctx context.Context, d *schema.ResourceData
 	var warnLevel, warnMessage string
 	var warnCode int = 0
 
-	currentUser, _, err = readUserFromDB(db, user)
+	currentUser, _, err := readUserFromDB(db, user)
 	if err != nil {
 		d.SetId("")
 		return diag.Errorf(`error during get user (%s): %s`, user, err)

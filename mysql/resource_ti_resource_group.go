@@ -180,7 +180,7 @@ func ReadResourceGroup(ctx context.Context, d *schema.ResourceData, meta interfa
 		return nil
 	}
 
-	setResourceGroupOnResourceData(rg, d)
+	setResourceGroupOnResourceData(*rg, d)
 	return nil
 }
 
