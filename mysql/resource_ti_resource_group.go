@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -172,9 +173,11 @@ func ReadResourceGroup(ctx context.Context, d *schema.ResourceData, meta interfa
 		return diag.Errorf("error during get resource group (%s): %s", d.Id(), err)
 	}
 
-	if err != nil {
+	// If we're not able to find the resource group, assume that there's terraform
+	// diff and allow terraform to recreate it instead of throwing an error.
+	if rg == nil {
 		d.SetId("")
-		return diag.Errorf(`error converting burstable value from tidb %e`, err)
+		return nil
 	}
 
 	setResourceGroupOnResourceData(rg, d)
@@ -188,7 +191,7 @@ func DeleteResourceGroup(ctx context.Context, d *schema.ResourceData, meta inter
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	// TODO: check for users assigned as safety? and assert zero?
+
 	deleteQuery := fmt.Sprintf("DROP RESOURCE GROUP IF EXISTS %s", name)
 	_, err = db.Exec(deleteQuery)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -199,7 +202,7 @@ func DeleteResourceGroup(ctx context.Context, d *schema.ResourceData, meta inter
 	return nil
 }
 
-func getResourceGroupFromDB(db *sql.DB, name string) (ResourceGroup, error) {
+func getResourceGroupFromDB(db *sql.DB, name string) (*ResourceGroup, error) {
 	rg := ResourceGroup{Name: name}
 
 	/*
@@ -216,12 +219,13 @@ func getResourceGroupFromDB(db *sql.DB, name string) (ResourceGroup, error) {
 
 	err := db.QueryRow(query, name).Scan(&rg.Name, &rg.ResourceUnits, &rg.Priority, &rg.Burstable, &rg.QueryLimit)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ResourceGroup{}, fmt.Errorf("resource group doesn't exist (%s): %s", name, err)
+		log.Printf("[DEBUG] resource group doesn't exist (%s): %s", name, err)
+		return nil, nil
 	} else if err != nil {
-		return ResourceGroup{}, fmt.Errorf("error during get resource group (%s): %s", name, err)
+		return nil, fmt.Errorf("error during get resource group (%s): %s", name, err)
 	}
 
-	return rg, nil
+	return &rg, nil
 }
 
 func NewResourceGroupFromResourceData(d *schema.ResourceData) ResourceGroup {
