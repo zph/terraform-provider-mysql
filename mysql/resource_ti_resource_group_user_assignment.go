@@ -48,10 +48,15 @@ func CreateOrUpdateResourceGroupUser(ctx context.Context, d *schema.ResourceData
 	var warnLevel, warnMessage string
 	var warnCode int = 0
 
-	_, _, err = readUserFromDB(db, user)
+	currentUser, _, err := readUserFromDB(db, user)
 	if err != nil {
 		d.SetId("")
-		return diag.Errorf(`must create user first before assigning to resource group | getting user %s | error %s`, user, err)
+		return diag.Errorf(`error during get user (%s): %s`, user, err)
+	}
+
+	if currentUser == "" {
+		d.SetId("")
+		return diag.Errorf(`must create user first before assigning to resource group | getting user %s | error %s`, currentUser, err)
 	}
 
 	sql := fmt.Sprintf("ALTER USER `%s` RESOURCE GROUP `%s`", user, resourceGroup)
@@ -88,8 +93,15 @@ func ReadResourceGroupUser(ctx context.Context, d *schema.ResourceData, meta int
 		return diag.Errorf(`error getting user %s`, err)
 	}
 
+	// If the user doesn't exist, instead of erroring, recognize that there's
+	// terraform drift and attempt to create the assignment again.
+	if user == "" {
+		d.SetId("")
+		return nil
+	}
+
 	d.Set("user", user)
-	d.Set("resourceGroup", resourceGroup)
+	d.Set("resource_group", resourceGroup)
 
 	return nil
 }
@@ -102,6 +114,7 @@ func DeleteResourceGroupUser(ctx context.Context, d *schema.ResourceData, meta i
 	if err != nil {
 		return diag.FromErr(err)
 	}
+
 	deleteQuery := fmt.Sprintf("ALTER USER `%s` RESOURCE GROUP `default`", user)
 	_, err = db.Exec(deleteQuery)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -120,7 +133,8 @@ func readUserFromDB(db *sql.DB, name string) (string, string, error) {
 
 	err := row.Scan(&user, &resourceGroup)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", sql.ErrNoRows
+		log.Printf("[DEBUG] resource group doesn't exist (%s): %s", name, err)
+		return "", "", nil
 	} else if err != nil {
 		return "", "", fmt.Errorf(`error fetching user %e`, err)
 	}

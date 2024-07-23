@@ -1,4 +1,4 @@
-module github.com/petoju/terraform-provider-mysql/v3
+module github.com/zph/terraform-provider-mysql/v3
 
 require (
 	cloud.google.com/go/cloudsqlconn v1.11.0
