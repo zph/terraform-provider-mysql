@@ -11,18 +11,20 @@ DATESTAMP=$(shell date "+%Y%m%d")
 SHA_SHORT=$(shell git describe --match=FORCE_NEVER_MATCH --always --abbrev=40 --dirty --abbrev)
 MOST_RECENT_UPSTREAM_TAG=$(shell git for-each-ref refs/tags --sort=-taggerdate --format="%(refname)" | head -1 | grep -E -o "v\d+\.\d+\.\d+")
 
-OS_ARCH=linux_amd64
-
 # Set correct OS_ARCH on Mac
 UNAME := $(shell uname -s)
 HW := $(shell uname -m)
+ifeq ($(HW),arm64)
+	ARCH=$(HW)
+else
+	ARCH=amd64
+endif
+
 ifeq ($(UNAME),Darwin)
-	ifeq ($(HW),arm64)
-		ARCH=$(HW)
-	else
-		ARCH=amd64
-	endif
 	OS_ARCH=darwin_$(ARCH)
+else
+	ARCH=amd64
+	OS_ARCH=linux_$(ARCH)
 endif
 
 HOSTNAME=registry.terraform.io
