@@ -16,8 +16,8 @@ func TestTIDBResourceGroup_basic(t *testing.T) {
 	varName := "rg100"
 	varResourceUnits := 100
 	varNewResourceUnits := 1000
-	varQueryLimit := "(EXEC_ELAPSED='15s', ACTION=COOLDOWN, WATCH=SIMILAR DURATION='10m0s')"
-	varNewQueryLimit := "(EXEC_ELAPSED='15s', ACTION=COOLDOWN, WATCH=SIMILAR DURATION='15m0s')"
+	varQueryLimit := ""
+	varNewQueryLimit := "EXEC_ELAPSED='15s', ACTION=COOLDOWN, WATCH=SIMILAR DURATION='10m0s'"
 	varBurstable := true
 	varPriority := "low"
 	resourceName := "mysql_ti_resource_group.test"
@@ -73,7 +73,7 @@ func NewResourceGroup(name string) *ResourceGroup {
 		ResourceUnits: 2000,
 		Priority:      "medium",
 		Burstable:     false,
-		QueryLimit:    "(EXEC_ELAPSED='15s', ACTION=COOLDOWN, WATCH=SIMILAR DURATION='10m0s')",
+		QueryLimit:    "EXEC_ELAPSED='15s', ACTION=COOLDOWN, WATCH=SIMILAR DURATION='10m0s'",
 	}
 }
 
@@ -85,7 +85,7 @@ func getResourceGroup(name string) (*ResourceGroup, error) {
 	if err != nil {
 		return nil, err
 	}
-	query := fmt.Sprintf(`SELECT NAME, RU_PER_SEC, LOWER(PRIORITY), BURSTABLE = 'YES' as BURSTABLE, IFNULL(QUERY_LIMIT,"()") FROM information_schema.resource_groups WHERE NAME="%s";`, rg.Name)
+	query := fmt.Sprintf(`SELECT NAME, RU_PER_SEC, LOWER(PRIORITY), BURSTABLE = 'YES' as BURSTABLE, IFNULL(QUERY_LIMIT, "") FROM information_schema.resource_groups WHERE NAME="%s";`, rg.Name)
 
 	log.Printf("[DEBUG] SQL: %s\n", query)
 

@@ -13,7 +13,7 @@ func TestTIDBResourceGroupUserAssignment_basic(t *testing.T) {
 	varUsername := "tidb-jdoe"
 	varName := "rg100"
 	varResourceUnits := 100
-	varQueryLimit := "()"
+	varQueryLimit := ""
 	resourceGroupAssignmentResourceName := "mysql_ti_resource_group_user_assignment.test"
 
 	resource.Test(t, resource.TestCase{

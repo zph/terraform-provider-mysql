@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"regexp"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -15,8 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
-
-var ParenthesisWrapRegex = regexp.MustCompile(`\(.*\)`)
 
 type ResourceGroup struct {
 	Name          string
@@ -37,7 +34,7 @@ func (rg *ResourceGroup) buildSQLQuery(prefix string) string {
 	query = append(query, fmt.Sprintf(`PRIORITY = %s`, rg.Priority))
 
 	if rg.QueryLimit != DefaultResourceGroup.QueryLimit {
-		query = append(query, fmt.Sprintf(`QUERY_LIMIT=%s`, rg.QueryLimit))
+		query = append(query, fmt.Sprintf(`QUERY_LIMIT=(%s)`, rg.QueryLimit))
 	}
 
 	query = append(query, fmt.Sprintf(`BURSTABLE = %t`, rg.Burstable))
@@ -53,7 +50,7 @@ var DefaultResourceGroup = ResourceGroup{
 	Name:       "tfDefault",
 	Priority:   "medium",
 	Burstable:  false,
-	QueryLimit: "()",
+	QueryLimit: "",
 }
 
 func resourceTiResourceGroup() *schema.Resource {
@@ -213,7 +210,7 @@ func getResourceGroupFromDB(db *sql.DB, name string) (*ResourceGroup, error) {
 		QUERY_LIMIT is nullable in DB, but we coerce to standard "empty" string type of "()"
 		Lowercase priority for less configuration variability
 	*/
-	query := `SELECT NAME, RU_PER_SEC, LOWER(PRIORITY), BURSTABLE = 'YES' as BURSTABLE, IFNULL(QUERY_LIMIT,"()") FROM information_schema.resource_groups WHERE NAME = ?`
+	query := `SELECT NAME, RU_PER_SEC, LOWER(PRIORITY), BURSTABLE = 'YES' as BURSTABLE, IFNULL(QUERY_LIMIT,"") FROM information_schema.resource_groups WHERE NAME = ?`
 
 	ctx := context.Background()
 	tflog.SetField(ctx, "query", query)
@@ -241,10 +238,6 @@ func NewResourceGroupFromResourceData(d *schema.ResourceData) ResourceGroup {
 }
 
 func setResourceGroupOnResourceData(rg ResourceGroup, d *schema.ResourceData) {
-	if !ParenthesisWrapRegex.MatchString(rg.QueryLimit) {
-		rg.QueryLimit = fmt.Sprintf("(%s)", rg.QueryLimit)
-	}
-
 	d.Set("name", rg.Name)
 	d.Set("resource_units", rg.ResourceUnits)
 	d.Set("priority", rg.Priority)
