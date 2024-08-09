@@ -248,10 +248,11 @@ func testAccPreCheckSkipNotTiDBVersionMin(t *testing.T, minVersion string) {
 				return
 			}
 			if tidbSemVar.LessThan(versionMin) {
-				t.Skip("Skip on MySQL8")
+				t.Skip("Skip on TiDB (SkipNotTiDBVersionMin)")
 			}
+			return
 		}
 
-		t.Skip("Skip on MySQL8")
+		t.Skip("Skip on MySQL")
 	}
 }

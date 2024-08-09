@@ -20,6 +20,7 @@ func TestTIDBResourceGroupUserAssignment_basic(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckSkipNotTiDB(t)
+			testAccPreCheckSkipNotTiDBVersionMin(t, ResourceGroupTiDBMinVersion)
 		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccResourceGroupUserAssignmentCheckDestroy(varName),

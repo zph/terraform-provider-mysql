@@ -53,6 +53,8 @@ var DefaultResourceGroup = ResourceGroup{
 	QueryLimit: "",
 }
 
+var ResourceGroupTiDBMinVersion = "7.5.0"
+
 func resourceTiResourceGroup() *schema.Resource {
 	return &schema.Resource{
 		CreateContext: CreateResourceGroup,
