@@ -68,7 +68,6 @@ func CreateOrUpdateResourceGroupUser(ctx context.Context, d *schema.ResourceData
 		return diag.Errorf("error attaching user (%s) to resource group (%s): %s", user, resourceGroup, err)
 	}
 
-	// TODO: relevant?
 	db.QueryRowContext(ctx, "SHOW WARNINGS").Scan(&warnLevel, &warnCode, &warnMessage)
 	if warnCode != 0 {
 		d.SetId("")
@@ -108,7 +107,6 @@ func ReadResourceGroupUser(ctx context.Context, d *schema.ResourceData, meta int
 
 func DeleteResourceGroupUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	user := d.Get("user").(string)
-	// TODO: should we re-assert that it's part of the expected resourceGroup first? I think no bc plan should read it
 
 	db, err := getDatabaseFromMeta(ctx, meta)
 	if err != nil {

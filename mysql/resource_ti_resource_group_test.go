@@ -26,6 +26,7 @@ func TestTIDBResourceGroup_basic(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckSkipNotTiDB(t)
+			testAccPreCheckSkipNotTiDBVersionMin(t, "7.5.0")
 		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccResourceGroupCheckDestroy(varName),
