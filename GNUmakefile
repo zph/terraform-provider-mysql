@@ -2,7 +2,8 @@ TEST?=$$(go list ./... |grep -v 'vendor')
 GOFMT_FILES?=$$(find . -name '*.go' |grep -v vendor)
 WEBSITE_REPO=github.com/hashicorp/terraform-website
 PKG_NAME=mysql
-TERRAFORM_VERSION=0.14.7
+# Last version before hashicorp relicensing to BSL
+TERRAFORM_VERSION=1.5.6
 TERRAFORM_OS=$(shell uname -s | tr A-Z a-z)
 TEST_USER=root
 TEST_PASSWORD=my-secret-pw
@@ -10,17 +11,20 @@ DATESTAMP=$(shell date "+%Y%m%d")
 SHA_SHORT=$(shell git describe --match=FORCE_NEVER_MATCH --always --abbrev=40 --dirty --abbrev)
 MOST_RECENT_UPSTREAM_TAG=$(shell git for-each-ref refs/tags --sort=-taggerdate --format="%(refname)" | head -1 | grep -E -o "v\d+\.\d+\.\d+")
 
-OS_ARCH=linux_amd64
 # Set correct OS_ARCH on Mac
 UNAME := $(shell uname -s)
+HW := $(shell uname -m)
+ifeq ($(HW),arm64)
+	ARCH=$(HW)
+else
+	ARCH=amd64
+endif
+
 ifeq ($(UNAME),Darwin)
-	HW := $(shell uname -m)
-	ifeq ($(HW),arm64)
-		ARCH=$(HW)
-	else
-		ARCH=amd64
-	endif
 	OS_ARCH=darwin_$(ARCH)
+else
+	ARCH=amd64
+	OS_ARCH=linux_$(ARCH)
 endif
 
 HOSTNAME=registry.terraform.io
@@ -39,7 +43,7 @@ test: acceptance
 
 bin/terraform:
 	mkdir -p "$(CURDIR)/bin"
-	curl -sfL https://releases.hashicorp.com/terraform/$(TERRAFORM_VERSION)/terraform_$(TERRAFORM_VERSION)_$(TERRAFORM_OS)_amd64.zip > $(CURDIR)/bin/terraform.zip
+	curl -sfL https://releases.hashicorp.com/terraform/$(TERRAFORM_VERSION)/terraform_$(TERRAFORM_VERSION)_$(TERRAFORM_OS)_$(ARCH).zip > $(CURDIR)/bin/terraform.zip
 	(cd $(CURDIR)/bin/ ; unzip terraform.zip)
 
 testacc: fmtcheck bin/terraform

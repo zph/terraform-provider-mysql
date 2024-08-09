@@ -34,8 +34,7 @@ func (rg *ResourceGroup) buildSQLQuery(prefix string) string {
 	query = append(query, fmt.Sprintf(`PRIORITY = %s`, rg.Priority))
 
 	if rg.QueryLimit != DefaultResourceGroup.QueryLimit {
-		query = append(query, fmt.Sprintf(`QUERY_LIMIT=%s`, rg.QueryLimit))
-
+		query = append(query, fmt.Sprintf(`QUERY_LIMIT=(%s)`, rg.QueryLimit))
 	}
 
 	query = append(query, fmt.Sprintf(`BURSTABLE = %t`, rg.Burstable))
@@ -51,8 +50,10 @@ var DefaultResourceGroup = ResourceGroup{
 	Name:       "tfDefault",
 	Priority:   "medium",
 	Burstable:  false,
-	QueryLimit: "()",
+	QueryLimit: "",
 }
+
+var ResourceGroupTiDBMinVersion = "7.5.0"
 
 func resourceTiResourceGroup() *schema.Resource {
 	return &schema.Resource{
@@ -208,10 +209,10 @@ func getResourceGroupFromDB(db *sql.DB, name string) (*ResourceGroup, error) {
 	/*
 		Coerce types on SQL side into good types for golang
 		Burstable is a varchar(3) so we coerce to BOOLEAN
-		QUERY_LIMIT is nullable in DB, but we coerce to standard "empty" string type of "()"
+		QUERY_LIMIT is nullable in DB, but we coerce to standard "empty" string type of ""
 		Lowercase priority for less configuration variability
 	*/
-	query := `SELECT NAME, RU_PER_SEC, LOWER(PRIORITY), BURSTABLE = 'YES' as BURSTABLE, IFNULL(QUERY_LIMIT,"()") FROM information_schema.resource_groups WHERE NAME = ?`
+	query := `SELECT NAME, RU_PER_SEC, LOWER(PRIORITY), BURSTABLE = 'YES' as BURSTABLE, IFNULL(QUERY_LIMIT,"") FROM information_schema.resource_groups WHERE NAME = ?`
 
 	ctx := context.Background()
 	tflog.SetField(ctx, "query", query)

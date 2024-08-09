@@ -5,7 +5,7 @@ on:
     branches: ["master"]
     tags: ["*"]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "*" ]
 jobs:
   lint:
     runs-on: ubuntu-22.04
@@ -38,7 +38,6 @@ jobs:
         # Track https://github.com/pingcap/tidb/tags
         - testtidb6.1.0
         - testtidb6.5.3
-        # Fails because not yet available? 20240705
         # - testtidb6.5.10
         - testtidb7.1.5
         - testtidb7.5.2

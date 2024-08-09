@@ -16,7 +16,7 @@ SCRIPT_INIT=false
 DOCKER_NETWORK="mysql_provider_test_network"
 RUNNING_CONTAINERS=""
 export MYSQL_PORT=${MYSQL_PORT:-4000}
-export TAG_VERSION="v${MYSQL_VERSION:-6.1.0}"
+export TAG_VERSION="v${MYSQL_VERSION:-7.5.1}"
 
 # Sanity checks
 if [ -z "$DOCKER" ]; then
@@ -36,7 +36,7 @@ Usage:
   --init ^ Init TiDB cluster
   --destroy ^ Destroy resources
   --port <MYSQL_PORT> ^ TiDB Listen port (default: 4000)
-  --version <MYSQL_VERSION> ^ TiDB version (default: 6.1.0)
+  --version <MYSQL_VERSION> ^ TiDB version (default: 7.5.1)
   -h|--help ^ Displays this help
 EOF
 }
