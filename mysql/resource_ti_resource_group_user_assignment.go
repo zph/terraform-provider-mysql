@@ -126,7 +126,7 @@ func DeleteResourceGroupUser(ctx context.Context, d *schema.ResourceData, meta i
 }
 
 func readUserFromDB(db *sql.DB, name string) (string, string, error) {
-	selectUsersQuery := `SELECT USER, IFNULL(JSON_EXTRACT(User_attributes, "$.resource_group"), "") as resource_group FROM mysql.user WHERE USER = ?`
+	selectUsersQuery := `SELECT USER, JSON_UNQUOTE(IFNULL(JSON_EXTRACT(User_attributes, "$.resource_group"), "")) as resource_group FROM mysql.user WHERE USER = ?`
 	row := db.QueryRow(selectUsersQuery, name)
 
 	var user, resourceGroup string

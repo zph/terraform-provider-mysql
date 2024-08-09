@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -14,6 +15,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
+
+var ParenthesisWrapRegex = regexp.MustCompile(`\(.*\)`)
 
 type ResourceGroup struct {
 	Name          string
@@ -35,7 +38,6 @@ func (rg *ResourceGroup) buildSQLQuery(prefix string) string {
 
 	if rg.QueryLimit != DefaultResourceGroup.QueryLimit {
 		query = append(query, fmt.Sprintf(`QUERY_LIMIT=%s`, rg.QueryLimit))
-
 	}
 
 	query = append(query, fmt.Sprintf(`BURSTABLE = %t`, rg.Burstable))
@@ -239,6 +241,10 @@ func NewResourceGroupFromResourceData(d *schema.ResourceData) ResourceGroup {
 }
 
 func setResourceGroupOnResourceData(rg ResourceGroup, d *schema.ResourceData) {
+	if !ParenthesisWrapRegex.MatchString(rg.QueryLimit) {
+		rg.QueryLimit = fmt.Sprintf("(%s)", rg.QueryLimit)
+	}
+
 	d.Set("name", rg.Name)
 	d.Set("resource_units", rg.ResourceUnits)
 	d.Set("priority", rg.Priority)

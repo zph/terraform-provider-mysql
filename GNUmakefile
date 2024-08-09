@@ -43,7 +43,11 @@ bin/terraform:
 	(cd $(CURDIR)/bin/ ; unzip terraform.zip)
 
 testacc: fmtcheck bin/terraform
-	PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout=90s
+	TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout=90s
+	# Commenting out the below because it tries to use an amd64 version of terraform that is incompatible with M1 Macs. Instead,
+	# simply rely on the version of terraform that's already on your path. If you don't have terraform installed, follow instructions
+	# here to install https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli
+	# PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test $(TEST) -v $(TESTARGS) -run "TestTIDBResourceGroup_basic" -timeout=90s
 
 acceptance: testversion5.6 testversion5.7 testversion8.0 testpercona5.7 testpercona8.0 testmariadb10.3 testmariadb10.8 testmariadb10.10 testtidb6.1.0 testtidb7.5.2
 
