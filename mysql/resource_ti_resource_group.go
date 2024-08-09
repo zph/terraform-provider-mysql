@@ -207,7 +207,7 @@ func getResourceGroupFromDB(db *sql.DB, name string) (*ResourceGroup, error) {
 	/*
 		Coerce types on SQL side into good types for golang
 		Burstable is a varchar(3) so we coerce to BOOLEAN
-		QUERY_LIMIT is nullable in DB, but we coerce to standard "empty" string type of "()"
+		QUERY_LIMIT is nullable in DB, but we coerce to standard "empty" string type of ""
 		Lowercase priority for less configuration variability
 	*/
 	query := `SELECT NAME, RU_PER_SEC, LOWER(PRIORITY), BURSTABLE = 'YES' as BURSTABLE, IFNULL(QUERY_LIMIT,"") FROM information_schema.resource_groups WHERE NAME = ?`
