@@ -12,10 +12,11 @@ SHA_SHORT=$(shell git describe --match=FORCE_NEVER_MATCH --always --abbrev=40 --
 MOST_RECENT_UPSTREAM_TAG=$(shell git for-each-ref refs/tags --sort=-taggerdate --format="%(refname)" | head -1 | grep -E -o "v\d+\.\d+\.\d+")
 
 OS_ARCH=linux_amd64
+
 # Set correct OS_ARCH on Mac
 UNAME := $(shell uname -s)
+HW := $(shell uname -m)
 ifeq ($(UNAME),Darwin)
-	HW := $(shell uname -m)
 	ifeq ($(HW),arm64)
 		ARCH=$(HW)
 	else
