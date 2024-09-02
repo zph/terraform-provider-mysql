@@ -221,7 +221,7 @@ func databaseConfigSQL(verb string, d *schema.ResourceData, db *sql.DB) (string,
 			placementPolicyClause = placementPolicyKeyword + quoteIdentifier(placementPolicyDefault)
 		}
 	} else if placementPolicy != "" {
-		return fmt.Errorf("placement_policy is only supported for TiDB")
+		return "", fmt.Errorf("placement_policy is only supported for TiDB")
 	}
 
 	return fmt.Sprintf(
@@ -231,7 +231,7 @@ func databaseConfigSQL(verb string, d *schema.ResourceData, db *sql.DB) (string,
 		defaultCharsetClause,
 		defaultCollationClause,
 		placementPolicyClause,
-	)
+	), nil
 }
 
 func extractIdentAfter(sql string, keyword string) string {
