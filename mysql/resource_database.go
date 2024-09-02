@@ -65,7 +65,10 @@ func CreateDatabase(ctx context.Context, d *schema.ResourceData, meta interface{
 		return diag.FromErr(err)
 	}
 
-	stmtSQL := databaseConfigSQL("CREATE", d)
+	stmtSQL, err := databaseConfigSQL("CREATE", d, db)
+	if err != nil {
+		return diag.Errorf("failed constructing create SQL statement: %v", err)
+	}
 	log.Println("[DEBUG] Executing statement:", stmtSQL)
 
 	_, err = db.ExecContext(ctx, stmtSQL)
@@ -84,7 +87,10 @@ func UpdateDatabase(ctx context.Context, d *schema.ResourceData, meta interface{
 		return diag.FromErr(err)
 	}
 
-	stmtSQL := databaseConfigSQL("ALTER", d)
+	stmtSQL, err := databaseConfigSQL("ALTER", d, db)
+	if err != nil {
+		return diag.Errorf("failed constructing update SQL statement: %v", err)
+	}
 	log.Println("[DEBUG] Executing statement:", stmtSQL)
 
 	_, err = db.ExecContext(ctx, stmtSQL)
@@ -186,7 +192,7 @@ func DeleteDatabase(ctx context.Context, d *schema.ResourceData, meta interface{
 	return nil
 }
 
-func databaseConfigSQL(verb string, d *schema.ResourceData) string {
+func databaseConfigSQL(verb string, d *schema.ResourceData, db *sql.DB) (string, error) {
 	name := d.Get("name").(string)
 	defaultCharset := d.Get("default_character_set").(string)
 	defaultCollation := d.Get("default_collation").(string)
@@ -202,10 +208,20 @@ func databaseConfigSQL(verb string, d *schema.ResourceData) string {
 	if defaultCollation != "" {
 		defaultCollationClause = defaultCollateKeyword + quoteIdentifier(defaultCollation)
 	}
-	if placementPolicy != "" {
-		placementPolicyClause = placementPolicyKeyword + quoteIdentifier(placementPolicy)
-	} else {
-		placementPolicyClause = placementPolicyKeyword + quoteIdentifier(placementPolicyDefault)
+
+	isTiDB, _, _, err := serverTiDB(db)
+	if err != nil {
+		return "", err
+	}
+
+	if isTiDB {
+		if placementPolicy != "" {
+			placementPolicyClause = placementPolicyKeyword + quoteIdentifier(placementPolicy)
+		} else {
+			placementPolicyClause = placementPolicyKeyword + quoteIdentifier(placementPolicyDefault)
+		}
+	} else if placementPolicy != "" {
+		return fmt.Errorf("placement_policy is only supported for TiDB")
 	}
 
 	return fmt.Sprintf(
