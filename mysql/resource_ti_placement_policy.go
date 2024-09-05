@@ -204,7 +204,6 @@ func DeletePlacementPolicy(ctx context.Context, d *schema.ResourceData, meta int
 }
 
 func NewPlacementPolicyFromResourceData(d *schema.ResourceData) PlacementPolicy {
-	// Can I cast this directly to []string?
 	regionsAny := d.Get("regions").([]any)
 	constraintsAny := d.Get("constraints").([]any)
 	regions := []string{}
