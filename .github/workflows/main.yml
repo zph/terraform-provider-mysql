@@ -49,7 +49,7 @@ jobs:
         with:
           path: |
             ~/.tiup
-          key: ${{ runner.os }}-tiup-${{ hashFiles('**/.github/workflows/main.yml') }}
+          key: ${{ runner.os }}-tiup-components
           restore-keys: |
             ${{ runner.os }}-tiup-
       
@@ -163,7 +163,7 @@ jobs:
         with:
           path: |
             ~/.tiup
-          key: ${{ runner.os }}-tiup-${{ hashFiles('**/.github/workflows/main.yml') }}
+          key: ${{ runner.os }}-tiup-components
           restore-keys: |
             ${{ runner.os }}-tiup-
       
