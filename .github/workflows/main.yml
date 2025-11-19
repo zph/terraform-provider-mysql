@@ -220,6 +220,51 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "TiDB version for this test: ${VERSION}"
       
+      - name: Set up Docker Buildx for TiDB
+        if: contains(matrix.target, 'tidb')
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Cache TiDB Docker images using Buildx
+        if: contains(matrix.target, 'tidb')
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.tidb
+          push: false
+          tags: pingcap/tidb:v${{ steps.extract-tidb-version.outputs.version }}
+          build-args: |
+            TIDB_COMPONENT=pingcap/tidb
+            TIDB_VERSION=v${{ steps.extract-tidb-version.outputs.version }}
+          cache-from: type=gha,scope=tidb-v${{ steps.extract-tidb-version.outputs.version }}
+          cache-to: type=gha,mode=max,scope=tidb-v${{ steps.extract-tidb-version.outputs.version }}
+      
+      - name: Cache PD Docker image using Buildx
+        if: contains(matrix.target, 'tidb')
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.tidb
+          push: false
+          tags: pingcap/pd:v${{ steps.extract-tidb-version.outputs.version }}
+          build-args: |
+            TIDB_COMPONENT=pingcap/pd
+            TIDB_VERSION=v${{ steps.extract-tidb-version.outputs.version }}
+          cache-from: type=gha,scope=pd-v${{ steps.extract-tidb-version.outputs.version }}
+          cache-to: type=gha,mode=max,scope=pd-v${{ steps.extract-tidb-version.outputs.version }}
+      
+      - name: Cache TiKV Docker image using Buildx
+        if: contains(matrix.target, 'tidb')
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.tidb
+          push: false
+          tags: pingcap/tikv:v${{ steps.extract-tidb-version.outputs.version }}
+          build-args: |
+            TIDB_COMPONENT=pingcap/tikv
+            TIDB_VERSION=v${{ steps.extract-tidb-version.outputs.version }}
+          cache-from: type=gha,scope=tikv-v${{ steps.extract-tidb-version.outputs.version }}
+          cache-to: type=gha,mode=max,scope=tikv-v${{ steps.extract-tidb-version.outputs.version }}
       
       - name: Run tests {{ matrix.target }}
         env:
