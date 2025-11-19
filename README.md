@@ -251,3 +251,14 @@ make acceptance
 # or to test only one mysql version:
 make testversion8.0
 ```
+
+### CI Testing Strategy
+
+Our CI workflow tests against multiple TiDB versions (latest of each minor series) to ensure compatibility across different releases. To optimize cache performance and avoid timeouts, we cache each TiDB version separately rather than caching all versions together. This approach:
+
+- Prevents cache upload timeouts (each cache is ~700-800MB instead of 4.5GB)
+- Allows each test job to download and cache only the version it needs
+- Shares the TiUP binary cache across all tests for efficiency
+- Automatically cleans up unused caches after 7 days
+
+This strategy balances test coverage with CI performance and reliability.
