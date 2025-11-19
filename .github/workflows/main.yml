@@ -209,7 +209,23 @@ jobs:
         if: contains(matrix.target, 'tidb')
         uses: docker/setup-buildx-action@v3
       
-      - name: Pull and cache TiDB Docker images using Buildx
+      - name: Pull TiDB Docker images in parallel
+        if: contains(matrix.target, 'tidb')
+        run: |
+          VERSION="${{ steps.extract-tidb-version.outputs.version }}"
+          echo "Pulling TiDB component images for v${VERSION} in parallel..."
+          
+          # Pull all three images in parallel
+          docker pull pingcap/tidb:v${VERSION} &
+          docker pull pingcap/pd:v${VERSION} &
+          docker pull pingcap/tikv:v${VERSION} &
+          
+          # Wait for all pulls to complete
+          wait
+          
+          echo "All TiDB component images pulled successfully"
+      
+      - name: Cache TiDB Docker images using Buildx
         if: contains(matrix.target, 'tidb')
         uses: docker/build-push-action@v5
         continue-on-error: false
@@ -224,7 +240,7 @@ jobs:
           cache-from: type=gha,scope=tidb-v${{ steps.extract-tidb-version.outputs.version }}
           cache-to: type=gha,mode=max,scope=tidb-v${{ steps.extract-tidb-version.outputs.version }}
       
-      - name: Pull and cache PD Docker image using Buildx
+      - name: Cache PD Docker image using Buildx
         if: contains(matrix.target, 'tidb')
         uses: docker/build-push-action@v5
         continue-on-error: false
@@ -239,7 +255,7 @@ jobs:
           cache-from: type=gha,scope=pd-v${{ steps.extract-tidb-version.outputs.version }}
           cache-to: type=gha,mode=max,scope=pd-v${{ steps.extract-tidb-version.outputs.version }}
       
-      - name: Pull and cache TiKV Docker image using Buildx
+      - name: Cache TiKV Docker image using Buildx
         if: contains(matrix.target, 'tidb')
         uses: docker/build-push-action@v5
         continue-on-error: false
