@@ -44,6 +44,43 @@ jobs:
       - name: Vendor Go dependencies
         run: go mod vendor
       
+      - name: Cache TiUP components
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.tiup
+          key: ${{ runner.os }}-tiup-${{ hashFiles('**/.github/workflows/main.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-tiup-
+      
+      - name: Install TiUP
+        run: |
+          if ! command -v tiup &> /dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://tiup-mirrors.pingcap.com/install.sh | sh
+          fi
+          echo "$HOME/.tiup/bin" >> $GITHUB_PATH
+      
+      - name: Pre-download TiDB versions
+        run: |
+          export PATH=$HOME/.tiup/bin:$PATH
+          # Pre-download TiDB versions used in tests (only if not already cached)
+          tiup install tidb:v6.1.0 || true
+          tiup install tidb:v6.5.3 || true
+          tiup install tidb:v7.1.5 || true
+          tiup install tidb:v7.5.2 || true
+          tiup install tidb:v8.1.0 || true
+          # Also install PD and TiKV components
+          tiup install pd:v6.1.0 || true
+          tiup install pd:v6.5.3 || true
+          tiup install pd:v7.1.5 || true
+          tiup install pd:v7.5.2 || true
+          tiup install pd:v8.1.0 || true
+          tiup install tikv:v6.1.0 || true
+          tiup install tikv:v6.5.3 || true
+          tiup install tikv:v7.1.5 || true
+          tiup install tikv:v7.5.2 || true
+          tiup install tikv:v8.1.0 || true
+      
       - name: Upload Terraform binary
         uses: actions/upload-artifact@v4
         with:
@@ -119,6 +156,26 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends mysql-client
+      
+      - name: Cache TiUP components
+        if: contains(matrix.target, 'tidb')
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.tiup
+          key: ${{ runner.os }}-tiup-${{ hashFiles('**/.github/workflows/main.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-tiup-
+      
+      - name: Install TiUP (if not cached)
+        if: contains(matrix.target, 'tidb')
+        run: |
+          if ! command -v tiup &> /dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://tiup-mirrors.pingcap.com/install.sh | sh
+            echo "$HOME/.tiup/bin" >> $GITHUB_PATH
+          else
+            echo "$HOME/.tiup/bin" >> $GITHUB_PATH
+          fi
       
       - name: Run tests {{ matrix.target }}
         env:
