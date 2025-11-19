@@ -84,7 +84,7 @@ testrdsdb:
 	$(MAKE) testacc
 
 testtidb%:
-	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=34$(shell echo "$*" | tr -d '.') testtidb
+	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=$(shell echo "$*" | awk -F. '{port=34000+($$2*100)+$$3; if(port>65535) port=34000+($$2*10)+$$3; printf "%d", port}') testtidb
 
 # WARNING: this does not work as a bare task run, it only instantiates correctly inside the versioned TiDB task run
 #          otherwise MYSQL_PORT and version are unset.
