@@ -95,18 +95,6 @@ testtidb:
 	MYSQL_VERSION=$(MYSQL_VERSION) MYSQL_PORT=$(MYSQL_PORT) $(CURDIR)/scripts/tidb-playground.sh stop; \
 	exit $$TEST_RESULT
 
-# Fast Unistore-based smoke tests (latest of each major series)
-testtidb-unistore%:
-	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=35$(shell echo "$*" | tr -d '.') testtidb-unistore
-
-# WARNING: this does not work as a bare task run, it only instantiates correctly inside the versioned TiDB task run
-testtidb-unistore:
-	@MYSQL_VERSION=$(MYSQL_VERSION) MYSQL_PORT=$(MYSQL_PORT) $(CURDIR)/scripts/tidb-playground-unistore.sh start || exit 1
-	MYSQL_USERNAME="$(TEST_USER)" MYSQL_PASSWORD="" MYSQL_ENDPOINT=127.0.0.1:$(MYSQL_PORT) $(MAKE) testacc; \
-	TEST_RESULT=$$?; \
-	MYSQL_VERSION=$(MYSQL_VERSION) MYSQL_PORT=$(MYSQL_PORT) $(CURDIR)/scripts/tidb-playground-unistore.sh stop; \
-	exit $$TEST_RESULT
-
 testmariadb%:
 	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=6$(shell echo "$*" | tr -d '.') testmariadb
 
