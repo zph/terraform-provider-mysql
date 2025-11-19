@@ -6,6 +6,11 @@ on:
     tags: ["*"]
   pull_request:
     branches: [ "*" ]
+
+# TiDB versions used in tests - single source of truth
+env:
+  TIDB_VERSIONS: "6.1.0 6.5.3 7.1.5 7.5.2 8.1.0"
+
 jobs:
   lint:
     runs-on: ubuntu-22.04
@@ -63,10 +68,9 @@ jobs:
       - name: Pre-download TiDB versions
         run: |
           export PATH=$HOME/.tiup/bin:$PATH
-          # Pre-download all TiDB versions used in test matrix
-          # Versions: 6.1.0, 6.5.3, 7.1.5, 7.5.2, 8.1.0
-          VERSIONS="6.1.0 6.5.3 7.1.5 7.5.2 8.1.0"
-          for version in $VERSIONS; do
+          # Pre-download all TiDB versions from env.TIDB_VERSIONS (single source of truth)
+          echo "Pre-downloading TiDB versions: ${{ env.TIDB_VERSIONS }}"
+          for version in ${{ env.TIDB_VERSIONS }}; do
             echo "Pre-downloading TiDB components for v${version}..."
             tiup install tidb:v${version} || true
             tiup install pd:v${version} || true
@@ -105,6 +109,7 @@ jobs:
         - testmariadb10.8
         - testmariadb10.10
         # Track https://github.com/pingcap/tidb/tags
+        # TiDB versions must match env.TIDB_VERSIONS: 6.1.0 6.5.3 7.1.5 7.5.2 8.1.0
         - testtidb6.1.0
         - testtidb6.5.3
         # - testtidb6.5.10
