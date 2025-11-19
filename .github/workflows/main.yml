@@ -35,6 +35,31 @@ jobs:
         with:
           fetch-depth: 1
       
+      - name: Validate TiDB versions sync
+        run: |
+          # Extract TiDB versions from test matrix and compare with env.TIDB_VERSIONS
+          EXPECTED_VERSIONS="${{ env.TIDB_VERSIONS }}"
+          MATRIX_VERSIONS=$(grep -E "testtidb[0-9]" .github/workflows/main.yml | sed 's/.*testtidb\([0-9.]*\).*/\1/' | tr '\n' ' ' | xargs)
+          
+          echo "Expected versions (from env): $EXPECTED_VERSIONS"
+          echo "Matrix versions (from test targets): $MATRIX_VERSIONS"
+          
+          # Check if versions match (simple check - both should contain same versions)
+          MISSING=""
+          for version in $EXPECTED_VERSIONS; do
+            if ! echo "$MATRIX_VERSIONS" | grep -q "$version"; then
+              MISSING="$MISSING $version"
+            fi
+          done
+          
+          if [ -n "$MISSING" ]; then
+            echo "ERROR: TiDB versions in env.TIDB_VERSIONS not found in test matrix: $MISSING"
+            echo "Please ensure test matrix includes testtidb* entries for all versions in env.TIDB_VERSIONS"
+            exit 1
+          fi
+          
+          echo "✓ TiDB versions are in sync"
+      
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
