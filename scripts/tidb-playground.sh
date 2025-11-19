@@ -33,7 +33,7 @@ if [ "$MODE" = "start" ]; then
         --tiflash 0 \
         --without-monitor \
         --host 0.0.0.0 \
-        --port ${PORT} \
+        --db.port ${PORT} \
         > /tmp/tidb-playground-${PORT}.log 2>&1 &
     
     PLAYGROUND_PID=$!
