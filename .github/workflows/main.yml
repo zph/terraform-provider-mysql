@@ -75,33 +75,8 @@ jobs:
       - name: Vendor Go dependencies
         run: go mod vendor
       
-      - name: Cache TiUP binary
-        id: cache-tiup-binary
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.tiup/bin
-            ~/.tiup/manifests
-          # Cache TiUP binary separately (small, ~20MB)
-          key: ${{ runner.os }}-tiup-binary-${{ hashFiles('.github/workflows/main.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-tiup-binary-
-      
-      - name: Install TiUP
-        run: |
-          if ! command -v tiup &> /dev/null; then
-            curl --proto '=https' --tlsv1.2 -sSf https://tiup-mirrors.pingcap.com/install.sh | sh
-          fi
-          echo "$HOME/.tiup/bin" >> $GITHUB_PATH
-      
-      - name: Update TiUP and playground component
-        run: |
-          export PATH=$HOME/.tiup/bin:$PATH
-          tiup update --self || true
-          tiup update playground || true
-      
-      # Note: TiDB components are NOT pre-downloaded here to avoid huge cache timeout
-      # Each test job will download and cache only the version it needs (~700-800MB per version)
+      # Note: TiDB tests now use Docker images with Buildx caching instead of TiUP
+      # Docker images are cached per version in individual test jobs
       
       - name: Pre-pull Docker images
         run: |

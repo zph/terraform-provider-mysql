@@ -89,10 +89,10 @@ testtidb%:
 # WARNING: this does not work as a bare task run, it only instantiates correctly inside the versioned TiDB task run
 #          otherwise MYSQL_PORT and version are unset.
 testtidb:
-	@MYSQL_VERSION=$(MYSQL_VERSION) MYSQL_PORT=$(MYSQL_PORT) $(CURDIR)/scripts/tidb-playground.sh start || exit 1
+	@MYSQL_VERSION=$(MYSQL_VERSION) MYSQL_PORT=$(MYSQL_PORT) $(CURDIR)/scripts/tidb-test-cluster.sh --init --port $(MYSQL_PORT) --version $(MYSQL_VERSION) || exit 1
 	MYSQL_USERNAME="$(TEST_USER)" MYSQL_PASSWORD="" MYSQL_ENDPOINT=127.0.0.1:$(MYSQL_PORT) $(MAKE) testacc; \
 	TEST_RESULT=$$?; \
-	MYSQL_VERSION=$(MYSQL_VERSION) MYSQL_PORT=$(MYSQL_PORT) $(CURDIR)/scripts/tidb-playground.sh stop; \
+	MYSQL_VERSION=$(MYSQL_VERSION) MYSQL_PORT=$(MYSQL_PORT) $(CURDIR)/scripts/tidb-test-cluster.sh --destroy || true; \
 	exit $$TEST_RESULT
 
 testmariadb%:
