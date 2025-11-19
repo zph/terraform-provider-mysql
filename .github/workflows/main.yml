@@ -75,13 +75,21 @@ jobs:
       - name: Vendor Go dependencies
         run: go mod vendor
       
+      - name: Generate TiDB versions hash
+        id: tidb-versions-hash
+        run: |
+          echo "hash=$(echo '${{ env.TIDB_VERSIONS }}' | sha256sum | cut -d' ' -f1 | cut -c1-8)" >> $GITHUB_OUTPUT
+      
       - name: Cache TiUP components
+        id: cache-tiup
         uses: actions/cache@v4
         with:
           path: |
             ~/.tiup
-          key: ${{ runner.os }}-tiup-components
+          # Include workflow hash and TiDB versions hash in cache key so cache updates when versions change
+          key: ${{ runner.os }}-tiup-${{ hashFiles('.github/workflows/main.yml') }}-${{ hashFiles('**/go.mod') }}-${{ steps.tidb-versions-hash.outputs.hash }}
           restore-keys: |
+            ${{ runner.os }}-tiup-${{ hashFiles('.github/workflows/main.yml') }}-${{ hashFiles('**/go.mod') }}-
             ${{ runner.os }}-tiup-
       
       - name: Install TiUP
@@ -188,14 +196,23 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends mysql-client
       
+      - name: Generate TiDB versions hash
+        id: tidb-versions-hash-test
+        if: contains(matrix.target, 'tidb')
+        run: |
+          echo "hash=$(echo '${{ env.TIDB_VERSIONS }}' | sha256sum | cut -d' ' -f1 | cut -c1-8)" >> $GITHUB_OUTPUT
+      
       - name: Cache TiUP components
+        id: cache-tiup-test
         if: contains(matrix.target, 'tidb')
         uses: actions/cache@v4
         with:
           path: |
             ~/.tiup
-          key: ${{ runner.os }}-tiup-components
+          # Use same cache key as prepare-dependencies job to share cache
+          key: ${{ runner.os }}-tiup-${{ hashFiles('.github/workflows/main.yml') }}-${{ hashFiles('**/go.mod') }}-${{ steps.tidb-versions-hash-test.outputs.hash }}
           restore-keys: |
+            ${{ runner.os }}-tiup-${{ hashFiles('.github/workflows/main.yml') }}-${{ hashFiles('**/go.mod') }}-
             ${{ runner.os }}-tiup-
       
       - name: Install TiUP (if not cached)
