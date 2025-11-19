@@ -21,12 +21,17 @@ jobs:
       - name: Running ${{ matrix.command }}
         run: ${{ matrix.command }}
 
-  prepare-terraform:
-    name: Prepare Terraform Binary
+  prepare-dependencies:
+    name: Prepare Dependencies
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
       
       - name: Download Terraform
         run: |
@@ -34,16 +39,27 @@ jobs:
           curl -sfL https://releases.hashicorp.com/terraform/1.5.6/terraform_1.5.6_linux_amd64.zip > bin/terraform.zip
           cd bin && unzip terraform.zip && rm terraform.zip && chmod +x terraform
       
+      - name: Vendor Go dependencies
+        run: go mod vendor
+      
       - name: Upload Terraform binary
         uses: actions/upload-artifact@v4
         with:
           name: terraform-binary
           path: bin/terraform
           retention-days: 1
+      
+      - name: Upload vendor directory
+        uses: actions/upload-artifact@v4
+        with:
+          name: vendor-dir
+          path: vendor/
+          retention-days: 1
+          compression-level: 6
 
   tests:
     runs-on: ubuntu-22.04
-    needs: [prepare-terraform]
+    needs: [prepare-dependencies]
     strategy:
       fail-fast: false
       matrix:
@@ -72,21 +88,17 @@ jobs:
         with:
           go-version-file: go.mod
       
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-      
       - name: Download Terraform binary
         uses: actions/download-artifact@v4
         with:
           name: terraform-binary
           path: bin/
+      
+      - name: Download vendor directory
+        uses: actions/download-artifact@v4
+        with:
+          name: vendor-dir
+          path: vendor/
       
       - name: Make Terraform executable
         run: chmod +x bin/terraform
@@ -97,6 +109,8 @@ jobs:
           sudo apt-get -f -y install mysql-client
       
       - name: Run tests {{ matrix.target }}
+        env:
+          GOFLAGS: -mod=vendor
         run: make ${{ matrix.target }}
   # DISABLED to figure out GPG signing issue on Github Actions
   #         possibly due to lack of TTY inside docker?
