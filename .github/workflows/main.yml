@@ -79,6 +79,19 @@ jobs:
       # Docker images are cached per version in individual test jobs using Buildx with GHA cache backend
       # Each test job pulls and caches its own images - no pre-pull needed since Docker layer cache is ephemeral per job
       
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('**/.github/workflows/main.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+      
+      - name: Install mysql client (populates cache for test jobs)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mysql-client
+      
       - name: Upload Terraform binary
         uses: actions/upload-artifact@v4
         with:
