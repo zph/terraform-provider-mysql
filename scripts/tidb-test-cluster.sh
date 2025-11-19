@@ -102,7 +102,10 @@ function destroy_cluster() {
 }
 
 function show_docker_logs_and_exit() {
-	docker ps -a -q -f name=$1 |xargs docker logs --details 2>&1
+	CONTAINERS=$(docker ps -a -q -f name=$1)
+	if [ ! -z "$CONTAINERS" ]; then
+		echo "$CONTAINERS" | xargs docker logs --details 2>&1
+	fi
 	echo "Error with $1 component. For debugging use:"
 	echo "docker ps -a -q -f name=$1 |xargs docker logs"
 	exit 1
