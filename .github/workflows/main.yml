@@ -9,7 +9,7 @@ on:
 
 # TiDB versions used in tests - single source of truth
 env:
-  TIDB_VERSIONS: "6.1.0 6.5.3 7.1.5 7.5.2 8.1.0"
+  TIDB_VERSIONS: "6.1.0 6.5.3 7.1.5 7.5.7 8.1.0 8.5.3"
 
 jobs:
   lint:
@@ -134,13 +134,14 @@ jobs:
         - testmariadb10.8
         - testmariadb10.10
         # Track https://github.com/pingcap/tidb/tags
-        # TiDB versions must match env.TIDB_VERSIONS: 6.1.0 6.5.3 7.1.5 7.5.2 8.1.0
+        # TiDB versions must match env.TIDB_VERSIONS: 6.1.0 6.5.3 7.1.5 7.5.7 8.1.0 8.5.3
         - testtidb6.1.0
         - testtidb6.5.3
         # - testtidb6.5.10
         - testtidb7.1.5
-        - testtidb7.5.2
+        - testtidb7.5.7
         - testtidb8.1.0
+        - testtidb8.5.3
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v4
