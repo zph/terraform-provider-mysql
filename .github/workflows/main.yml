@@ -75,22 +75,17 @@ jobs:
       - name: Vendor Go dependencies
         run: go mod vendor
       
-      - name: Generate TiDB versions hash
-        id: tidb-versions-hash
-        run: |
-          echo "hash=$(echo '${{ env.TIDB_VERSIONS }}' | sha256sum | cut -d' ' -f1 | cut -c1-8)" >> $GITHUB_OUTPUT
-      
-      - name: Cache TiUP components
-        id: cache-tiup
+      - name: Cache TiUP binary
+        id: cache-tiup-binary
         uses: actions/cache@v4
         with:
           path: |
-            ~/.tiup
-          # Include workflow hash and TiDB versions hash in cache key so cache updates when versions change
-          key: ${{ runner.os }}-tiup-${{ hashFiles('.github/workflows/main.yml') }}-${{ hashFiles('**/go.mod') }}-${{ steps.tidb-versions-hash.outputs.hash }}
+            ~/.tiup/bin
+            ~/.tiup/manifests
+          # Cache TiUP binary separately (small, ~20MB)
+          key: ${{ runner.os }}-tiup-binary-${{ hashFiles('.github/workflows/main.yml') }}
           restore-keys: |
-            ${{ runner.os }}-tiup-${{ hashFiles('.github/workflows/main.yml') }}-${{ hashFiles('**/go.mod') }}-
-            ${{ runner.os }}-tiup-
+            ${{ runner.os }}-tiup-binary-
       
       - name: Install TiUP
         run: |
@@ -105,18 +100,8 @@ jobs:
           tiup update --self || true
           tiup update playground || true
       
-      - name: Pre-download TiDB versions
-        run: |
-          export PATH=$HOME/.tiup/bin:$PATH
-          # Pre-download all TiDB versions from env.TIDB_VERSIONS (single source of truth)
-          echo "Pre-downloading TiDB versions: ${{ env.TIDB_VERSIONS }}"
-          for version in ${{ env.TIDB_VERSIONS }}; do
-            echo "Pre-downloading TiDB components for v${version}..."
-            tiup install tidb:v${version} || true
-            tiup install pd:v${version} || true
-            tiup install tikv:v${version} || true
-          done
-          echo "TiDB version pre-download complete"
+      # Note: TiDB components are NOT pre-downloaded here to avoid huge cache timeout
+      # Each test job will download and cache only the version it needs (~700-800MB per version)
       
       - name: Upload Terraform binary
         uses: actions/upload-artifact@v4
@@ -196,24 +181,40 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends mysql-client
       
-      - name: Generate TiDB versions hash
-        id: tidb-versions-hash-test
+      - name: Extract TiDB version from test target
+        id: extract-tidb-version
         if: contains(matrix.target, 'tidb')
         run: |
-          echo "hash=$(echo '${{ env.TIDB_VERSIONS }}' | sha256sum | cut -d' ' -f1 | cut -c1-8)" >> $GITHUB_OUTPUT
+          # Extract version from testtidb6.1.7 -> 6.1.7
+          VERSION=$(echo "${{ matrix.target }}" | sed 's/testtidb//')
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "TiDB version for this test: ${VERSION}"
       
-      - name: Cache TiUP components
-        id: cache-tiup-test
+      - name: Cache TiUP binary (shared across all TiDB tests)
+        id: cache-tiup-binary-test
         if: contains(matrix.target, 'tidb')
         uses: actions/cache@v4
         with:
           path: |
-            ~/.tiup
-          # Use same cache key as prepare-dependencies job to share cache
-          key: ${{ runner.os }}-tiup-${{ hashFiles('.github/workflows/main.yml') }}-${{ hashFiles('**/go.mod') }}-${{ steps.tidb-versions-hash-test.outputs.hash }}
+            ~/.tiup/bin
+            ~/.tiup/manifests
+          # Cache TiUP binary separately (small, ~20MB) - shared by all TiDB tests
+          key: ${{ runner.os }}-tiup-binary-${{ hashFiles('.github/workflows/main.yml') }}
           restore-keys: |
-            ${{ runner.os }}-tiup-${{ hashFiles('.github/workflows/main.yml') }}-${{ hashFiles('**/go.mod') }}-
-            ${{ runner.os }}-tiup-
+            ${{ runner.os }}-tiup-binary-
+      
+      - name: Cache TiDB components for this specific version
+        id: cache-tidb-version
+        if: contains(matrix.target, 'tidb')
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.tiup/components
+          # Cache components directory per version (~700-800MB per version instead of 4.5GB total)
+          # Each test job caches only the version it needs
+          key: ${{ runner.os }}-tidb-${{ steps.extract-tidb-version.outputs.version }}-${{ hashFiles('.github/workflows/main.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-tidb-${{ steps.extract-tidb-version.outputs.version }}-
       
       - name: Install TiUP (if not cached)
         if: contains(matrix.target, 'tidb')
@@ -231,6 +232,17 @@ jobs:
           export PATH=$HOME/.tiup/bin:$PATH
           tiup update --self || true
           tiup update playground || true
+      
+      - name: Install TiDB components for this version (if not cached)
+        if: contains(matrix.target, 'tidb') && steps.cache-tidb-version.outputs.cache-hit != 'true'
+        run: |
+          export PATH=$HOME/.tiup/bin:$PATH
+          VERSION="${{ steps.extract-tidb-version.outputs.version }}"
+          echo "Installing TiDB components for v${VERSION} (cache miss)..."
+          tiup install tidb:v${VERSION} || true
+          tiup install pd:v${VERSION} || true
+          tiup install tikv:v${VERSION} || true
+          echo "TiDB v${VERSION} components installed and will be cached for next run"
       
       - name: Run tests {{ matrix.target }}
         env:
