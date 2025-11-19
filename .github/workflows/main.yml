@@ -63,23 +63,16 @@ jobs:
       - name: Pre-download TiDB versions
         run: |
           export PATH=$HOME/.tiup/bin:$PATH
-          # Pre-download TiDB versions used in tests (only if not already cached)
-          tiup install tidb:v6.1.0 || true
-          tiup install tidb:v6.5.3 || true
-          tiup install tidb:v7.1.5 || true
-          tiup install tidb:v7.5.2 || true
-          tiup install tidb:v8.1.0 || true
-          # Also install PD and TiKV components
-          tiup install pd:v6.1.0 || true
-          tiup install pd:v6.5.3 || true
-          tiup install pd:v7.1.5 || true
-          tiup install pd:v7.5.2 || true
-          tiup install pd:v8.1.0 || true
-          tiup install tikv:v6.1.0 || true
-          tiup install tikv:v6.5.3 || true
-          tiup install tikv:v7.1.5 || true
-          tiup install tikv:v7.5.2 || true
-          tiup install tikv:v8.1.0 || true
+          # Pre-download all TiDB versions used in test matrix
+          # Versions: 6.1.0, 6.5.3, 7.1.5, 7.5.2, 8.1.0
+          VERSIONS="6.1.0 6.5.3 7.1.5 7.5.2 8.1.0"
+          for version in $VERSIONS; do
+            echo "Pre-downloading TiDB components for v${version}..."
+            tiup install tidb:v${version} || true
+            tiup install pd:v${version} || true
+            tiup install tikv:v${version} || true
+          done
+          echo "TiDB version pre-download complete"
       
       - name: Upload Terraform binary
         uses: actions/upload-artifact@v4
