@@ -16,6 +16,11 @@ if ! command -v tiup &> /dev/null; then
     echo "TiUP not found. Installing..."
     curl --proto '=https' --tlsv1.2 -sSf https://tiup-mirrors.pingcap.com/install.sh | sh
     export PATH=$HOME/.tiup/bin:$PATH
+else
+    # Update TiUP and playground component to ensure latest version
+    echo "Updating TiUP and playground component..."
+    tiup update --self || true
+    tiup update playground || true
 fi
 
 if [ "$MODE" = "start" ]; then

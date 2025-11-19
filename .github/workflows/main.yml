@@ -8,8 +8,9 @@ on:
     branches: [ "*" ]
 
 # TiDB versions used in tests - single source of truth
+# Latest version of each minor series: 6.1.x, 6.5.x, 7.1.x, 7.5.x, 8.1.x, 8.5.x
 env:
-  TIDB_VERSIONS: "6.1.0 6.5.3 7.1.5 7.5.7 8.1.0 8.5.3"
+  TIDB_VERSIONS: "6.1.7 6.5.12 7.1.6 7.5.7 8.1.2 8.5.3"
 
 jobs:
   lint:
@@ -90,6 +91,12 @@ jobs:
           fi
           echo "$HOME/.tiup/bin" >> $GITHUB_PATH
       
+      - name: Update TiUP and playground component
+        run: |
+          export PATH=$HOME/.tiup/bin:$PATH
+          tiup update --self || true
+          tiup update playground || true
+      
       - name: Pre-download TiDB versions
         run: |
           export PATH=$HOME/.tiup/bin:$PATH
@@ -134,13 +141,13 @@ jobs:
         - testmariadb10.8
         - testmariadb10.10
         # Track https://github.com/pingcap/tidb/tags
-        # TiDB versions must match env.TIDB_VERSIONS: 6.1.0 6.5.3 7.1.5 7.5.7 8.1.0 8.5.3
-        - testtidb6.1.0
-        - testtidb6.5.3
-        # - testtidb6.5.10
-        - testtidb7.1.5
+        # TiDB versions must match env.TIDB_VERSIONS: 6.1.7 6.5.12 7.1.6 7.5.7 8.1.2 8.5.3
+        # Latest version of each minor series
+        - testtidb6.1.7
+        - testtidb6.5.12
+        - testtidb7.1.6
         - testtidb7.5.7
-        - testtidb8.1.0
+        - testtidb8.1.2
         - testtidb8.5.3
     steps:
       - name: Checkout Git repo
@@ -200,6 +207,13 @@ jobs:
           else
             echo "$HOME/.tiup/bin" >> $GITHUB_PATH
           fi
+      
+      - name: Update TiUP and playground component
+        if: contains(matrix.target, 'tidb')
+        run: |
+          export PATH=$HOME/.tiup/bin:$PATH
+          tiup update --self || true
+          tiup update playground || true
       
       - name: Run tests {{ matrix.target }}
         env:
