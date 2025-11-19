@@ -248,6 +248,121 @@ jobs:
         env:
           GOFLAGS: -mod=vendor
         run: make ${{ matrix.target }}
+
+  # Fast Unistore-based smoke tests (latest of each major series)
+  # These run quickly using Unistore backend for fast feedback
+  tests-unistore:
+    runs-on: ubuntu-22.04
+    needs: [prepare-dependencies]
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+        # Latest of each major series: 6.x, 7.x, 8.x
+        - testtidb-unistore6.5.12
+        - testtidb-unistore7.5.7
+        - testtidb-unistore8.5.3
+    steps:
+      - name: Checkout Git repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+      
+      - name: Download Terraform binary
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-binary
+          path: bin/
+      
+      - name: Download vendor directory
+        uses: actions/download-artifact@v4
+        with:
+          name: vendor-dir
+          path: vendor/
+      
+      - name: Make Terraform executable
+        run: chmod +x bin/terraform
+      
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt
+          key: ${{ runner.os }}-apt-${{ hashFiles('**/.github/workflows/main.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+      
+      - name: Install mysql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mysql-client
+      
+      - name: Extract TiDB version from test target
+        id: extract-tidb-version-unistore
+        run: |
+          # Extract version from testtidb-unistore6.5.12 -> 6.5.12
+          VERSION=$(echo "${{ matrix.target }}" | sed 's/testtidb-unistore//')
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "TiDB version for Unistore smoke test: ${VERSION}"
+      
+      - name: Cache TiUP binary (shared across all TiDB tests)
+        id: cache-tiup-binary-unistore
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.tiup/bin
+            ~/.tiup/manifests
+          # Cache TiUP binary separately (small, ~20MB) - shared by all TiDB tests
+          key: ${{ runner.os }}-tiup-binary-${{ hashFiles('.github/workflows/main.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-tiup-binary-
+      
+      - name: Cache TiDB components for this specific version
+        id: cache-tidb-version-unistore
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.tiup/components
+          # Cache components directory per version (~700-800MB per version)
+          key: ${{ runner.os }}-tidb-${{ steps.extract-tidb-version-unistore.outputs.version }}-${{ hashFiles('.github/workflows/main.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-tidb-${{ steps.extract-tidb-version-unistore.outputs.version }}-
+      
+      - name: Install TiUP (if not cached)
+        run: |
+          if ! command -v tiup &> /dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://tiup-mirrors.pingcap.com/install.sh | sh
+            echo "$HOME/.tiup/bin" >> $GITHUB_PATH
+          else
+            echo "$HOME/.tiup/bin" >> $GITHUB_PATH
+          fi
+      
+      - name: Update TiUP and playground component
+        run: |
+          export PATH=$HOME/.tiup/bin:$PATH
+          tiup update --self || true
+          tiup update playground || true
+      
+      - name: Install TiDB components for this version (if not cached)
+        if: steps.cache-tidb-version-unistore.outputs.cache-hit != 'true'
+        run: |
+          export PATH=$HOME/.tiup/bin:$PATH
+          VERSION="${{ steps.extract-tidb-version-unistore.outputs.version }}"
+          echo "Installing TiDB components for v${VERSION} (cache miss)..."
+          tiup install tidb:v${VERSION} || true
+          tiup install pd:v${VERSION} || true
+          # Note: TiKV not needed for Unistore, but install for cache consistency
+          tiup install tikv:v${VERSION} || true
+          echo "TiDB v${VERSION} components installed and will be cached for next run"
+      
+      - name: Run Unistore smoke tests {{ matrix.target }}
+        env:
+          GOFLAGS: -mod=vendor
+        run: make ${{ matrix.target }}
   # DISABLED to figure out GPG signing issue on Github Actions
   #         possibly due to lack of TTY inside docker?
   # release:
