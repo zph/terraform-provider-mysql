@@ -103,6 +103,22 @@ jobs:
       # Note: TiDB components are NOT pre-downloaded here to avoid huge cache timeout
       # Each test job will download and cache only the version it needs (~700-800MB per version)
       
+      - name: Pre-pull Docker images
+        run: |
+          # Pre-pull all Docker images used in tests
+          # Note: Docker layer cache is ephemeral per job, but pre-pulling here documents
+          # what images are needed and can help with local testing
+          echo "Pre-pulling Docker images for MySQL, Percona, and MariaDB tests..."
+          docker pull mysql:5.6 || true
+          docker pull mysql:5.7 || true
+          docker pull mysql:8.0 || true
+          docker pull percona:5.7 || true
+          docker pull percona:8.0 || true
+          docker pull mariadb:10.3 || true
+          docker pull mariadb:10.8 || true
+          docker pull mariadb:10.10 || true
+          echo "Docker images pre-pull complete (images will be pulled again in test jobs with layer caching)"
+      
       - name: Upload Terraform binary
         uses: actions/upload-artifact@v4
         with:
