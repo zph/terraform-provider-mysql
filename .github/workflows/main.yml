@@ -157,7 +157,7 @@ jobs:
       - name: Make Terraform executable
         run: chmod +x bin/terraform
       
-      - name: Cache apt packages
+      - name: Restore apt packages cache
         uses: actions/cache@v4
         with:
           path: /var/cache/apt/archives
@@ -165,7 +165,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-apt-
       
-      - name: Install mysql client
+      - name: Install mysql client (from cache if available)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends mysql-client
@@ -222,23 +222,7 @@ jobs:
         if: contains(matrix.target, 'tidb')
         uses: docker/setup-buildx-action@v3
       
-      - name: Pull TiDB Docker images in parallel
-        if: contains(matrix.target, 'tidb')
-        run: |
-          VERSION="${{ steps.extract-tidb-version.outputs.version }}"
-          echo "Pulling TiDB component images for v${VERSION} in parallel..."
-          
-          # Pull all three images in parallel
-          docker pull pingcap/tidb:v${VERSION} &
-          docker pull pingcap/pd:v${VERSION} &
-          docker pull pingcap/tikv:v${VERSION} &
-          
-          # Wait for all pulls to complete
-          wait
-          
-          echo "All TiDB component images pulled successfully"
-      
-      - name: Cache TiDB Docker images using Buildx
+      - name: Pull and cache TiDB Docker images using Buildx
         if: contains(matrix.target, 'tidb')
         uses: docker/build-push-action@v5
         continue-on-error: false
