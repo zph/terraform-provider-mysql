@@ -197,6 +197,72 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends mysql-client
       
+      - name: Cache Docker images (save/load approach)
+        if: contains(matrix.target, 'testversion') || contains(matrix.target, 'testpercona') || contains(matrix.target, 'testmariadb')
+        id: cache-docker-images
+        uses: actions/cache@v4
+        with:
+          path: /tmp/docker-images
+          key: ${{ runner.os }}-docker-${{ matrix.target }}-v1
+          restore-keys: |
+            ${{ runner.os }}-docker-${{ matrix.target }}-
+            ${{ runner.os }}-docker-
+      
+      - name: Load Docker image from cache (if available)
+        if: (contains(matrix.target, 'testversion') || contains(matrix.target, 'testpercona') || contains(matrix.target, 'testmariadb')) && steps.cache-docker-images.outputs.cache-hit == 'true'
+        run: |
+          # Load cached image if available
+          if [[ "${{ matrix.target }}" == testversion5.6 ]] && [ -f /tmp/docker-images/mysql-5.6.tar ]; then
+            docker load -i /tmp/docker-images/mysql-5.6.tar
+          elif [[ "${{ matrix.target }}" == testversion5.7 ]] && [ -f /tmp/docker-images/mysql-5.7.tar ]; then
+            docker load -i /tmp/docker-images/mysql-5.7.tar
+          elif [[ "${{ matrix.target }}" == testversion8.0 ]] && [ -f /tmp/docker-images/mysql-8.0.tar ]; then
+            docker load -i /tmp/docker-images/mysql-8.0.tar
+          elif [[ "${{ matrix.target }}" == testpercona5.7 ]] && [ -f /tmp/docker-images/percona-5.7.tar ]; then
+            docker load -i /tmp/docker-images/percona-5.7.tar
+          elif [[ "${{ matrix.target }}" == testpercona8.0 ]] && [ -f /tmp/docker-images/percona-8.0.tar ]; then
+            docker load -i /tmp/docker-images/percona-8.0.tar
+          elif [[ "${{ matrix.target }}" == testmariadb10.3 ]] && [ -f /tmp/docker-images/mariadb-10.3.tar ]; then
+            docker load -i /tmp/docker-images/mariadb-10.3.tar
+          elif [[ "${{ matrix.target }}" == testmariadb10.8 ]] && [ -f /tmp/docker-images/mariadb-10.8.tar ]; then
+            docker load -i /tmp/docker-images/mariadb-10.8.tar
+          elif [[ "${{ matrix.target }}" == testmariadb10.10 ]] && [ -f /tmp/docker-images/mariadb-10.10.tar ]; then
+            docker load -i /tmp/docker-images/mariadb-10.10.tar
+          fi
+      
+      - name: Pre-pull Docker image for this test
+        if: contains(matrix.target, 'testversion') || contains(matrix.target, 'testpercona') || contains(matrix.target, 'testmariadb')
+        run: |
+          # Pre-pull the Docker image needed for this test
+          # If cache hit, docker pull will be fast (only missing layers)
+          # If cache miss, full pull happens and we'll save it for next run
+          mkdir -p /tmp/docker-images
+          if [[ "${{ matrix.target }}" == testversion5.6 ]]; then
+            docker pull mysql:5.6
+            docker save mysql:5.6 -o /tmp/docker-images/mysql-5.6.tar || true
+          elif [[ "${{ matrix.target }}" == testversion5.7 ]]; then
+            docker pull mysql:5.7
+            docker save mysql:5.7 -o /tmp/docker-images/mysql-5.7.tar || true
+          elif [[ "${{ matrix.target }}" == testversion8.0 ]]; then
+            docker pull mysql:8.0
+            docker save mysql:8.0 -o /tmp/docker-images/mysql-8.0.tar || true
+          elif [[ "${{ matrix.target }}" == testpercona5.7 ]]; then
+            docker pull percona:5.7
+            docker save percona:5.7 -o /tmp/docker-images/percona-5.7.tar || true
+          elif [[ "${{ matrix.target }}" == testpercona8.0 ]]; then
+            docker pull percona:8.0
+            docker save percona:8.0 -o /tmp/docker-images/percona-8.0.tar || true
+          elif [[ "${{ matrix.target }}" == testmariadb10.3 ]]; then
+            docker pull mariadb:10.3
+            docker save mariadb:10.3 -o /tmp/docker-images/mariadb-10.3.tar || true
+          elif [[ "${{ matrix.target }}" == testmariadb10.8 ]]; then
+            docker pull mariadb:10.8
+            docker save mariadb:10.8 -o /tmp/docker-images/mariadb-10.8.tar || true
+          elif [[ "${{ matrix.target }}" == testmariadb10.10 ]]; then
+            docker pull mariadb:10.10
+            docker save mariadb:10.10 -o /tmp/docker-images/mariadb-10.10.tar || true
+          fi
+      
       - name: Extract TiDB version from test target
         id: extract-tidb-version
         if: contains(matrix.target, 'tidb')
