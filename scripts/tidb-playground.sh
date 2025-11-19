@@ -44,9 +44,18 @@ if [ "$MODE" = "start" ]; then
     PLAYGROUND_PID=$!
     echo $PLAYGROUND_PID > /tmp/tidb-playground-${PORT}.pid
     
-    # Wait for TiDB to be ready (max 120 seconds)
-    echo "Waiting for TiDB to be ready..."
-    for i in {1..120}; do
+    # Determine timeout based on TiDB version
+    # Versions 6.1.x and 6.5.x need longer startup time
+    if [[ "${VERSION}" == 6.1.* ]] || [[ "${VERSION}" == 6.5.* ]]; then
+        TIMEOUT=240  # 4 minutes for older versions
+        echo "Using extended timeout (240s) for TiDB ${VERSION}"
+    else
+        TIMEOUT=120  # 2 minutes for newer versions
+    fi
+    
+    # Wait for TiDB to be ready
+    echo "Waiting for TiDB to be ready (max ${TIMEOUT} seconds)..."
+    for i in $(seq 1 ${TIMEOUT}); do
         if mysql -h 127.0.0.1 -P ${PORT} -u root -e 'SELECT 1' >/dev/null 2>&1; then
             echo "TiDB is ready!"
             exit 0
@@ -58,7 +67,7 @@ if [ "$MODE" = "start" ]; then
     done
     
     echo ""
-    echo "ERROR: TiDB failed to start within 120 seconds"
+    echo "ERROR: TiDB failed to start within ${TIMEOUT} seconds"
     echo "Last 20 lines of playground log:"
     tail -20 /tmp/tidb-playground-${PORT}.log || true
     exit 1
