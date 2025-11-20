@@ -52,6 +52,28 @@ default: help
 build: fmtcheck ## Build the provider
 	go install
 
+clean: ## Aggressively clear Docker cache and test artifacts
+	@echo "Clearing Docker cache and test artifacts..."
+	@# Remove testcontainers-related images (mysql, percona, mariadb, tidb)
+	@docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "(mysql|percona|mariadb|tidb|pingcap)" | xargs -r docker rmi -f 2>/dev/null || true
+	@# Remove Docker manifests for problematic images (force remove even if they don't exist)
+	@for img in mysql:5.6 mysql:5.7 percona:5.7 percona:8.0; do \
+		docker manifest rm $$img 2>/dev/null || true; \
+	done
+	@# Prune build cache (all, not just 24h)
+	@docker builder prune -af 2>/dev/null || true
+	@# Prune unused images (all, not just 24h)
+	@docker image prune -af 2>/dev/null || true
+	@# Prune unused containers
+	@docker container prune -f 2>/dev/null || true
+	@# Prune unused networks (but keep default networks)
+	@docker network prune -f 2>/dev/null || true
+	@# Clear testcontainers temp files
+	@rm -rf /tmp/testcontainers-* 2>/dev/null || true
+	@# Clear Docker's content-addressable storage for problematic images (if possible)
+	@echo "Docker cache cleared. Note: For MySQL 5.6/5.7 and Percona on Apple Silicon,"
+	@echo "you may need to restart Docker Desktop to fully clear manifest cache."
+
 test: testcontainers-matrix ## Run all acceptance tests
 test-sequential: acceptance
 
@@ -84,7 +106,18 @@ test-mysql-%: ## Run tests against MySQL version (e.g., test-mysql-8.0)
 	@$(MAKE) testversion$*
 
 testversion%: ## Run tests against MySQL version (e.g., testversion8.0) [backwards compatible]
-	@DOCKER_IMAGE=mysql:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
+	@# MySQL 5.6 and 5.7 don't have ARM64 builds - Docker Desktop on Apple Silicon has manifest cache issues
+	@# The workaround: restart Docker Desktop or use CI (GitHub Actions uses linux/amd64)
+	@if [ "$*" = "5.6" ] || [ "$*" = "5.7" ]; then \
+		echo "WARNING: MySQL $* doesn't have ARM64 support. Docker Desktop manifest cache may cause issues."; \
+		echo "If tests fail with 'no match for platform in manifest', try: make clean && restart Docker Desktop"; \
+		docker rmi mysql:$* 2>/dev/null || true; \
+		docker manifest rm mysql:$* 2>/dev/null || true; \
+		docker pull --platform linux/amd64 mysql:$* 2>&1 | grep -v "no match" || true; \
+		DOCKER_DEFAULT_PLATFORM=linux/amd64 DOCKER_IMAGE=mysql:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m; \
+	else \
+		DOCKER_IMAGE=mysql:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m; \
+	fi
 
 testversion: ## Run tests against MySQL version (set MYSQL_VERSION)
 	@DOCKER_IMAGE=mysql:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
@@ -95,6 +128,13 @@ test-percona-%: ## Run tests against Percona version (e.g., test-percona-8.0)
 	@$(MAKE) testpercona$*
 
 testpercona%: ## Run tests against Percona version (e.g., testpercona8.0) [backwards compatible]
+	@# Percona 5.7 and 8.0 don't have ARM64 builds, so pre-pull with platform specification for Apple Silicon
+	@if [ "$*" = "5.7" ] || [ "$*" = "8.0" ]; then \
+		echo "Pre-pulling percona:$* with platform linux/amd64 for Apple Silicon compatibility..."; \
+		docker rmi percona:$* 2>/dev/null || true; \
+		docker manifest rm percona:$* 2>/dev/null || true; \
+		docker pull --platform linux/amd64 percona:$* || true; \
+	fi
 	@DOCKER_IMAGE=percona:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
 testpercona: ## Run tests against Percona version (set MYSQL_VERSION)
