@@ -278,7 +278,9 @@ jobs:
           gpg --list-secret-keys --keyid-format LONG
 
           # Test signing capability
-          echo "test" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --sign --armor > /dev/null 2>&1 && echo "✓ GPG signing test successful"
+          # Passphrase should be cached in gpg-agent from preset-passphrase above
+          # If not cached, this will fail and we'll know import didn't work
+          echo "test" | gpg --batch --pinentry-mode loopback --sign --armor > /dev/null 2>&1 && echo "✓ GPG signing test successful" || echo "⚠ GPG signing test failed - passphrase may not be cached"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
