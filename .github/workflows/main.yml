@@ -103,49 +103,49 @@ jobs:
         # MySQL versions
         - db_type: mysql
           db_version: "5.6"
-          make_target: "testversion5.6"
+          make_target: "test-mysql-5.6"
         - db_type: mysql
           db_version: "5.7"
-          make_target: "testversion5.7"
+          make_target: "test-mysql-5.7"
         - db_type: mysql
           db_version: "8.0"
-          make_target: "testversion8.0"
+          make_target: "test-mysql-8.0"
         # Percona versions
         - db_type: percona
           db_version: "5.7"
-          make_target: "testpercona5.7"
+          make_target: "test-percona-5.7"
         - db_type: percona
           db_version: "8.0"
-          make_target: "testpercona8.0"
+          make_target: "test-percona-8.0"
         # MariaDB versions
         - db_type: mariadb
           db_version: "10.3"
-          make_target: "testmariadb10.3"
+          make_target: "test-mariadb-10.3"
         - db_type: mariadb
           db_version: "10.8"
-          make_target: "testmariadb10.8"
+          make_target: "test-mariadb-10.8"
         - db_type: mariadb
           db_version: "10.10"
-          make_target: "testmariadb10.10"
+          make_target: "test-mariadb-10.10"
         # TiDB versions - must match env.TIDB_VERSIONS: 6.1.7 6.5.12 7.1.6 7.5.7 8.1.2 8.5.3
         - db_type: tidb
           db_version: "6.1.7"
-          make_target: "testtidb6.1.7"
+          make_target: "test-tidb-6.1.7"
         - db_type: tidb
           db_version: "6.5.12"
-          make_target: "testtidb6.5.12"
+          make_target: "test-tidb-6.5.12"
         - db_type: tidb
           db_version: "7.1.6"
-          make_target: "testtidb7.1.6"
+          make_target: "test-tidb-7.1.6"
         - db_type: tidb
           db_version: "7.5.7"
-          make_target: "testtidb7.5.7"
+          make_target: "test-tidb-7.5.7"
         - db_type: tidb
           db_version: "8.1.2"
-          make_target: "testtidb8.1.2"
+          make_target: "test-tidb-8.1.2"
         - db_type: tidb
           db_version: "8.5.3"
-          make_target: "testtidb8.5.3"
+          make_target: "test-tidb-8.5.3"
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v4

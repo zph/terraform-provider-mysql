@@ -79,14 +79,22 @@ testacc: fmtcheck bin/terraform ## Run acceptance tests (requires MYSQL_ENDPOINT
 acceptance: testversion5.6 testversion5.7 testversion8.0 testpercona5.7 testpercona8.0 testmariadb10.3 testmariadb10.8 testmariadb10.10 testtidb6.1.7 testtidb6.5.12 testtidb7.1.6 testtidb7.5.7 testtidb8.1.2 testtidb8.5.3 ## Run all acceptance tests across all database versions
 
 # MySQL test targets - use testcontainers
-testversion%: ## Run tests against MySQL version (e.g., testversion8.0)
+# Preferred format: test-mysql-VERSION (e.g., test-mysql-5.6)
+test-mysql-%: ## Run tests against MySQL version (e.g., test-mysql-8.0)
+	@$(MAKE) testversion$*
+
+testversion%: ## Run tests against MySQL version (e.g., testversion8.0) [backwards compatible]
 	@DOCKER_IMAGE=mysql:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
 testversion: ## Run tests against MySQL version (set MYSQL_VERSION)
 	@DOCKER_IMAGE=mysql:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
 # Percona test targets - use testcontainers
-testpercona%: ## Run tests against Percona version (e.g., testpercona8.0)
+# Preferred format: test-percona-VERSION (e.g., test-percona-8.0)
+test-percona-%: ## Run tests against Percona version (e.g., test-percona-8.0)
+	@$(MAKE) testpercona$*
+
+testpercona%: ## Run tests against Percona version (e.g., testpercona8.0) [backwards compatible]
 	@DOCKER_IMAGE=percona:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
 testpercona: ## Run tests against Percona version (set MYSQL_VERSION)
@@ -101,14 +109,22 @@ testrdsdb: ## Run tests against Amazon RDS (requires MYSQL_ENDPOINT env vars)
 	$(MAKE) testacc
 
 # TiDB test targets - use testcontainers
-testtidb%: ## Run tests against TiDB version (e.g., testtidb8.5.3)
+# Preferred format: test-tidb-VERSION (e.g., test-tidb-8.5.3)
+test-tidb-%: ## Run tests against TiDB version (e.g., test-tidb-8.5.3)
+	@$(MAKE) testtidb$*
+
+testtidb%: ## Run tests against TiDB version (e.g., testtidb8.5.3) [backwards compatible]
 	@DOCKER_IMAGE=tidb:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
 testtidb: ## Run tests against TiDB version (set MYSQL_VERSION)
 	@DOCKER_IMAGE=tidb:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
 # MariaDB test targets - use testcontainers
-testmariadb%: ## Run tests against MariaDB version (e.g., testmariadb10.10)
+# Preferred format: test-mariadb-VERSION (e.g., test-mariadb-10.10)
+test-mariadb-%: ## Run tests against MariaDB version (e.g., test-mariadb-10.10)
+	@$(MAKE) testmariadb$*
+
+testmariadb%: ## Run tests against MariaDB version (e.g., testmariadb10.10) [backwards compatible]
 	@DOCKER_IMAGE=mariadb:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
 testmariadb: ## Run tests against MariaDB version (set MYSQL_VERSION)
