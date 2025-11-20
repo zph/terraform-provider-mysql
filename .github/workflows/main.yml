@@ -175,18 +175,6 @@ jobs:
       # Note: Docker Buildx not needed - testcontainers handles Docker directly
       # Skipping Buildx prevents unnecessary image pulls during initialization
       
-      - name: Pre-pull Docker images for caching
-        if: matrix.db_type != 'tidb'
-        run: |
-          docker pull ${{ matrix.docker_image }} || true
-      
-      - name: Pre-pull TiDB images for caching
-        if: matrix.db_type == 'tidb'
-        run: |
-          docker pull pingcap/tidb:v${{ matrix.db_version }} || true
-          docker pull pingcap/pd:v${{ matrix.db_version }} || true
-          docker pull pingcap/tikv:v${{ matrix.db_version }} || true
-      
       - name: Run testcontainers tests
         env:
           GOFLAGS: -mod=vendor
