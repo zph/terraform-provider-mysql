@@ -202,10 +202,20 @@ func getSharedMySQLContainer(t *testing.T, image string) *MySQLTestContainer {
 	}
 
 	// TestMain should have already created sharedContainer
-	// If it's nil, something went wrong in TestMain
+	// If it's nil, fall back to using environment variables (TestMain sets these)
 	if sharedContainer == nil {
-		t.Fatalf("ERROR: sharedContainer is nil. TestMain should have created it using DOCKER_IMAGE='%s'.\n"+
-			"This indicates a problem with TestMain initialization.", dockerImage)
+		endpoint := os.Getenv("MYSQL_ENDPOINT")
+		if endpoint == "" {
+			t.Fatalf("ERROR: sharedContainer is nil and MYSQL_ENDPOINT is not set. TestMain should have created the container or set environment variables using DOCKER_IMAGE='%s'.\n"+
+				"This indicates a problem with TestMain initialization.", dockerImage)
+		}
+		// Fallback: use environment variables set by TestMain
+		return &MySQLTestContainer{
+			Container: nil, // Not available, but tests use environment variables
+			Endpoint:  endpoint,
+			Username:  os.Getenv("MYSQL_USERNAME"),
+			Password:  os.Getenv("MYSQL_PASSWORD"),
+		}
 	}
 
 	return sharedContainer
