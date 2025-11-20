@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -47,11 +48,14 @@ var (
 )
 
 type testResult struct {
-	image    string
-	dbType   string
-	passed   bool
-	logFile  string
-	duration time.Duration
+	image       string
+	dbType      string
+	passed      bool
+	logFile     string
+	duration    time.Duration
+	totalTests  int
+	passedTests int
+	failedTests int
 }
 
 type testJob struct {
@@ -61,8 +65,31 @@ type testJob struct {
 	testNum     int
 }
 
+type progressTracker struct {
+	mu         sync.Mutex
+	trackers   map[string]*versionProgress
+	lastUpdate time.Time
+}
+
+type versionProgress struct {
+	dbType        string
+	image         string
+	totalTests    int
+	passedTests   int
+	failedTests   int
+	skippedTests  int
+	failedOutput  []string        // Store failure output lines
+	failedTestSet map[string]bool // Track which tests have failed
+	lastUpdate    time.Time
+}
+
 var (
 	outputMutex sync.Mutex
+	progress    = &progressTracker{
+		trackers: make(map[string]*versionProgress),
+	}
+	totalJobsCount int
+	isParallel     bool
 )
 
 func main() {
@@ -75,12 +102,8 @@ func main() {
 	// Get parallelism from environment variable
 	parallel := getParallelism()
 
-	fmt.Println("==========================================")
-	fmt.Println("Testcontainers Matrix Test Suite")
-	fmt.Println("==========================================")
-	fmt.Printf("Test pattern: %s\n", testPattern)
-	fmt.Printf("Parallelism: %d\n", parallel)
-	fmt.Println()
+	fmt.Printf("Testcontainers Matrix Test Suite\n")
+	fmt.Printf("Test pattern: %s | Parallelism: %d\n\n", testPattern, parallel)
 
 	// Build all test jobs
 	var jobs []testJob
@@ -130,11 +153,15 @@ func main() {
 		})
 	}
 
+	totalJobsCount = len(jobs)
+
 	// Run tests (sequentially or in parallel)
 	var results []testResult
 	if parallel > 1 {
+		isParallel = true
 		results = runTestsParallel(jobs, parallel)
 	} else {
+		isParallel = false
 		results = runTestsSequential(jobs)
 	}
 
@@ -174,48 +201,9 @@ func getParallelism() int {
 func runTestsSequential(jobs []testJob) []testResult {
 	var results []testResult
 
-	// Print section headers
-	fmt.Println("==========================================")
-	fmt.Println("MySQL Tests")
-	fmt.Println("==========================================")
 	for _, job := range jobs {
-		if job.dbType == "MySQL" {
-			result := runTest(job)
-			results = append(results, result)
-		}
-	}
-
-	fmt.Println()
-	fmt.Println("==========================================")
-	fmt.Println("Percona Tests")
-	fmt.Println("==========================================")
-	for _, job := range jobs {
-		if job.dbType == "Percona" {
-			result := runTest(job)
-			results = append(results, result)
-		}
-	}
-
-	fmt.Println()
-	fmt.Println("==========================================")
-	fmt.Println("MariaDB Tests")
-	fmt.Println("==========================================")
-	for _, job := range jobs {
-		if job.dbType == "MariaDB" {
-			result := runTest(job)
-			results = append(results, result)
-		}
-	}
-
-	fmt.Println()
-	fmt.Println("==========================================")
-	fmt.Println("TiDB Tests")
-	fmt.Println("==========================================")
-	for _, job := range jobs {
-		if job.dbType == "TiDB" {
-			result := runTest(job)
-			results = append(results, result)
-		}
+		result := runTest(job)
+		results = append(results, result)
 	}
 
 	return results
@@ -251,7 +239,7 @@ func runTestsParallel(jobs []testJob, parallel int) []testResult {
 		close(resultChan)
 	}()
 
-	// Collect results
+	// Collect results as they come in
 	var results []testResult
 	for result := range resultChan {
 		results = append(results, result)
@@ -261,11 +249,33 @@ func runTestsParallel(jobs []testJob, parallel int) []testResult {
 }
 
 func runTest(job testJob) testResult {
+	key := fmt.Sprintf("%s-%s", job.dbType, job.image)
+
+	// Initialize progress tracker
+	progress.mu.Lock()
+	progress.trackers[key] = &versionProgress{
+		dbType:        job.dbType,
+		image:         job.image,
+		totalTests:    0,
+		passedTests:   0,
+		failedTests:   0,
+		skippedTests:  0,
+		failedOutput:  []string{},
+		failedTestSet: make(map[string]bool),
+		lastUpdate:    time.Now(),
+	}
+	progress.mu.Unlock()
+
 	// Synchronize output to prevent interleaving
 	outputMutex.Lock()
-	fmt.Println("----------------------------------------")
-	fmt.Printf("[%d] Testing %s: %s\n", job.testNum, job.dbType, job.image)
-	fmt.Println("----------------------------------------")
+	if !isParallel {
+		// In sequential mode, show counter and start progress bar
+		fmt.Printf("\n[%d/%d] ", job.testNum, getTotalJobs())
+		progress.mu.Lock()
+		tracker := progress.trackers[key]
+		progress.mu.Unlock()
+		renderProgress(tracker)
+	}
 	outputMutex.Unlock()
 
 	// Sanitize image name for log file
@@ -273,10 +283,10 @@ func runTest(job testJob) testResult {
 
 	start := time.Now()
 
-	// Build the go test command
+	// Build the go test command with JSON output
 	cmd := exec.Command("go", "test",
 		"-tags=testcontainers",
-		"-v",
+		"-json",
 		"./mysql/...",
 		"-run", job.testPattern,
 		"-timeout", "15m",
@@ -308,36 +318,272 @@ func runTest(job testJob) testResult {
 	}
 	defer logFileHandle.Close()
 
-	// Capture both stdout and stderr
-	cmd.Stdout = logFileHandle
-	cmd.Stderr = logFileHandle
+	// Create a pipe to capture output in real-time
+	pipeReader, pipeWriter, err := os.Pipe()
+	if err != nil {
+		outputMutex.Lock()
+		fmt.Fprintf(os.Stderr, "Error creating pipe: %v\n", err)
+		outputMutex.Unlock()
+		return testResult{
+			image:   job.image,
+			dbType:  job.dbType,
+			passed:  false,
+			logFile: logFile,
+		}
+	}
+
+	// Set command output to pipe
+	cmd.Stdout = pipeWriter
+	cmd.Stderr = pipeWriter
+
+	// Start parsing output in a goroutine
+	done := make(chan bool)
+	var lineBuffer strings.Builder
+	go func() {
+		defer pipeReader.Close()
+		buf := make([]byte, 4096)
+		for {
+			n, readErr := pipeReader.Read(buf)
+			if n > 0 {
+				chunk := string(buf[:n])
+				// Write to log file
+				logFileHandle.WriteString(chunk)
+
+				// Accumulate lines for JSON parsing
+				lineBuffer.WriteString(chunk)
+				lines := strings.Split(lineBuffer.String(), "\n")
+				// Keep the last incomplete line in buffer
+				lineBuffer.Reset()
+				if len(lines) > 1 {
+					lineBuffer.WriteString(lines[len(lines)-1])
+					// Process complete lines
+					for i := 0; i < len(lines)-1; i++ {
+						parseTestOutput(lines[i], key)
+					}
+				}
+			}
+			if readErr != nil {
+				// Process any remaining line in buffer
+				if lineBuffer.Len() > 0 {
+					parseTestOutput(lineBuffer.String(), key)
+				}
+				break
+			}
+		}
+		done <- true
+	}()
 
 	// Run the command
 	err = cmd.Run()
+
+	// Close writer to signal EOF to reader
+	pipeWriter.Close()
+
+	// Wait for reader goroutine to finish
+	<-done
 	duration := time.Since(start)
 
-	// Read and display the log file (synchronized)
-	logContent, readErr := os.ReadFile(logFile)
-	outputMutex.Lock()
-	if readErr == nil {
-		fmt.Print(string(logContent))
-	}
+	// Get final progress counts and failure output
+	progress.mu.Lock()
+	tracker := progress.trackers[key]
+	var totalTests, passedTests, failedTests int
+	var failedOutput []string
+	if tracker != nil {
+		totalTests = tracker.totalTests
+		passedTests = tracker.passedTests
+		failedTests = tracker.failedTests
+		failedOutput = tracker.failedOutput
 
+		// Render final progress state
+		if tracker.totalTests > 0 {
+			outputMutex.Lock()
+			if !isParallel {
+				// Clear the in-progress line
+				fmt.Fprintf(os.Stderr, "\r\033[K")
+			}
+			renderProgress(tracker)
+			fmt.Fprintf(os.Stderr, "\n")
+			outputMutex.Unlock()
+		}
+	}
+	progress.mu.Unlock()
+
+	outputMutex.Lock()
 	passed := err == nil
 
-	if passed {
-		fmt.Printf("\033[0;32m✓ PASSED: %s %s\033[0m\n", job.dbType, job.image)
-	} else {
-		fmt.Printf("\033[0;31m✗ FAILED: %s %s\033[0m\n", job.dbType, job.image)
+	// Print failure output if there were failures
+	if failedTests > 0 && len(failedOutput) > 0 {
+		fmt.Println()
+		for _, line := range failedOutput {
+			fmt.Print(line)
+		}
+		fmt.Println()
 	}
+
 	outputMutex.Unlock()
 
 	return testResult{
-		image:    job.image,
-		dbType:   job.dbType,
-		passed:   passed,
-		logFile:  logFile,
-		duration: duration,
+		image:       job.image,
+		dbType:      job.dbType,
+		passed:      passed,
+		logFile:     logFile,
+		duration:    duration,
+		totalTests:  totalTests,
+		passedTests: passedTests,
+		failedTests: failedTests,
+		// Note: skippedTests is tracked but not stored in testResult struct
+		// It's displayed in the progress bar
+	}
+}
+
+func getTotalJobs() int {
+	return totalJobsCount
+}
+
+type testEvent struct {
+	Time    time.Time `json:"Time"`
+	Action  string    `json:"Action"`
+	Package string    `json:"Package"`
+	Test    string    `json:"Test"`
+	Elapsed float64   `json:"Elapsed"`
+	Output  string    `json:"Output"`
+}
+
+func parseTestOutput(line string, key string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+
+	var event testEvent
+	if err := json.Unmarshal([]byte(line), &event); err != nil {
+		// Not valid JSON, skip
+		return
+	}
+
+	progress.mu.Lock()
+	tracker := progress.trackers[key]
+	if tracker == nil {
+		progress.mu.Unlock()
+		return
+	}
+
+	// Handle test-level events
+	if event.Test != "" {
+		switch event.Action {
+		case "run":
+			// Test started - increment total only once per test
+			// Note: We count "run" events, but the actual completion is tracked via "pass"/"fail"/"skip"
+			tracker.totalTests++
+		case "pass":
+			// Test passed - increment passed count
+			tracker.passedTests++
+		case "fail":
+			// Test failed - increment failed count and mark test as failed
+			tracker.failedTests++
+			if event.Test != "" {
+				tracker.failedTestSet[event.Test] = true
+			}
+		case "skip":
+			// Test skipped - increment skipped count
+			tracker.skippedTests++
+		}
+	}
+
+	// Capture output from tests (especially failures)
+	// The JSON format includes output events with the Test field set
+	if event.Action == "output" && event.Output != "" && event.Test != "" {
+		output := event.Output
+		// Capture output from tests that have failed or look like failures
+		// Output events come before the "fail" action, so we capture based on content
+		// We'll also capture all output from tests that eventually fail
+		isFailureOutput := strings.Contains(output, "FAIL:") ||
+			strings.Contains(output, "--- FAIL:") ||
+			strings.Contains(output, "Error:") ||
+			strings.Contains(output, "panic:") ||
+			(strings.Contains(output, "got:") && strings.Contains(output, "want:"))
+
+		// Also capture if this test has already been marked as failed
+		if isFailureOutput || tracker.failedTestSet[event.Test] {
+			tracker.failedOutput = append(tracker.failedOutput, output)
+		}
+	}
+
+	tracker.lastUpdate = time.Now()
+	progress.mu.Unlock()
+
+	// Update progress display when we have tests running
+	if tracker.totalTests > 0 && (tracker.passedTests > 0 || tracker.failedTests > 0) {
+		outputMutex.Lock()
+		if !isParallel {
+			// In sequential mode, update progress on same line
+			renderProgress(tracker)
+		}
+		// In parallel mode, don't update in real-time to avoid screen chaos
+		outputMutex.Unlock()
+	}
+}
+
+func renderProgress(tracker *versionProgress) {
+	if tracker == nil {
+		// Show empty bar initially
+		bar := strings.Repeat("-", 30)
+		fmt.Fprintf(os.Stderr, "\r\033[K[%s] 0/0", bar)
+		return
+	}
+
+	version := extractVersion(tracker.image)
+	if tracker.totalTests == 0 {
+		// Show empty bar initially
+		bar := strings.Repeat("-", 30)
+		fmt.Fprintf(os.Stderr, "\r\033[K%-8s %-6s [%s] 0/0", tracker.dbType, version, bar)
+		return
+	}
+
+	// Calculate percent based on completed tests (passed + failed), not including skipped
+	completedTests := tracker.passedTests + tracker.failedTests
+	var percent float64
+	if tracker.totalTests > 0 {
+		percent = float64(completedTests) / float64(tracker.totalTests)
+	}
+	barWidth := 30
+	filled := int(percent * float64(barWidth))
+	bar := strings.Repeat("=", filled) + strings.Repeat("-", barWidth-filled)
+
+	// Show passed/total, and include skipped/failed info if present
+	// Pad database type to 8 chars and version to 6 chars for alignment
+	status := fmt.Sprintf("%-8s %-6s [%s] %d/%d", tracker.dbType, version, bar, tracker.passedTests, tracker.totalTests)
+	if tracker.failedTests > 0 {
+		status = fmt.Sprintf("%-8s %-6s [%s] %d passed, %d failed", tracker.dbType, version, bar, tracker.passedTests, tracker.failedTests)
+	} else if tracker.skippedTests > 0 {
+		// If all non-skipped tests passed, show skipped count
+		status = fmt.Sprintf("%-8s %-6s [%s] %d passed, %d skipped", tracker.dbType, version, bar, tracker.passedTests, tracker.skippedTests)
+	}
+	fmt.Fprintf(os.Stderr, "\r\033[K%s", status)
+}
+
+func printProgressBar(dbType, image string, total, passed, failed int, final bool) {
+	version := extractVersion(image)
+
+	if final {
+		// Final: print summary
+		if failed == 0 {
+			fmt.Printf("  %s %s %d/%d passed\n", dbType, version, passed, total)
+		} else {
+			fmt.Printf("  %s %s %d passed, %d failed\n", dbType, version, passed, failed)
+		}
+	} else {
+		// For in-progress, we use the progress bar library which handles updates
+		// This is called from updateProgressBar which manages the actual bar
+		// Just print a simple status line
+		if isParallel {
+			fmt.Printf("  %s %s %d passed", dbType, version, passed)
+		} else {
+			fmt.Printf("\r\033[K  %s %s %d passed", dbType, version, passed)
+		}
+		if failed > 0 {
+			fmt.Printf(", %d failed", failed)
+		}
 	}
 }
 
@@ -349,10 +595,6 @@ func sanitizeImageName(image string) string {
 }
 
 func printSummary(results []testResult) {
-	fmt.Println()
-	fmt.Println("╔════════════════════════════════════════════════════════════╗")
-	fmt.Println("║              Test Matrix Summary                           ║")
-	fmt.Println("╚════════════════════════════════════════════════════════════╝")
 	fmt.Println()
 
 	total := len(results)
@@ -377,9 +619,9 @@ func printSummary(results []testResult) {
 
 	// Add rows
 	for _, result := range sortedResults {
-		status := "✓ PASS"
+		status := "PASS"
 		if !result.passed {
-			status = "✗ FAIL"
+			status = "FAIL"
 			failed++
 		} else {
 			passed++
@@ -388,6 +630,15 @@ func printSummary(results []testResult) {
 		// Extract version from image (e.g., "mysql:8.0" -> "8.0")
 		version := extractVersion(result.image)
 		duration := formatDuration(result.duration)
+
+		// Add test counts to status
+		if result.totalTests > 0 {
+			if result.failedTests > 0 {
+				status = fmt.Sprintf("%s (%d/%d, %d failed)", status, result.passedTests, result.totalTests, result.failedTests)
+			} else {
+				status = fmt.Sprintf("%s (%d/%d)", status, result.passedTests, result.totalTests)
+			}
+		}
 
 		row := []string{
 			result.dbType,
@@ -398,28 +649,16 @@ func printSummary(results []testResult) {
 		table.Append(row)
 	}
 
-	// Add summary row
-	table.Footer("", "", fmt.Sprintf("%d/%d", passed, total), "")
 	table.Render()
 
-	fmt.Println()
-
-	// Print summary statistics
-	fmt.Println("═══════════════════════════════════════════════════════════════")
-	fmt.Printf("Total:  %d\n", total)
-	if passed > 0 {
-		fmt.Printf("\033[0;32mPassed: %d\033[0m\n", passed)
-	}
+	fmt.Printf("\nSummary: %d/%d passed", passed, total)
 	if failed > 0 {
-		fmt.Printf("\033[0;31mFailed:  %d\033[0m\n", failed)
+		fmt.Printf(", %d failed", failed)
 	}
-	fmt.Println("═══════════════════════════════════════════════════════════════")
 	fmt.Println()
 
-	if failed == 0 {
-		fmt.Printf("\033[0;32m✓ All tests passed!\033[0m\n")
-	} else {
-		fmt.Printf("\033[0;31m✗ Some tests failed. Check logs in /tmp/testcontainers-*.log\033[0m\n")
+	if failed > 0 {
+		fmt.Println("Logs available in /tmp/testcontainers-*.log")
 	}
 }
 

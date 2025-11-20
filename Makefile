@@ -52,12 +52,13 @@ default: help
 build: fmtcheck ## Build the provider
 	go install
 
-test: acceptance ## Run all acceptance tests
+test: testcontainers-matrix ## Run all acceptance tests
+test-sequential: acceptance
 
 # Run testcontainers tests with a matrix of all database versions
 # Usage: make testcontainers-matrix TESTARGS="TestAccUser"
 testcontainers-matrix: fmtcheck bin/terraform ## Run test matrix across all database versions
-	@cd $(CURDIR) && PATH="$(CURDIR)/bin:${PATH}" go run scripts/test-runner.go $(if $(TESTARGS),$(TESTARGS),WithTestcontainers)
+	@cd $(CURDIR) && PATH="$(CURDIR)/bin:${PATH}" PARALLEL=4 GOTOOLCHAIN=auto TF_ACC=1 go run scripts/test-runner.go $(if $(TESTARGS),$(TESTARGS),WithTestcontainers)
 
 # Run testcontainers tests for a specific database image
 # Usage: make testcontainers-image DOCKER_IMAGE=mysql:8.0
