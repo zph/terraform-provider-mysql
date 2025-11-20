@@ -190,9 +190,18 @@ jobs:
           export PATH="${{ github.workspace }}/bin:$PATH"
           if [ "${{ matrix.db_type }}" == "tidb" ]; then
             export TIDB_VERSION=${{ matrix.db_version }}
+            if [ -z "$TIDB_VERSION" ]; then
+              echo "ERROR: TIDB_VERSION is not set for TiDB test"
+              exit 1
+            fi
             go test -tags=testcontainers -v ./mysql/... -run WithTestcontainers -timeout=30m
           else
             export DOCKER_IMAGE=${{ matrix.docker_image }}
+            if [ -z "$DOCKER_IMAGE" ]; then
+              echo "ERROR: DOCKER_IMAGE is not set for ${{ matrix.db_type }} test"
+              exit 1
+            fi
+            echo "Using Docker image: $DOCKER_IMAGE"
             go test -tags=testcontainers -v ./mysql/... -run WithTestcontainers -timeout=30m
           fi
   release:

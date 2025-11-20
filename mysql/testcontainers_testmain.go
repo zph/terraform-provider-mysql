@@ -42,10 +42,12 @@ func TestMain(m *testing.M) {
 		os.Exit(code)
 	}
 
-	// Default to MySQL 8.0, but allow override via DOCKER_IMAGE env var
+	// Require DOCKER_IMAGE to be set - fail early if missing
 	mysqlImage := os.Getenv("DOCKER_IMAGE")
 	if mysqlImage == "" {
-		mysqlImage = "mysql:8.0"
+		os.Stderr.WriteString("ERROR: DOCKER_IMAGE environment variable is not set. This is required for MySQL/Percona/MariaDB tests.\n")
+		os.Stderr.WriteString("Please set DOCKER_IMAGE to the appropriate Docker image (e.g., mysql:5.6, percona:8.0, mariadb:10.10)\n")
+		os.Exit(1)
 	}
 
 	// Start shared container before running tests
