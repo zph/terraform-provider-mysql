@@ -4,14 +4,17 @@
 package mysql
 
 import (
+	"context"
 	"testing"
 
+	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 )
 
 // TestAccRole_basic_WithTestcontainers tests the mysql_role resource
 // using Testcontainers instead of Makefile + Docker
 // Uses shared container set up in TestMain (MySQL 8.0 required for roles)
+// Skips RDS and MySQL < 8.0 (same as original test)
 func TestAccRole_basic_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
@@ -20,7 +23,26 @@ func TestAccRole_basic_WithTestcontainers(t *testing.T) {
 	resourceName := "mysql_role.test"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipRds(t)
+			// Check MySQL version (roles require 8.0+)
+			ctx := context.Background()
+			db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
+			if err != nil {
+				return
+			}
+
+			requiredVersion, _ := version.NewVersion("8.0.0")
+			currentVersion, err := serverVersion(db)
+			if err != nil {
+				return
+			}
+
+			if currentVersion.LessThan(requiredVersion) {
+				t.Skip("Roles require MySQL 8+")
+			}
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccRoleCheckDestroy(roleName),
 		Steps: []resource.TestStep{

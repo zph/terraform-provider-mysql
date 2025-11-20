@@ -14,12 +14,13 @@ import (
 // TestAccUser_basic_WithTestcontainers tests the mysql_user resource
 // using Testcontainers instead of Makefile + Docker
 // Uses shared container set up in TestMain
+// Skips MariaDB (same as original test)
 func TestAccUser_basic_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck:          func() { testAccPreCheck(t); testAccPreCheckSkipMariaDB(t) },
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccUserCheckDestroy,
 		Steps: []resource.TestStep{
@@ -67,7 +68,9 @@ func TestAccUser_auth_WithTestcontainers(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
-			testAccPreCheck(t)
+			testAccPreCheckSkipTiDB(t)
+			testAccPreCheckSkipMariaDB(t)
+			testAccPreCheckSkipRds(t)
 			// Check if mysql_no_login plugin is available
 			ctx := context.Background()
 			db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
@@ -125,7 +128,12 @@ func TestAccUser_authConnect_WithTestcontainers(t *testing.T) {
 	_ = getSharedMySQLContainer(t, "")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipTiDB(t)
+			testAccPreCheckSkipMariaDB(t)
+			testAccPreCheckSkipRds(t)
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccUserCheckDestroy,
 		Steps: []resource.TestStep{
@@ -160,14 +168,19 @@ func TestAccUser_authConnect_WithTestcontainers(t *testing.T) {
 }
 
 // TestAccUser_authConnectRetainOldPassword_WithTestcontainers tests retain_old_password
-// Requires MySQL 8.0.14+
+// Requires MySQL 8.0.14+ (not MariaDB/RDS)
 // Uses shared container set up in TestMain
 func TestAccUser_authConnectRetainOldPassword_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipMariaDB(t)
+			testAccPreCheckSkipRds(t)
+			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.14")
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccUserCheckDestroy,
 		Steps: []resource.TestStep{

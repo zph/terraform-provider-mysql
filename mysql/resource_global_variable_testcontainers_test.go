@@ -12,6 +12,7 @@ import (
 // TestAccGlobalVar_basic_WithTestcontainers tests the mysql_global_variable resource
 // Requires MySQL (not MariaDB/RDS)
 // Uses shared container set up in TestMain
+// Skips MariaDB, RDS (same as original test)
 func TestAccGlobalVar_basic_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
@@ -21,7 +22,7 @@ func TestAccGlobalVar_basic_WithTestcontainers(t *testing.T) {
 	varValue := "1"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck:          func() { testAccPreCheck(t); testAccPreCheckSkipMariaDB(t); testAccPreCheckSkipRds(t) },
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGlobalVarCheckDestroy(varName, varValue),
 		Steps: []resource.TestStep{
@@ -37,8 +38,9 @@ func TestAccGlobalVar_basic_WithTestcontainers(t *testing.T) {
 }
 
 // TestAccGlobalVar_parseBoolean_WithTestcontainers tests boolean parsing
-// Requires MySQL (not MariaDB/RDS)
+// Requires MySQL (not MariaDB/TiDB/RDS)
 // Uses shared container set up in TestMain
+// Skips MariaDB, TiDB, RDS (same as original test)
 func TestAccGlobalVar_parseBoolean_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
@@ -48,7 +50,12 @@ func TestAccGlobalVar_parseBoolean_WithTestcontainers(t *testing.T) {
 	varValue := "OFF"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipMariaDB(t)
+			testAccPreCheckSkipNotTiDB(t)
+			testAccPreCheckSkipRds(t)
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGlobalVarCheckDestroy(varName, varValue),
 		Steps: []resource.TestStep{

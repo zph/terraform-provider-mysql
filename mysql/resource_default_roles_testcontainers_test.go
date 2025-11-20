@@ -13,12 +13,18 @@ import (
 // TestAccDefaultRoles_basic_WithTestcontainers tests the mysql_default_roles resource
 // using Testcontainers instead of Makefile + Docker
 // Uses shared container set up in TestMain (MySQL 8.0 required for default roles)
+// Skips MySQL < 8.0, MariaDB, TiDB (same as original test)
 func TestAccDefaultRoles_basic_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipNotMySQL8(t)
+			testAccPreCheckSkipMariaDB(t)
+			testAccPreCheckSkipTiDB(t)
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccDefaultRolesCheckDestroy,
 		Steps: []resource.TestStep{

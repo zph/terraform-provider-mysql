@@ -14,6 +14,7 @@ import (
 
 // TestAccGrant_WithTestcontainers tests basic grant functionality
 // Uses shared container set up in TestMain
+// Skips RDS (same as original test)
 func TestAccGrant_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
@@ -21,7 +22,7 @@ func TestAccGrant_WithTestcontainers(t *testing.T) {
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	userName := fmt.Sprintf("jdoe-%s", dbName)
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck:          func() { testAccPreCheck(t); testAccPreCheckSkipRds(t) },
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGrantCheckDestroy,
 		Steps: []resource.TestStep{
@@ -56,6 +57,7 @@ func TestAccGrant_WithTestcontainers(t *testing.T) {
 }
 
 // TestAccRevokePrivRefresh_WithTestcontainers tests privilege revocation and refresh
+// Skips RDS (same as original test)
 func TestAccRevokePrivRefresh_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
@@ -63,7 +65,7 @@ func TestAccRevokePrivRefresh_WithTestcontainers(t *testing.T) {
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck:          func() { testAccPreCheck(t); testAccPreCheckSkipRds(t) },
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGrantCheckDestroy,
 		Steps: []resource.TestStep{
@@ -142,13 +144,17 @@ func TestAccBroken_WithTestcontainers(t *testing.T) {
 }
 
 // TestAccDifferentHosts_WithTestcontainers tests grants with different hosts
+// Skips TiDB (same as original test)
 func TestAccDifferentHosts_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipTiDB(t)
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGrantCheckDestroy,
 		Steps: []resource.TestStep{
@@ -178,13 +184,18 @@ func TestAccDifferentHosts_WithTestcontainers(t *testing.T) {
 }
 
 // TestAccGrantComplex_WithTestcontainers tests complex grant scenarios
+// Skips TiDB, RDS (same as original test)
 func TestAccGrantComplex_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipTiDB(t)
+			testAccPreCheckSkipRds(t)
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGrantCheckDestroy,
 		Steps: []resource.TestStep{
@@ -249,13 +260,20 @@ func TestAccGrantComplex_WithTestcontainers(t *testing.T) {
 }
 
 // TestAccGrantComplexMySQL8_WithTestcontainers tests MySQL 8.0 specific grants
+// Skips RDS, MariaDB, MySQL < 8.0, TiDB (same as original test)
 func TestAccGrantComplexMySQL8_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipRds(t)
+			testAccPreCheckSkipMariaDB(t)
+			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
+			testAccPreCheckSkipTiDB(t)
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGrantCheckDestroy,
 		Steps: []resource.TestStep{
@@ -275,6 +293,7 @@ func TestAccGrantComplexMySQL8_WithTestcontainers(t *testing.T) {
 }
 
 // TestAccGrant_role_WithTestcontainers tests role grants (requires MySQL 8.0+)
+// Skips RDS, MySQL < 8.0 (same as original test)
 func TestAccGrant_role_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
@@ -282,7 +301,11 @@ func TestAccGrant_role_WithTestcontainers(t *testing.T) {
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	roleName := fmt.Sprintf("TFRole-exp%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipRds(t)
+			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGrantCheckDestroy,
 		Steps: []resource.TestStep{
@@ -310,6 +333,7 @@ func TestAccGrant_role_WithTestcontainers(t *testing.T) {
 }
 
 // TestAccGrant_roleToUser_WithTestcontainers tests granting roles to users (requires MySQL 8.0+)
+// Skips RDS, MySQL < 8.0, TiDB (same as original test)
 func TestAccGrant_roleToUser_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
@@ -317,7 +341,12 @@ func TestAccGrant_roleToUser_WithTestcontainers(t *testing.T) {
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	roleName := fmt.Sprintf("TFRole-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipRds(t)
+			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
+			testAccPreCheckSkipTiDB(t)
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGrantCheckDestroy,
 		Steps: []resource.TestStep{
@@ -334,13 +363,19 @@ func TestAccGrant_roleToUser_WithTestcontainers(t *testing.T) {
 }
 
 // TestAccGrant_complexRoleGrants_WithTestcontainers tests complex role grant scenarios (requires MySQL 8.0+)
+// Skips MariaDB, MySQL < 8.0, TiDB (same as original test)
 func TestAccGrant_complexRoleGrants_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
 	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipMariaDB(t)
+			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
+			testAccPreCheckSkipTiDB(t)
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGrantCheckDestroy,
 		Steps: []resource.TestStep{
