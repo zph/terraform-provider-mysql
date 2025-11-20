@@ -244,29 +244,30 @@ jobs:
           gpg-agent --daemon --allow-loopback-pinentry 2>&1 || true
 
           # Import the subkey
-          # First, try to get the keygrip from the key (dry-run import)
+          # Write key to temp file (key data is okay, but passphrase never touches disk)
           KEY_FILE=$(mktemp)
           echo "$GPG_PRIVATE_KEY" > "$KEY_FILE"
           
-          # Try to import and capture keygrip if available
-          IMPORT_OUTPUT=$(gpg --batch --import-options import-show --dry-run --import "$KEY_FILE" 2>&1 || true)
-          KEYGRIP=$(echo "$IMPORT_OUTPUT" | grep -oP 'keygrip: \K[0-9A-F]{40}' | head -1)
+          # Get keygrip from the key without importing (dry-run with import-show)
+          IMPORT_OUTPUT=$(gpg --batch --with-colons --import-options import-show --dry-run --import "$KEY_FILE" 2>&1 || true)
+          KEYGRIP=$(echo "$IMPORT_OUTPUT" | grep -E "^grp:" | cut -d: -f10 | head -1)
           
-          # If we found a keygrip, preset the passphrase in gpg-agent
+          # If we found a keygrip, preset the passphrase in gpg-agent (passphrase never touches disk)
+          # gpg-preset-passphrase communicates directly with gpg-agent via socket
           if [ -n "$KEYGRIP" ]; then
             echo "$GPG_PASSPHRASE" | gpg-preset-passphrase --preset "$KEYGRIP" 2>&1 || true
           fi
           
-          # Now import the key (passphrase should be cached if keygrip was found)
-          # If keygrip wasn't found, try import with passphrase directly
+          # Now import the key (passphrase is cached in gpg-agent if keygrip was found)
+          # If keygrip wasn't found, use passphrase-fd (passphrase from env var, not disk)
           if [ -n "$KEYGRIP" ]; then
             gpg --batch --yes --import "$KEY_FILE"
           else
-            # Fallback: try with passphrase-fd
+            # Fallback: passphrase comes from environment variable via stdin, never written to disk
             echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --import "$KEY_FILE"
           fi
           
-          # Clean up temp file
+          # Clean up temp file (only contains key data, not passphrase)
           rm -f "$KEY_FILE"
 
           # Trust the key (required for signing)
