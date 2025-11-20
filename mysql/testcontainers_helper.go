@@ -163,7 +163,14 @@ func contains(s, substr string) bool {
 // The image parameter is ignored - TestMain uses DOCKER_IMAGE env var
 // This function validates that DOCKER_IMAGE is set and fails early if not
 func getSharedMySQLContainer(t *testing.T, image string) *MySQLTestContainer {
-	// Validate that DOCKER_IMAGE is set (required by TestMain)
+	// Check if we're in TiDB mode - if so, this function shouldn't be called
+	tidbVersion := os.Getenv("TIDB_VERSION")
+	if tidbVersion != "" {
+		t.Fatalf("ERROR: getSharedMySQLContainer called but TIDB_VERSION is set. " +
+			"TiDB tests should use the shared TiDB cluster from TestMain, not getSharedMySQLContainer.")
+	}
+
+	// Validate that DOCKER_IMAGE is set (required by TestMain for MySQL/Percona/MariaDB)
 	dockerImage := os.Getenv("DOCKER_IMAGE")
 	if dockerImage == "" {
 		t.Fatalf("ERROR: DOCKER_IMAGE environment variable is not set. This is required for MySQL/Percona/MariaDB tests.\n" +
