@@ -162,6 +162,8 @@ func contains(s, substr string) bool {
 // getSharedMySQLContainer returns the shared MySQL container set up by TestMain
 // The image parameter is ignored - TestMain uses DOCKER_IMAGE env var
 // This function validates that DOCKER_IMAGE is set and fails early if not
+// For TiDB tests, TestMain already sets up the cluster and environment variables,
+// so this function just validates the environment is ready
 func getSharedMySQLContainer(t *testing.T, image string) *MySQLTestContainer {
 	// Validate that DOCKER_IMAGE is set (required by TestMain)
 	// This validation must always be present - fail early if DOCKER_IMAGE is empty
@@ -174,11 +176,22 @@ func getSharedMySQLContainer(t *testing.T, image string) *MySQLTestContainer {
 			"The 'image' parameter to getSharedMySQLContainer is ignored - use DOCKER_IMAGE env var instead.")
 	}
 
-	// Check if we're in TiDB mode - if so, this function shouldn't be called
-	// TiDB tests use sharedTiDBCluster, not sharedContainer
+	// Check if we're in TiDB mode
+	// For TiDB, TestMain already set up the cluster and environment variables
+	// Just validate that the environment variables are set and return a dummy container
 	if strings.HasPrefix(dockerImage, "tidb:") {
-		t.Fatalf("ERROR: getSharedMySQLContainer called but DOCKER_IMAGE is set to '%s' (TiDB format). "+
-			"TiDB tests should use the shared TiDB cluster from TestMain, not getSharedMySQLContainer.", dockerImage)
+		// Validate that TestMain set up the environment variables
+		endpoint := os.Getenv("MYSQL_ENDPOINT")
+		if endpoint == "" {
+			t.Fatalf("ERROR: MYSQL_ENDPOINT not set. TestMain should have set this for TiDB cluster.")
+		}
+		// Return a dummy container - tests will use environment variables set by TestMain
+		return &MySQLTestContainer{
+			Container: nil, // Not used for TiDB
+			Endpoint:  endpoint,
+			Username:  os.Getenv("MYSQL_USERNAME"),
+			Password:  os.Getenv("MYSQL_PASSWORD"),
+		}
 	}
 
 	// Validate that the provided image matches DOCKER_IMAGE (if provided)
