@@ -193,32 +193,70 @@ jobs:
           else
             DOCKER_IMAGE=${{ matrix.docker_image }} go test -tags=testcontainers -v ./mysql/... -run WithTestcontainers -timeout=30m
           fi
-  # DISABLED to figure out GPG signing issue on Github Actions
-  #         possibly due to lack of TTY inside docker?
-  # release:
-  #   name: Release
-  #   needs: [tests]
-  #   # Can't use non-semvar for the testing tag
-  #   # https://github.com/orgs/goreleaser/discussions/3708
-  #   if: ( startsWith( github.ref, 'refs/tags/v' ) ||
-  #           startsWith(github.ref, 'refs/tags/v0.0.0-rc') )
-  #   runs-on: ubuntu-22.04
-  #   steps:
-  #     - name: Checkout Git repo
-  #       uses: actions/checkout@v4
+  release:
+    name: Release
+    needs: [tests]
+    # Can't use non-semvar for the testing tag
+    # https://github.com/orgs/goreleaser/discussions/3708
+    if: ( startsWith( github.ref, 'refs/tags/v' ) ||
+          startsWith(github.ref, 'refs/tags/v0.0.0-rc') )
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write  # Required for creating releases
+    steps:
+      - name: Checkout Git repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for changelog
 
-  #     # Goreleaser
-  #     - name: Set up Go
-  #       uses: actions/setup-go@v4
-  #     - name: Run GoReleaser
-  #       uses: goreleaser/goreleaser-action@v6
-  #       with:
-  #         distribution: goreleaser
-  #         version: '~> v2'
-  #         # Run goreleaser and ignore non-committed files (downloaded artifacts)
-  #         args: release --clean --skip=validate --verbose
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
+      - name: Import GPG Subkey
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          # Create GPG directory
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+
+          # Configure GPG for non-interactive use with passphrase
+          echo "use-agent" >> ~/.gnupg/gpg.conf
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg.conf
+
+          # Start gpg-agent with loopback pinentry
+          gpg-agent --daemon --allow-loopback-pinentry
+
+          # Import the subkey
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import --passphrase "$GPG_PASSPHRASE"
+
+          # Trust the key (required for signing)
+          # Use ultimate trust (6) for the subkey
+          echo "$GPG_FINGERPRINT:6:" | gpg --import-ownertrust
+
+          # Verify key is available and can sign
+          gpg --list-secret-keys --keyid-format LONG
+
+          # Test signing capability
+          echo "test" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --sign --armor > /dev/null 2>&1 && echo "✓ GPG signing test successful"
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          # Run goreleaser and ignore non-committed files (downloaded artifacts)
+          args: release --clean --skip=validate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_TTY: $(tty)
 
   # terraform-provider-release:
   #   needs: [release]
