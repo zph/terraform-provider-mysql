@@ -294,12 +294,15 @@ func runTest(job testJob) testResult {
 
 	// Set environment variables
 	envVars := os.Environ()
+	// All database types use DOCKER_IMAGE
+	// For TiDB, format is tidb:VERSION (e.g., tidb:6.1.7)
+	// For MySQL/Percona/MariaDB, format is already full image name (e.g., mysql:8.0)
+	dockerImage := job.image
 	if job.dbType == "TiDB" {
-		// TiDB uses version number, not full image name
-		envVars = append(envVars, "TIDB_VERSION="+job.image)
-	} else {
-		envVars = append(envVars, "DOCKER_IMAGE="+job.image)
+		// TiDB image is just version number, prepend "tidb:" prefix
+		dockerImage = "tidb:" + job.image
 	}
+	envVars = append(envVars, "DOCKER_IMAGE="+dockerImage)
 	envVars = append(envVars, "TF_ACC=1", "GOTOOLCHAIN=auto")
 	cmd.Env = envVars
 
