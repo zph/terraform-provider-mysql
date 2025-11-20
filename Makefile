@@ -5,8 +5,7 @@ PKG_NAME=mysql
 # Last version before hashicorp relicensing to BSL
 TERRAFORM_VERSION=1.5.6
 TERRAFORM_OS=$(shell uname -s | tr A-Z a-z)
-TEST_USER=root
-TEST_PASSWORD=my-secret-pw
+# Testcontainers-based testing - no need for manual Docker management
 DATESTAMP=$(shell date "+%Y%m%d")
 SHA_SHORT=$(shell git describe --match=FORCE_NEVER_MATCH --always --abbrev=40 --dirty --abbrev)
 MOST_RECENT_UPSTREAM_TAG=$(shell git for-each-ref refs/tags --sort=-taggerdate --format="%(refname)" | head -1 | grep -E -o "v\d+\.\d+\.\d+")
@@ -34,78 +33,88 @@ VERSION=9.9.9
 ## on linux base os
 TERRAFORM_PLUGINS_DIRECTORY=~/.terraform.d/plugins/${HOSTNAME}/${NAMESPACE}/${NAME}/${VERSION}/${OS_ARCH}
 
-default: build
+.PHONY: help
+help: ## Show this help message
+	@echo 'Usage: make [target]'
+	@echo ''
+	@echo 'Available targets:'
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@echo ''
+	@echo 'Examples:'
+	@echo '  make build              Build the provider'
+	@echo '  make testversion8.0    Run tests against MySQL 8.0'
+	@echo '  make testtidb8.5.3     Run tests against TiDB 8.5.3'
+	@echo '  make acceptance        Run all acceptance tests'
+	@echo '  make testcontainers-matrix  Run test matrix across all database versions'
 
-build: fmtcheck
+default: help
+
+build: fmtcheck ## Build the provider
 	go install
 
-test: acceptance
+test: testcontainers-matrix ## Run all acceptance tests
+test-sequential: acceptance
 
-bin/terraform:
+# Run testcontainers tests with a matrix of all database versions
+# Usage: make testcontainers-matrix TESTARGS="TestAccUser"
+testcontainers-matrix: fmtcheck bin/terraform ## Run test matrix across all database versions
+	@cd $(CURDIR) && PATH="$(CURDIR)/bin:${PATH}" PARALLEL=4 GOTOOLCHAIN=auto TF_ACC=1 go run scripts/test-runner.go $(if $(TESTARGS),$(TESTARGS),WithTestcontainers)
+
+# Run testcontainers tests for a specific database image
+# Usage: make testcontainers-image DOCKER_IMAGE=mysql:8.0
+#        make testcontainers-image TIDB_VERSION=8.5.3
+testcontainers-image: fmtcheck bin/terraform ## Run tests for a specific database image (set DOCKER_IMAGE or TIDB_VERSION)
+	@PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers $(TEST) -v $(TESTARGS) -timeout=15m
+
+bin/terraform: ## Download Terraform binary
 	mkdir -p "$(CURDIR)/bin"
 	curl -sfL https://releases.hashicorp.com/terraform/$(TERRAFORM_VERSION)/terraform_$(TERRAFORM_VERSION)_$(TERRAFORM_OS)_$(ARCH).zip > $(CURDIR)/bin/terraform.zip
 	(cd $(CURDIR)/bin/ ; unzip terraform.zip)
 
-testacc: fmtcheck bin/terraform
+testacc: fmtcheck bin/terraform ## Run acceptance tests (requires MYSQL_ENDPOINT env vars)
 	PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout=90s
 
 # TiDB versions: latest of each minor series (must match .github/workflows/main.yml TIDB_VERSIONS)
 # 6.1.x → 6.1.7, 6.5.x → 6.5.12, 7.1.x → 7.1.6, 7.5.x → 7.5.7, 8.1.x → 8.1.2, 8.5.x → 8.5.3
-acceptance: testversion5.6 testversion5.7 testversion8.0 testpercona5.7 testpercona8.0 testmariadb10.3 testmariadb10.8 testmariadb10.10 testtidb6.1.7 testtidb6.5.12 testtidb7.1.6 testtidb7.5.7 testtidb8.1.2 testtidb8.5.3
+acceptance: testversion5.6 testversion5.7 testversion8.0 testpercona5.7 testpercona8.0 testmariadb10.3 testmariadb10.8 testmariadb10.10 testtidb6.1.7 testtidb6.5.12 testtidb7.1.6 testtidb7.5.7 testtidb8.1.2 testtidb8.5.3 ## Run all acceptance tests across all database versions
 
-testversion%:
-	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=33$(shell echo "$*" | tr -d '.') testversion
+# MySQL test targets - use testcontainers
+testversion%: ## Run tests against MySQL version (e.g., testversion8.0)
+	@DOCKER_IMAGE=mysql:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
-testversion:
-	-docker run --rm --name test-mysql$(MYSQL_VERSION) -e MYSQL_ROOT_PASSWORD="$(TEST_PASSWORD)" -d -p $(MYSQL_PORT):3306 mysql:$(MYSQL_VERSION)
-	@echo 'Waiting for MySQL...'
-	@while ! mysql -h 127.0.0.1 -P $(MYSQL_PORT) -u "$(TEST_USER)" -p"$(TEST_PASSWORD)" -e 'SELECT 1' >/dev/null 2>&1; do printf '.'; sleep 1; done ; echo ; echo "Connected!"
-	-mysql -h 127.0.0.1 -P $(MYSQL_PORT) -u "$(TEST_USER)" -p"$(TEST_PASSWORD)" -e "INSTALL PLUGIN mysql_no_login SONAME 'mysql_no_login.so';"
-	MYSQL_USERNAME="$(TEST_USER)" MYSQL_PASSWORD="$(TEST_PASSWORD)" MYSQL_ENDPOINT=127.0.0.1:$(MYSQL_PORT) $(MAKE) testacc
-	-docker rm -f test-mysql$(MYSQL_VERSION)
+testversion: ## Run tests against MySQL version (set MYSQL_VERSION)
+	@DOCKER_IMAGE=mysql:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
-testpercona%:
-	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=34$(shell echo "$*" | tr -d '.') testpercona
+# Percona test targets - use testcontainers
+testpercona%: ## Run tests against Percona version (e.g., testpercona8.0)
+	@DOCKER_IMAGE=percona:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
-testpercona:
-	-docker run --rm --name test-percona$(MYSQL_VERSION) -e MYSQL_ROOT_PASSWORD="$(TEST_PASSWORD)" -d -p $(MYSQL_PORT):3306 percona:$(MYSQL_VERSION)
-	@echo 'Waiting for Percona...'
-	@while ! mysql -h 127.0.0.1 -P $(MYSQL_PORT) -u "$(TEST_USER)" -p"$(TEST_PASSWORD)" -e 'SELECT 1' >/dev/null 2>&1; do printf '.'; sleep 1; done ; echo ; echo "Connected!"
-	-mysql -h 127.0.0.1 -P $(MYSQL_PORT) -u "$(TEST_USER)" -p"$(TEST_PASSWORD)" -e "INSTALL PLUGIN mysql_no_login SONAME 'mysql_no_login.so';"
-	MYSQL_USERNAME="$(TEST_USER)" MYSQL_PASSWORD="$(TEST_PASSWORD)" MYSQL_ENDPOINT=127.0.0.1:$(MYSQL_PORT) $(MAKE) testacc
-	-docker rm -f test-percona$(MYSQL_VERSION)
+testpercona: ## Run tests against Percona version (set MYSQL_VERSION)
+	@DOCKER_IMAGE=percona:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
-testrdsdb%:
+testrdsdb%: ## Run tests against RDS MySQL version (requires MYSQL_ENDPOINT env vars)
 	$(MAKE) MYSQL_VERSION=$* MYSQL_USERNAME=${MYSQL_USERNAME} MYSQL_HOST=$(shell echo ${MYSQL_ENDPOINT} | cut -d: -f1) MYSQL_PASSWORD=${MYSQL_PASSWORD} MYSQL_PORT=$(shell echo ${MYSQL_ENDPOINT} | cut -d: -f2) testrdsdb
 
-testrdsdb:
+testrdsdb: ## Run tests against Amazon RDS (requires MYSQL_ENDPOINT env vars)
 	@echo 'Waiting for AMAZON RDS...'
 	@while ! mysql -h "$(MYSQL_HOST)" -P "$(MYSQL_PORT)" -u "$(MYSQL_USERNAME)" -p"$(MYSQL_PASSWORD)" -e 'SELECT 1' >/dev/null 2>&1; do printf '.'; sleep 1; done ; echo ; echo "Connected!"
 	$(MAKE) testacc
 
-testtidb%:
-	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=$(shell echo "$*" | awk -F. '{port=34000+($$2*100)+$$3; if(port>65535) port=34000+($$2*10)+$$3; printf "%d", port}') testtidb
+# TiDB test targets - use testcontainers
+testtidb%: ## Run tests against TiDB version (e.g., testtidb8.5.3)
+	@TIDB_VERSION=$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
-# WARNING: this does not work as a bare task run, it only instantiates correctly inside the versioned TiDB task run
-#          otherwise MYSQL_PORT and version are unset.
-testtidb:
-	@MYSQL_VERSION=$(MYSQL_VERSION) MYSQL_PORT=$(MYSQL_PORT) $(CURDIR)/scripts/tidb-test-cluster.sh --init --port $(MYSQL_PORT) --version $(MYSQL_VERSION) || exit 1
-	MYSQL_USERNAME="$(TEST_USER)" MYSQL_PASSWORD="" MYSQL_ENDPOINT=127.0.0.1:$(MYSQL_PORT) $(MAKE) testacc; \
-	TEST_RESULT=$$?; \
-	MYSQL_VERSION=$(MYSQL_VERSION) MYSQL_PORT=$(MYSQL_PORT) $(CURDIR)/scripts/tidb-test-cluster.sh --destroy || true; \
-	exit $$TEST_RESULT
+testtidb: ## Run tests against TiDB version (set MYSQL_VERSION)
+	@TIDB_VERSION=$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
-testmariadb%:
-	$(MAKE) MYSQL_VERSION=$* MYSQL_PORT=6$(shell echo "$*" | tr -d '.') testmariadb
+# MariaDB test targets - use testcontainers
+testmariadb%: ## Run tests against MariaDB version (e.g., testmariadb10.10)
+	@DOCKER_IMAGE=mariadb:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
-testmariadb:
-	-docker run --rm --name test-mariadb$(MYSQL_VERSION) -e MYSQL_ROOT_PASSWORD="$(TEST_PASSWORD)" -d -p $(MYSQL_PORT):3306 mariadb:$(MYSQL_VERSION)
-	@echo 'Waiting for MySQL...'
-	@while ! mysql -h 127.0.0.1 -P $(MYSQL_PORT) -u "$(TEST_USER)" -p"$(TEST_PASSWORD)" -e 'SELECT 1' >/dev/null 2>&1; do printf '.'; sleep 1; done ; echo ; echo "Connected!"
-	MYSQL_USERNAME="$(TEST_USER)" MYSQL_PASSWORD="$(TEST_PASSWORD)" MYSQL_ENDPOINT=127.0.0.1:$(MYSQL_PORT) $(MAKE) testacc
-	-docker rm -f test-mariadb$(MYSQL_VERSION)
+testmariadb: ## Run tests against MariaDB version (set MYSQL_VERSION)
+	@DOCKER_IMAGE=mariadb:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
 
-vet:
+vet: ## Run go vet
 	@echo "go vet ."
 	@go vet $$(go list ./... | grep -v vendor/) ; if [ $$? -eq 1 ]; then \
 		echo ""; \
@@ -114,23 +123,23 @@ vet:
 		exit 1; \
 	fi
 
-fmt:
+fmt: ## Format Go code
 	gofmt -w $(GOFMT_FILES)
 
-deps:
+deps: ## Update dependencies and vendor
 	go mod tidy
 	go mod vendor
 
-fmtcheck:
+fmtcheck: ## Check Go code formatting
 	@sh -c "'$(CURDIR)/scripts/gofmtcheck.sh'"
 
-errcheck:
+errcheck: ## Run errcheck
 	@sh -c "'$(CURDIR)/scripts/errcheck.sh'"
 
-vendor-status:
+vendor-status: ## Show vendor status
 	@govendor status
 
-test-compile:
+test-compile: ## Compile tests without running them
 	@if [ "$(TEST)" = "./..." ]; then \
 		echo "ERROR: Set TEST to a specific package. For example,"; \
 		echo "  make test-compile TEST=./$(PKG_NAME)"; \
@@ -138,7 +147,7 @@ test-compile:
 	fi
 	go test -c $(TEST) $(TESTARGS)
 
-website:
+website: ## Generate website documentation
 ifeq (,$(wildcard $(GOPATH)/src/$(WEBSITE_REPO)))
 	echo "$(WEBSITE_REPO) not found in your GOPATH (necessary for layouts and assets), get-ting..."
 	git clone https://$(WEBSITE_REPO) $(GOPATH)/src/$(WEBSITE_REPO)
@@ -147,27 +156,27 @@ endif
 
 	@$(MAKE) -C $(GOPATH)/src/$(WEBSITE_REPO) website-provider PROVIDER_PATH=$(shell pwd) PROVIDER_NAME=$(PKG_NAME)
 
-install:
+install: ## Install provider to Terraform plugins directory
 	mkdir -p ${TERRAFORM_PLUGINS_DIRECTORY}
 	go build -o ${TERRAFORM_PLUGINS_DIRECTORY}/terraform-provider-${NAME}
 	cd examples && rm -rf .terraform
 	cd examples && make init
 
-re-install:
+re-install: ## Reinstall provider (removes lock file first)
 	rm -f examples/.terraform.lock.hcl
 	rm -f ${TERRAFORM_PLUGINS_DIRECTORY}/terraform-provider-${NAME}
 	go build -o ${TERRAFORM_PLUGINS_DIRECTORY}/terraform-provider-${NAME}
 	cd examples && rm -rf .terraform
 	cd examples && terraform init
 
-format-tag:
+format-tag: ## Format tag string
 	@echo $(MOST_RECENT_UPSTREAM_TAG)-$(DATESTAMP)-$(SHA_SHORT)
 
-tag:
+tag: ## Create git tag from VERSION file
 	@echo git tag -a $(shell cat VERSION) -m $(shell cat VERSION)
 	@git tag -a v$(shell cat VERSION) -m v$(shell cat VERSION)
 
-release:
+release: ## Create a release (tag, build, and optionally push to GitHub)
 	@VERSION=$$(cat VERSION); \
 	TAG="v$$VERSION"; \
 	echo "Checking if tag $$TAG already exists..."; \
@@ -273,4 +282,4 @@ release:
 	echo ""; \
 	echo "Release complete! Tag $$TAG has been pushed to GitHub."
 
-.PHONY: build test testacc vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag release
+.PHONY: help build test testacc vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag release
