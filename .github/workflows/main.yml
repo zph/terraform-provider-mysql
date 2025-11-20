@@ -189,9 +189,11 @@ jobs:
         run: |
           export PATH="${{ github.workspace }}/bin:$PATH"
           if [ "${{ matrix.db_type }}" == "tidb" ]; then
-            TIDB_VERSION=${{ matrix.db_version }} go test -tags=testcontainers -v ./mysql/... -run WithTestcontainers -timeout=30m
+            export TIDB_VERSION=${{ matrix.db_version }}
+            go test -tags=testcontainers -v ./mysql/... -run WithTestcontainers -timeout=30m
           else
-            DOCKER_IMAGE=${{ matrix.docker_image }} go test -tags=testcontainers -v ./mysql/... -run WithTestcontainers -timeout=30m
+            export DOCKER_IMAGE=${{ matrix.docker_image }}
+            go test -tags=testcontainers -v ./mysql/... -run WithTestcontainers -timeout=30m
           fi
   release:
     name: Release
