@@ -23,6 +23,9 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	// Debug: Log that TestMain is running
+	os.Stderr.WriteString(fmt.Sprintf("TestMain: Starting with DOCKER_IMAGE='%s'\n", dockerImage))
+
 	// Check if we're testing TiDB (format: tidb:VERSION)
 	// TiDB requires multi-container setup
 	if strings.HasPrefix(dockerImage, "tidb:") {
@@ -78,6 +81,8 @@ func TestMain(m *testing.M) {
 		os.Setenv("MYSQL_ENDPOINT", sharedContainer.Endpoint)
 		os.Setenv("MYSQL_USERNAME", sharedContainer.Username)
 		os.Setenv("MYSQL_PASSWORD", sharedContainer.Password)
+		// Debug: Log that environment variables are set
+		os.Stderr.WriteString(fmt.Sprintf("TestMain: Set MYSQL_ENDPOINT='%s'\n", sharedContainer.Endpoint))
 	} else {
 		// This should never happen, but if it does, fail loudly
 		os.Stderr.WriteString(fmt.Sprintf("ERROR: startSharedMySQLContainer returned nil container without error for image '%s'\n", dockerImage))
