@@ -176,6 +176,13 @@ func getSharedMySQLContainer(t *testing.T, image string) *MySQLTestContainer {
 			"The 'image' parameter to getSharedMySQLContainer is ignored - use DOCKER_IMAGE env var instead.")
 	}
 
+	// Validate that the provided image matches DOCKER_IMAGE (if provided)
+	if image != "" && image != dockerImage {
+		t.Fatalf("ERROR: getSharedMySQLContainer called with image '%s' but DOCKER_IMAGE is set to '%s'.\n"+
+			"Remove the hardcoded image parameter - TestMain uses DOCKER_IMAGE env var to create the shared container.",
+			image, dockerImage)
+	}
+
 	// Check if we're in TiDB mode
 	// For TiDB, TestMain already set up the cluster and environment variables
 	// Just validate that the environment variables are set and return a dummy container
@@ -194,31 +201,27 @@ func getSharedMySQLContainer(t *testing.T, image string) *MySQLTestContainer {
 		}
 	}
 
-	// Validate that the provided image matches DOCKER_IMAGE (if provided)
-	if image != "" && image != dockerImage {
-		t.Fatalf("ERROR: getSharedMySQLContainer called with image '%s' but DOCKER_IMAGE is set to '%s'.\n"+
-			"Remove the hardcoded image parameter - TestMain uses DOCKER_IMAGE env var to create the shared container.",
-			image, dockerImage)
+	// For MySQL/Percona/MariaDB, TestMain should have set MYSQL_ENDPOINT
+	// Use environment variables as the source of truth (TestMain always sets these)
+	endpoint := os.Getenv("MYSQL_ENDPOINT")
+	if endpoint == "" {
+		t.Fatalf("ERROR: MYSQL_ENDPOINT not set. TestMain should have set this using DOCKER_IMAGE='%s'.\n"+
+			"This indicates TestMain did not run or failed to initialize.", dockerImage)
 	}
 
-	// TestMain should have already created sharedContainer
-	// If it's nil, fall back to using environment variables (TestMain sets these)
-	if sharedContainer == nil {
-		endpoint := os.Getenv("MYSQL_ENDPOINT")
-		if endpoint == "" {
-			t.Fatalf("ERROR: sharedContainer is nil and MYSQL_ENDPOINT is not set. TestMain should have created the container or set environment variables using DOCKER_IMAGE='%s'.\n"+
-				"This indicates a problem with TestMain initialization.", dockerImage)
-		}
-		// Fallback: use environment variables set by TestMain
-		return &MySQLTestContainer{
-			Container: nil, // Not available, but tests use environment variables
-			Endpoint:  endpoint,
-			Username:  os.Getenv("MYSQL_USERNAME"),
-			Password:  os.Getenv("MYSQL_PASSWORD"),
-		}
+	// If sharedContainer is available, use it; otherwise use environment variables
+	if sharedContainer != nil {
+		return sharedContainer
 	}
 
-	return sharedContainer
+	// Fallback: use environment variables set by TestMain
+	// This handles cases where sharedContainer might be nil but environment variables are set
+	return &MySQLTestContainer{
+		Container: nil, // Not available, but tests use environment variables
+		Endpoint:  endpoint,
+		Username:  os.Getenv("MYSQL_USERNAME"),
+		Password:  os.Getenv("MYSQL_PASSWORD"),
+	}
 }
 
 // startSharedMySQLContainer starts a shared MySQL container without requiring a testing.T
