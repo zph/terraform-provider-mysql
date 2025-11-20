@@ -243,13 +243,28 @@ jobs:
           # Start gpg-agent with loopback pinentry (ignore error if already running)
           gpg-agent --daemon --allow-loopback-pinentry 2>&1 || true
 
-          # Import the subkey using passphrase
-          # Write key to temp file, then import with passphrase
+          # Import the subkey
+          # First, try to get the keygrip from the key (dry-run import)
           KEY_FILE=$(mktemp)
           echo "$GPG_PRIVATE_KEY" > "$KEY_FILE"
           
-          # Import with passphrase via --passphrase-fd 0 (stdin)
-          echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --import "$KEY_FILE"
+          # Try to import and capture keygrip if available
+          IMPORT_OUTPUT=$(gpg --batch --import-options import-show --dry-run --import "$KEY_FILE" 2>&1 || true)
+          KEYGRIP=$(echo "$IMPORT_OUTPUT" | grep -oP 'keygrip: \K[0-9A-F]{40}' | head -1)
+          
+          # If we found a keygrip, preset the passphrase in gpg-agent
+          if [ -n "$KEYGRIP" ]; then
+            echo "$GPG_PASSPHRASE" | gpg-preset-passphrase --preset "$KEYGRIP" 2>&1 || true
+          fi
+          
+          # Now import the key (passphrase should be cached if keygrip was found)
+          # If keygrip wasn't found, try import with passphrase directly
+          if [ -n "$KEYGRIP" ]; then
+            gpg --batch --yes --import "$KEY_FILE"
+          else
+            # Fallback: try with passphrase-fd
+            echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --import "$KEY_FILE"
+          fi
           
           # Clean up temp file
           rm -f "$KEY_FILE"
