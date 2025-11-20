@@ -6,15 +6,32 @@ package mysql
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
 // TestMain sets up a shared MySQL/TiDB container for all testcontainers tests
 // This is more efficient than starting a container for each test
 func TestMain(m *testing.M) {
-	// Check if we're testing TiDB (requires multi-container setup)
-	tidbVersion := os.Getenv("TIDB_VERSION")
-	if tidbVersion != "" {
+	// Require DOCKER_IMAGE to be set - fail early if missing
+	dockerImage := os.Getenv("DOCKER_IMAGE")
+	if dockerImage == "" {
+		os.Stderr.WriteString("ERROR: DOCKER_IMAGE environment variable is not set.\n")
+		os.Stderr.WriteString("Please set DOCKER_IMAGE to the appropriate Docker image:\n")
+		os.Stderr.WriteString("  - MySQL/Percona/MariaDB: mysql:5.6, percona:8.0, mariadb:10.10\n")
+		os.Stderr.WriteString("  - TiDB: tidb:6.1.7, tidb:8.5.3\n")
+		os.Exit(1)
+	}
+
+	// Check if we're testing TiDB (format: tidb:VERSION)
+	// TiDB requires multi-container setup
+	if strings.HasPrefix(dockerImage, "tidb:") {
+		tidbVersion := strings.TrimPrefix(dockerImage, "tidb:")
+		if tidbVersion == "" {
+			os.Stderr.WriteString("ERROR: DOCKER_IMAGE format for TiDB must be 'tidb:VERSION' (e.g., tidb:6.1.7)\n")
+			os.Exit(1)
+		}
+
 		// Start shared TiDB cluster before running tests
 		var err error
 		sharedTiDBClusterMtx.Lock()
@@ -42,18 +59,11 @@ func TestMain(m *testing.M) {
 		os.Exit(code)
 	}
 
-	// Require DOCKER_IMAGE to be set - fail early if missing
-	mysqlImage := os.Getenv("DOCKER_IMAGE")
-	if mysqlImage == "" {
-		os.Stderr.WriteString("ERROR: DOCKER_IMAGE environment variable is not set. This is required for MySQL/Percona/MariaDB tests.\n")
-		os.Stderr.WriteString("Please set DOCKER_IMAGE to the appropriate Docker image (e.g., mysql:5.6, percona:8.0, mariadb:10.10)\n")
-		os.Exit(1)
-	}
-
+	// MySQL/Percona/MariaDB mode - use single container
 	// Start shared container before running tests
 	var err error
 	sharedContainerMtx.Lock()
-	sharedContainer, err = startSharedMySQLContainer(mysqlImage)
+	sharedContainer, err = startSharedMySQLContainer(dockerImage)
 	sharedContainerMtx.Unlock()
 
 	if err != nil {

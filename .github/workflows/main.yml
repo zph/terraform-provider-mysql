@@ -130,16 +130,22 @@ jobs:
         # TiDB versions - must match env.TIDB_VERSIONS: 6.1.7 6.5.12 7.1.6 7.5.7 8.1.2 8.5.3
         - db_type: tidb
           db_version: "6.1.7"
+          docker_image: "tidb:6.1.7"
         - db_type: tidb
           db_version: "6.5.12"
+          docker_image: "tidb:6.5.12"
         - db_type: tidb
           db_version: "7.1.6"
+          docker_image: "tidb:7.1.6"
         - db_type: tidb
           db_version: "7.5.7"
+          docker_image: "tidb:7.5.7"
         - db_type: tidb
           db_version: "8.1.2"
+          docker_image: "tidb:8.1.2"
         - db_type: tidb
           db_version: "8.5.3"
+          docker_image: "tidb:8.5.3"
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v4
@@ -187,30 +193,15 @@ jobs:
           TF_ACC: 1
           GOTOOLCHAIN: auto
           DOCKER_IMAGE: ${{ matrix.docker_image }}
-          TIDB_VERSION: ${{ matrix.db_version }}
         run: |
           export PATH="${{ github.workspace }}/bin:$PATH"
-          if [ "${{ matrix.db_type }}" == "tidb" ]; then
-            # TiDB tests - validate TIDB_VERSION is set
-            if [ -z "$TIDB_VERSION" ]; then
-              echo "ERROR: TIDB_VERSION is not set for TiDB test"
-              exit 1
-            fi
-            # Ensure DOCKER_IMAGE is not set for TiDB tests
-            unset DOCKER_IMAGE
-            echo "Running TiDB tests with version: $TIDB_VERSION"
-            go test -tags=testcontainers -v ./mysql/... -run WithTestcontainers -timeout=30m
-          else
-            # MySQL/Percona/MariaDB tests - validate DOCKER_IMAGE is set
-            if [ -z "$DOCKER_IMAGE" ]; then
-              echo "ERROR: DOCKER_IMAGE is not set for ${{ matrix.db_type }} test"
-              exit 1
-            fi
-            # Ensure TIDB_VERSION is not set for MySQL tests
-            unset TIDB_VERSION
-            echo "Running ${{ matrix.db_type }} tests with Docker image: $DOCKER_IMAGE"
-            go test -tags=testcontainers -v ./mysql/... -run WithTestcontainers -timeout=30m
+          # Validate DOCKER_IMAGE is set for all test types
+          if [ -z "$DOCKER_IMAGE" ]; then
+            echo "ERROR: DOCKER_IMAGE is not set for ${{ matrix.db_type }} test"
+            exit 1
           fi
+          echo "Running ${{ matrix.db_type }} tests with Docker image: $DOCKER_IMAGE"
+          go test -tags=testcontainers -v ./mysql/... -run WithTestcontainers -timeout=30m
   release:
     name: Release
     needs: [tests]
