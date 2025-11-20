@@ -232,8 +232,9 @@ jobs:
           # Start gpg-agent with loopback pinentry
           gpg-agent --daemon --allow-loopback-pinentry
 
-          # Import the subkey (passphrase will be provided via pinentry loopback)
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import
+          # Import the subkey using passphrase via stdin
+          # Note: --passphrase-fd 0 reads passphrase from stdin
+          echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --import <<< "$GPG_PRIVATE_KEY"
 
           # Trust the key (required for signing)
           # Use ultimate trust (6) for the subkey
