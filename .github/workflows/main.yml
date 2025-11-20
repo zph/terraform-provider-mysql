@@ -243,9 +243,16 @@ jobs:
           # Start gpg-agent with loopback pinentry
           gpg-agent --daemon --allow-loopback-pinentry
 
-          # Import the subkey using passphrase via file descriptor
-          # Use process substitution to provide passphrase on fd 3, key on stdin
-          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 --import 3<<< "$GPG_PASSPHRASE" <<< "$GPG_PRIVATE_KEY"
+          # Import the subkey using passphrase
+          # Write key to temp file, then import with passphrase
+          KEY_FILE=$(mktemp)
+          echo "$GPG_PRIVATE_KEY" > "$KEY_FILE"
+          
+          # Import with passphrase via --passphrase-fd 0 (stdin)
+          echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --import "$KEY_FILE"
+          
+          # Clean up temp file
+          rm -f "$KEY_FILE"
 
           # Trust the key (required for signing)
           # Use ultimate trust (6) for the subkey
