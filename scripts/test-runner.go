@@ -666,8 +666,8 @@ func printSummary(results []testResult) {
 }
 
 func extractVersion(image string) string {
-	// For TiDB, the image is already just the version number
-	// For MySQL/Percona/MariaDB, extract version from image string (e.g., "mysql:8.0" -> "8.0")
+	// Extract version from image string
+	// Examples: "mysql:8.0" -> "8.0", "tidb:6.1.7" -> "6.1.7", "percona:5.7" -> "5.7"
 	parts := strings.Split(image, ":")
 	if len(parts) > 1 {
 		return parts[1]
