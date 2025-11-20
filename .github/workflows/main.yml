@@ -166,9 +166,8 @@ jobs:
       - name: Make Terraform executable
         run: chmod +x bin/terraform
       
-      - name: Set up Docker Buildx
-        if: matrix.db_type != 'tidb'
-        uses: docker/setup-buildx-action@v3
+      # Note: Docker Buildx not needed - testcontainers handles Docker directly
+      # Skipping Buildx prevents unnecessary image pulls during initialization
       
       - name: Pre-pull Docker images for caching
         if: matrix.db_type != 'tidb'
