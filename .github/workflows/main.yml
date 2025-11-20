@@ -240,8 +240,8 @@ jobs:
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
           echo "allow-loopback-pinentry" >> ~/.gnupg/gpg.conf
 
-          # Start gpg-agent with loopback pinentry
-          gpg-agent --daemon --allow-loopback-pinentry
+          # Start gpg-agent with loopback pinentry (ignore error if already running)
+          gpg-agent --daemon --allow-loopback-pinentry 2>&1 || true
 
           # Import the subkey using passphrase
           # Write key to temp file, then import with passphrase
