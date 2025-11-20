@@ -63,7 +63,11 @@ type MySQLTestContainer struct {
 
 // startMySQLContainer starts a MySQL/Percona/MariaDB container for testing
 // Supports MySQL, Percona, and MariaDB images
+// image must not be empty - function will panic if empty
 func startMySQLContainer(ctx context.Context, t *testing.T, image string) *MySQLTestContainer {
+	if image == "" {
+		t.Fatalf("ERROR: startMySQLContainer called with empty image. DOCKER_IMAGE must be set.")
+	}
 	// Determine timeout based on image/version
 	timeout := 120 * time.Second
 	if contains(image, "5.6") || contains(image, "5.7") || contains(image, "6.1") || contains(image, "6.5") {
@@ -155,24 +159,42 @@ func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
 
-// getSharedMySQLContainer returns a shared MySQL container for all tests
-// The container is created once and reused across all tests in the package
+// getSharedMySQLContainer returns the shared MySQL container set up by TestMain
+// The image parameter is ignored - TestMain uses DOCKER_IMAGE env var
+// This function validates that DOCKER_IMAGE is set and fails early if not
 func getSharedMySQLContainer(t *testing.T, image string) *MySQLTestContainer {
-	sharedContainerOnce.Do(func() {
-		ctx := context.Background()
-		sharedContainer = startMySQLContainer(ctx, t, image)
+	// Validate that DOCKER_IMAGE is set (required by TestMain)
+	dockerImage := os.Getenv("DOCKER_IMAGE")
+	if dockerImage == "" {
+		t.Fatalf("ERROR: DOCKER_IMAGE environment variable is not set. This is required for MySQL/Percona/MariaDB tests.\n" +
+			"Please set DOCKER_IMAGE to the appropriate Docker image (e.g., mysql:5.6, percona:8.0, mariadb:10.10)\n" +
+			"The 'image' parameter to getSharedMySQLContainer is ignored - use DOCKER_IMAGE env var instead.")
+	}
 
-		// Set up environment variables for the shared container
-		os.Setenv("MYSQL_ENDPOINT", sharedContainer.Endpoint)
-		os.Setenv("MYSQL_USERNAME", sharedContainer.Username)
-		os.Setenv("MYSQL_PASSWORD", sharedContainer.Password)
-	})
+	// Validate that the provided image matches DOCKER_IMAGE (if provided)
+	if image != "" && image != dockerImage {
+		t.Fatalf("ERROR: getSharedMySQLContainer called with image '%s' but DOCKER_IMAGE is set to '%s'.\n"+
+			"Remove the hardcoded image parameter - TestMain uses DOCKER_IMAGE env var to create the shared container.",
+			image, dockerImage)
+	}
+
+	// TestMain should have already created sharedContainer
+	// If it's nil, something went wrong in TestMain
+	if sharedContainer == nil {
+		t.Fatalf("ERROR: sharedContainer is nil. TestMain should have created it using DOCKER_IMAGE='%s'.\n"+
+			"This indicates a problem with TestMain initialization.", dockerImage)
+	}
+
 	return sharedContainer
 }
 
 // startSharedMySQLContainer starts a shared MySQL container without requiring a testing.T
 // Used by TestMain for initial setup
+// image must not be empty - function will return error if empty
 func startSharedMySQLContainer(image string) (*MySQLTestContainer, error) {
+	if image == "" {
+		return nil, fmt.Errorf("ERROR: startSharedMySQLContainer called with empty image. DOCKER_IMAGE must be set")
+	}
 	ctx := context.Background()
 
 	// Determine timeout based on image/version

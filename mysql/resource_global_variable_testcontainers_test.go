@@ -14,7 +14,7 @@ import (
 // Uses shared container set up in TestMain
 func TestAccGlobalVar_basic_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	varName := "max_connections"
 	resourceName := "mysql_global_variable.test"
@@ -41,7 +41,7 @@ func TestAccGlobalVar_basic_WithTestcontainers(t *testing.T) {
 // Uses shared container set up in TestMain
 func TestAccGlobalVar_parseBoolean_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	varName := "autocommit"
 	resourceName := "mysql_global_variable.test"

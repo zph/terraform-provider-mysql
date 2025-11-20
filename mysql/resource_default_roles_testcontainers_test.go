@@ -15,7 +15,7 @@ import (
 // Uses shared container set up in TestMain (MySQL 8.0 required for default roles)
 func TestAccDefaultRoles_basic_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },

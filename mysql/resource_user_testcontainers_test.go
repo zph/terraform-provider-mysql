@@ -16,7 +16,7 @@ import (
 // Uses shared container set up in TestMain
 func TestAccUser_basic_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
@@ -63,7 +63,7 @@ func TestAccUser_basic_WithTestcontainers(t *testing.T) {
 // Note: mysql_no_login plugin may not be available in all MySQL distributions
 func TestAccUser_auth_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -122,7 +122,7 @@ func TestAccUser_auth_WithTestcontainers(t *testing.T) {
 // Uses shared container set up in TestMain
 func TestAccUser_authConnect_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
@@ -164,7 +164,7 @@ func TestAccUser_authConnect_WithTestcontainers(t *testing.T) {
 // Uses shared container set up in TestMain
 func TestAccUser_authConnectRetainOldPassword_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
@@ -199,7 +199,7 @@ func TestAccUser_authConnectRetainOldPassword_WithTestcontainers(t *testing.T) {
 // Uses shared container set up in TestMain
 func TestAccUser_deprecated_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },

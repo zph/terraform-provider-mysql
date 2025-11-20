@@ -16,7 +16,7 @@ import (
 // Uses shared container set up in TestMain
 func TestAccDatabase_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	dbName := "terraform_acceptance_test"
 	resource.Test(t, resource.TestCase{
@@ -45,7 +45,7 @@ func TestAccDatabase_WithTestcontainers(t *testing.T) {
 // Uses shared container set up in TestMain
 func TestAccDatabase_collationChange_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	dbName := "terraform_acceptance_test"
 

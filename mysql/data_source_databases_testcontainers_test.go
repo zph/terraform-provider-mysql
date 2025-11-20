@@ -15,7 +15,7 @@ import (
 // Uses shared container set up in TestMain
 func TestAccDataSourceDatabases_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	// Run the same test logic as the original test
 	resource.Test(t, resource.TestCase{

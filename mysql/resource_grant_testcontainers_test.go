@@ -16,7 +16,7 @@ import (
 // Uses shared container set up in TestMain
 func TestAccGrant_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	userName := fmt.Sprintf("jdoe-%s", dbName)
@@ -58,7 +58,7 @@ func TestAccGrant_WithTestcontainers(t *testing.T) {
 // TestAccRevokePrivRefresh_WithTestcontainers tests privilege revocation and refresh
 func TestAccRevokePrivRefresh_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 
@@ -108,7 +108,7 @@ func TestAccRevokePrivRefresh_WithTestcontainers(t *testing.T) {
 // TestAccBroken_WithTestcontainers tests error handling for duplicate grants
 func TestAccBroken_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
@@ -144,7 +144,7 @@ func TestAccBroken_WithTestcontainers(t *testing.T) {
 // TestAccDifferentHosts_WithTestcontainers tests grants with different hosts
 func TestAccDifferentHosts_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
@@ -180,7 +180,7 @@ func TestAccDifferentHosts_WithTestcontainers(t *testing.T) {
 // TestAccGrantComplex_WithTestcontainers tests complex grant scenarios
 func TestAccGrantComplex_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
@@ -251,7 +251,7 @@ func TestAccGrantComplex_WithTestcontainers(t *testing.T) {
 // TestAccGrantComplexMySQL8_WithTestcontainers tests MySQL 8.0 specific grants
 func TestAccGrantComplexMySQL8_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
@@ -277,7 +277,7 @@ func TestAccGrantComplexMySQL8_WithTestcontainers(t *testing.T) {
 // TestAccGrant_role_WithTestcontainers tests role grants (requires MySQL 8.0+)
 func TestAccGrant_role_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	roleName := fmt.Sprintf("TFRole-exp%d", rand.Intn(100))
@@ -312,7 +312,7 @@ func TestAccGrant_role_WithTestcontainers(t *testing.T) {
 // TestAccGrant_roleToUser_WithTestcontainers tests granting roles to users (requires MySQL 8.0+)
 func TestAccGrant_roleToUser_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	roleName := fmt.Sprintf("TFRole-%d", rand.Intn(100))
@@ -336,7 +336,7 @@ func TestAccGrant_roleToUser_WithTestcontainers(t *testing.T) {
 // TestAccGrant_complexRoleGrants_WithTestcontainers tests complex role grant scenarios (requires MySQL 8.0+)
 func TestAccGrant_complexRoleGrants_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
@@ -354,7 +354,7 @@ func TestAccGrant_complexRoleGrants_WithTestcontainers(t *testing.T) {
 // TestAccGrantOnProcedure_WithTestcontainers tests procedure grants
 func TestAccGrantOnProcedure_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	procedureName := "test_procedure"
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
@@ -395,7 +395,7 @@ func TestAccGrantOnProcedure_WithTestcontainers(t *testing.T) {
 // TestAllowDuplicateUsersDifferentTables_WithTestcontainers tests allowing duplicate grants on different tables
 func TestAllowDuplicateUsersDifferentTables_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 
@@ -464,7 +464,7 @@ func TestAllowDuplicateUsersDifferentTables_WithTestcontainers(t *testing.T) {
 // TestDisallowDuplicateUsersSameTable_WithTestcontainers tests disallowing duplicate grants on same table
 func TestDisallowDuplicateUsersSameTable_WithTestcontainers(t *testing.T) {
 	// Use shared container set up in TestMain
-	_ = getSharedMySQLContainer(t, "mysql:8.0")
+	_ = getSharedMySQLContainer(t, "")
 
 	dbName := fmt.Sprintf("tf-test-%d", rand.Intn(100))
 
