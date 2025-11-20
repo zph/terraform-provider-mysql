@@ -73,9 +73,16 @@ func TestMain(m *testing.M) {
 	}
 
 	// Set up environment variables for the shared container
-	os.Setenv("MYSQL_ENDPOINT", sharedContainer.Endpoint)
-	os.Setenv("MYSQL_USERNAME", sharedContainer.Username)
-	os.Setenv("MYSQL_PASSWORD", sharedContainer.Password)
+	// These MUST be set even if sharedContainer is nil (shouldn't happen, but be defensive)
+	if sharedContainer != nil {
+		os.Setenv("MYSQL_ENDPOINT", sharedContainer.Endpoint)
+		os.Setenv("MYSQL_USERNAME", sharedContainer.Username)
+		os.Setenv("MYSQL_PASSWORD", sharedContainer.Password)
+	} else {
+		// This should never happen, but if it does, fail loudly
+		os.Stderr.WriteString(fmt.Sprintf("ERROR: startSharedMySQLContainer returned nil container without error for image '%s'\n", dockerImage))
+		os.Exit(1)
+	}
 
 	// Run all tests
 	code := m.Run()
