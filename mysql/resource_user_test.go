@@ -73,6 +73,8 @@ func TestAccUser_auth(t *testing.T) {
 			testAccPreCheckSkipTiDB(t)
 			testAccPreCheckSkipMariaDB(t)
 			testAccPreCheckSkipRds(t)
+			// Skip on MySQL 8.0+ and Percona 8.0+ due to auth_plugin conflict with plaintext_password
+			testAccPreCheckSkipNotMySQLVersionMax(t, "7.99.99")
 			// Check if mysql_no_login plugin is available
 			ctx := context.Background()
 			db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
@@ -214,7 +216,11 @@ func TestAccUser_deprecated(t *testing.T) {
 	_ = getSharedMySQLContainer(t, "")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			// Skip on MySQL 8.0+ and Percona 8.0+ due to stricter user creation requirements
+			testAccPreCheckSkipNotMySQLVersionMax(t, "7.99.99")
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccUserCheckDestroy,
 		Steps: []resource.TestStep{
