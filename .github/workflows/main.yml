@@ -337,6 +337,19 @@ jobs:
           # GoReleaser uses --passphrase flag directly, which works differently
           echo "✓ GPG key imported successfully"
 
+      - name: Verify GPG setup before GoReleaser
+        env:
+          GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "Verifying GPG environment variables..."
+          echo "GPG_FINGERPRINT length: ${#GPG_FINGERPRINT}"
+          echo "GPG_PASSPHRASE length: ${#GPG_PASSPHRASE}"
+          gpg --list-secret-keys --keyid-format LONG
+          # Test signing with passphrase
+          echo "test" | gpg --batch --yes --no-tty --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --local-user "$GPG_FINGERPRINT" --sign -o /tmp/test.sig - 2>&1 && echo "✓ Test signing successful" || echo "⚠ Test signing failed"
+          rm -f /tmp/test.sig
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -349,6 +362,11 @@ jobs:
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           GPG_TTY: $(tty)
+        # Ensure GPG environment is available
+        run: |
+          echo "GPG_FINGERPRINT is set: $([ -n "$GPG_FINGERPRINT" ] && echo 'yes' || echo 'no')"
+          echo "GPG_PASSPHRASE is set: $([ -n "$GPG_PASSPHRASE" ] && echo 'yes' || echo 'no')"
+          gpg --list-secret-keys --keyid-format LONG
 
   # terraform-provider-release:
   #   needs: [release]
