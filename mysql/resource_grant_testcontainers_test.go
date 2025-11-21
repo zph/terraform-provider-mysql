@@ -397,7 +397,10 @@ func TestAccGrantOnProcedure_WithTestcontainers(t *testing.T) {
 	hostName := "%"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipTiDB(t) // TiDB doesn't support procedure grants
+		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGrantCheckDestroy,
 		Steps: []resource.TestStep{
