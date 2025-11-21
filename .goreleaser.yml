@@ -42,14 +42,16 @@ signs:
   - id: checksum
     artifacts: checksum
     args:
-      # Use passphrase directly from environment variable
+      # If GPG_PASSPHRASE is empty, don't use --passphrase flag (for keys without passphrase)
       - "--batch"
       - "--yes"
       - "--no-tty"
       - "--pinentry-mode"
       - "loopback"
+      {{- if .Env.GPG_PASSPHRASE }}
       - "--passphrase"
       - "{{ .Env.GPG_PASSPHRASE }}"
+      {{- end }}
       - "--local-user"
       - "{{ .Env.GPG_FINGERPRINT }}" # set this environment variable for your signing key
       - "--output"
@@ -64,8 +66,10 @@ signs:
       - "--no-tty"
       - "--pinentry-mode"
       - "loopback"
+      {{- if .Env.GPG_PASSPHRASE }}
       - "--passphrase"
       - "{{ .Env.GPG_PASSPHRASE }}"
+      {{- end }}
       - "--local-user"
       - "{{ .Env.GPG_FINGERPRINT }}"
       - "--output"
