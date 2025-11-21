@@ -75,8 +75,23 @@ jobs:
       - name: Vendor Go dependencies
         run: go mod vendor
       
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build and cache TiUP Playground Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.tiup-playground
+          tags: terraform-provider-mysql-tiup-playground:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          push: false
+          load: true
+      
       # Note: Tests now use testcontainers - no mysql-client or Docker Buildx caching needed
       # Testcontainers handles container lifecycle and image pulling automatically
+      # TiUP Playground image is pre-built above with layer caching to speed up builds
       
       - name: Upload Terraform binary
         uses: actions/upload-artifact@v4
@@ -172,8 +187,16 @@ jobs:
       - name: Make Terraform executable
         run: chmod +x bin/terraform
       
-      # Note: Docker Buildx not needed - testcontainers handles Docker directly
-      # Skipping Buildx prevents unnecessary image pulls during initialization
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Load cached TiUP Playground Docker image
+        run: |
+          # Try to load from cache - if not available, testcontainers will build it
+          docker images | grep terraform-provider-mysql-tiup-playground || echo "TiUP Playground image not found, will be built on-demand"
+      
+      # Note: Docker Buildx is used for TiUP Playground image caching
+      # Testcontainers handles container lifecycle and image pulling automatically
       
       - name: Run testcontainers tests via Makefile
         env:

@@ -74,6 +74,15 @@ clean: ## Aggressively clear Docker cache and test artifacts
 	@echo "Docker cache cleared. Note: For MySQL 5.6/5.7 and Percona on Apple Silicon,"
 	@echo "you may need to restart Docker Desktop to fully clear manifest cache."
 
+build-tiup-playground-image: ## Pre-build TiUP Playground Docker image for caching
+	@echo "Building TiUP Playground Docker image..."
+	@if [ ! -f Dockerfile.tiup-playground ]; then \
+		echo "ERROR: Dockerfile.tiup-playground not found"; \
+		exit 1; \
+	fi
+	@docker build -f Dockerfile.tiup-playground -t terraform-provider-mysql-tiup-playground:latest .
+	@echo "✓ TiUP Playground image built successfully: terraform-provider-mysql-tiup-playground:latest"
+
 test: testcontainers-matrix ## Run all acceptance tests
 test-sequential: acceptance
 
