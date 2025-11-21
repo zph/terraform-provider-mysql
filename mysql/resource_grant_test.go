@@ -904,8 +904,8 @@ resource "mysql_user" "test" {
 resource "mysql_grant" "test" {
   user       = "${mysql_user.test.user}"
   host       = "${mysql_user.test.host}"
-  database   = "${mysql_database.test.name}"
-  privileges = ["SELECT", "UPDATE"]
+  database   = "*"
+  privileges = ["CONNECTION_ADMIN", "FIREWALL_EXEMPT"]
 }
 `, dbName, dbName)
 }
