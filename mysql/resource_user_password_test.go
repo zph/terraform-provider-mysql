@@ -6,6 +6,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 )
 
+const testAccUserPasswordConfig_basic = `
+resource "mysql_user" "test" {
+  user = "jdoe"
+}
+
+resource "mysql_user_password" "test" {
+  user               = "${mysql_user.test.user}"
+  plaintext_password = "somepass"
+}
+`
+
 // Uses shared container set up in TestMain
 func TestAccUserPassword_basic(t *testing.T) {
 	// Use shared container set up in TestMain

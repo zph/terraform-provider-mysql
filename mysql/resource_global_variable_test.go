@@ -1,9 +1,14 @@
 package mysql
 
 import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
 // Requires MySQL (not MariaDB/RDS)
@@ -68,6 +73,28 @@ func TestAccGlobalVar_parseBoolean(t *testing.T) {
 // Note: TestAccGlobalVar_parseString and TestAccGlobalVar_parseFloat are TiDB-specific
 // and require TiDB containers, so they are not converted here.
 
+func testAccGlobalVarExists(varName, varExpected string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		ctx := context.Background()
+		db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
+		if err != nil {
+			return err
+		}
+
+		res, err := testAccGetGlobalVar(varName, db)
+
+		if err != nil {
+			return err
+		}
+
+		if res == varExpected {
+			return nil
+		}
+
+		return fmt.Errorf("variable '%s' not found", varName)
+	}
+}
+
 func testAccGetGlobalVar(varName string, db *sql.DB) (string, error) {
 	stmt, err := db.Prepare("SHOW GLOBAL VARIABLES WHERE VARIABLE_NAME = ?")
 	if err != nil {
@@ -83,4 +110,30 @@ func testAccGetGlobalVar(varName string, db *sql.DB) (string, error) {
 	}
 
 	return value, nil
+}
+
+func testAccGlobalVarCheckDestroy(varName, varExpected string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		ctx := context.Background()
+		db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
+		if err != nil {
+			return err
+		}
+
+		res, _ := testAccGetGlobalVar(varName, db)
+		if res == varExpected {
+			return fmt.Errorf("global variable '%s' still has non default value", varName)
+		}
+
+		return nil
+	}
+}
+
+func testAccGlobalVarConfigBasic(varName, varValue string) string {
+	return fmt.Sprintf(`
+resource "mysql_global_variable" "test" {
+  name = "%s"
+	value = "%s"
+}
+`, varName, varValue)
 }
