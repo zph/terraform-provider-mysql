@@ -299,10 +299,9 @@ func TestAccGrant_role(t *testing.T) {
 	roleName := fmt.Sprintf("TFRole-exp%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
-			testAccPreCheck(t)
-			testAccPreCheckSkipRds(t)
 			testAccPreCheckSkipTiDB(t)
 			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
+			testAccPreCheckSkipRds(t)
 		},
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccGrantCheckDestroy,
@@ -339,9 +338,8 @@ func TestAccGrant_roleToUser(t *testing.T) {
 	roleName := fmt.Sprintf("TFRole-%d", rand.Intn(100))
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
-			testAccPreCheck(t)
-			testAccPreCheckSkipRds(t)
 			testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
+			testAccPreCheckSkipRds(t)
 			testAccPreCheckSkipTiDB(t)
 		},
 		ProviderFactories: testAccProviderFactories,
@@ -1052,7 +1050,7 @@ WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = 'PROCEDURE'
 		}
 		// Create the procedure
 		createProcedureSQL := fmt.Sprintf(`
-CREATE PROCEDURE %s.%s()
+CREATE PROCEDURE `+"`%s`.`%s`"+`()
 BEGIN
     SELECT 1;
 END
