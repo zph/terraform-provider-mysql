@@ -497,13 +497,59 @@ func startTiDBCluster(ctx context.Context, t *testing.T, version string) *TiDBTe
 func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
 	ctx := context.Background()
 
+	// Try to use pre-built image first, fall back to building if not available
+	preBuiltImage := "terraform-provider-mysql-tiup-playground:latest"
+
+	// Check if pre-built image exists
+	checkImageCmd := exec.Command("docker", "image", "inspect", preBuiltImage)
+	if err := checkImageCmd.Run(); err == nil {
+		// Pre-built image exists, use it directly
+		req := testcontainers.ContainerRequest{
+			Image:        preBuiltImage,
+			ExposedPorts: []string{"4000/tcp"},
+			HostConfigModifier: func(hostConfig *container.HostConfig) {
+				hostConfig.Privileged = true
+				hostConfig.Ulimits = []*container.Ulimit{
+					{
+						Name: "nofile",
+						Soft: int64(250000),
+						Hard: int64(250000),
+					},
+				}
+			},
+			Cmd: []string{
+				"/root/.tiup/bin/tiup", "playground", version,
+				"--db", "1",
+				"--kv", "1",
+				"--pd", "1",
+				"--tiflash", "0",
+				"--without-monitor",
+				"--host", "0.0.0.0",
+				"--db.port", "4000",
+			},
+			WaitingFor: wait.ForAll(
+				wait.ForListeningPort("4000/tcp"),
+				wait.ForSQL(nat.Port("4000/tcp"), "mysql", func(host string, port nat.Port) string {
+					return fmt.Sprintf("root@tcp(%s:%s)/", host, port.Port())
+				}),
+			).WithStartupTimeout(300 * time.Second),
+		}
+
+		playgroundContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+			ContainerRequest: req,
+			Started:          true,
+		})
+		if err == nil {
+			return getTiDBClusterFromContainer(playgroundContainer, ctx)
+		}
+		// If pre-built image fails, fall through to build
+	}
+
 	// Build TiUP Playground image from Dockerfile
-	// This builds a container with TiUP installed that can run playground
 	// Get the git root directory (where Dockerfile.tiup-playground is located)
 	moduleRoot := os.Getenv("GITHUB_WORKSPACE")
 	if moduleRoot == "" {
 		// For local development, find git root using git rev-parse
-		// First try to find git in PATH
 		gitPath, err := exec.LookPath("git")
 		if err != nil {
 			// Git not found, try to find repo root by looking for .git directory
@@ -589,6 +635,11 @@ func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
 		return nil, fmt.Errorf("failed to start TiUP Playground container: %v", err)
 	}
 
+	return getTiDBClusterFromContainer(playgroundContainer, ctx)
+}
+
+// getTiDBClusterFromContainer extracts connection details from a TiUP Playground container
+func getTiDBClusterFromContainer(playgroundContainer testcontainers.Container, ctx context.Context) (*TiDBTestCluster, error) {
 	// Get endpoint
 	host, err := playgroundContainer.Host(ctx)
 	if err != nil {
@@ -612,10 +663,20 @@ func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
 
 // startSharedTiDBCluster starts a shared TiDB cluster without requiring a testing.T
 // Used by TestMain for initial setup
-// Now uses TiUP Playground for better performance and reliability
+// Tries TiUP Playground first (faster), falls back to multi-container if that fails
 func startSharedTiDBCluster(version string) (*TiDBTestCluster, error) {
-	// Use TiUP Playground approach - much faster and simpler
-	return startSharedTiDBClusterWithTiUP(version)
+	// Try TiUP Playground approach first - much faster and simpler
+	cluster, err := startSharedTiDBClusterWithTiUP(version)
+	if err != nil {
+		// Log the error but don't fail yet - try fallback
+		fmt.Fprintf(os.Stderr, "Warning: TiUP Playground failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Falling back to multi-container approach...\n")
+		os.Stderr.Sync()
+
+		// Fall back to legacy multi-container approach
+		return startSharedTiDBClusterLegacy(version)
+	}
+	return cluster, nil
 }
 
 // Legacy multi-container approach (kept for reference, but not used)
