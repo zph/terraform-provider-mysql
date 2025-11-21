@@ -42,34 +42,34 @@ signs:
   - id: checksum
     artifacts: checksum
     args:
-      # Use passphrase from environment variable via file descriptor
+      # Use passphrase directly from environment variable
       - "--batch"
+      - "--yes"
       - "--pinentry-mode"
       - "loopback"
-      - "--passphrase-fd"
-      - "0"
+      - "--passphrase"
+      - "{{ .Env.GPG_PASSPHRASE }}"
       - "--local-user"
       - "{{ .Env.GPG_FINGERPRINT }}" # set this environment variable for your signing key
       - "--output"
       - "${signature}"
       - "--detach-sign"
       - "${artifact}"
-    stdin: "{{ .Env.GPG_PASSPHRASE }}"
   - id: archive
     artifacts: archive
     args:
       - "--batch"
+      - "--yes"
       - "--pinentry-mode"
       - "loopback"
-      - "--passphrase-fd"
-      - "0"
+      - "--passphrase"
+      - "{{ .Env.GPG_PASSPHRASE }}"
       - "--local-user"
       - "{{ .Env.GPG_FINGERPRINT }}"
       - "--output"
       - "${signature}"
       - "--detach-sign"
       - "${artifact}"
-    stdin: "{{ .Env.GPG_PASSPHRASE }}"
 release:
   # If you want to manually examine the release before its live, uncomment this line:
   draft: true
