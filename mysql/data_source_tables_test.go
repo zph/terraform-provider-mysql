@@ -2,14 +2,17 @@ package mysql
 
 import (
 	"fmt"
-	"strconv"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
+// Uses shared container set up in TestMain
 func TestAccDataSourceTables(t *testing.T) {
+	// Use shared container set up in TestMain
+	_ = getSharedMySQLContainer(t, "")
+
+	// Run the same test logic as the original test
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
 		ProviderFactories: testAccProviderFactories,
@@ -23,7 +26,6 @@ func TestAccDataSourceTables(t *testing.T) {
 						if tableCount < 1 {
 							return fmt.Errorf("%s: tables not found", rn)
 						}
-
 						return nil
 					}),
 				),
@@ -37,43 +39,10 @@ func TestAccDataSourceTables(t *testing.T) {
 						if tableCount > 0 {
 							return fmt.Errorf("%s: unexpected table found", rn)
 						}
-
 						return nil
 					}),
 				),
 			},
 		},
 	})
-}
-
-func testAccTablesCount(rn string, key string, check func(string, int) error) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		rs, ok := s.RootModule().Resources[rn]
-
-		if !ok {
-			return fmt.Errorf("resource not found: %s", rn)
-		}
-
-		value, ok := rs.Primary.Attributes[key]
-
-		if !ok {
-			return fmt.Errorf("%s: attribute '%s' not found", rn, key)
-		}
-
-		tableCount, err := strconv.Atoi(value)
-
-		if err != nil {
-			return err
-		}
-
-		return check(rn, tableCount)
-	}
-}
-
-func testAccTablesConfigBasic(database string, pattern string) string {
-	return fmt.Sprintf(`
-data "mysql_tables" "test" {
-		database = "%s"
-		pattern = "%s"
-}`, database, pattern)
 }

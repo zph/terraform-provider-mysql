@@ -1,11 +1,16 @@
 package mysql
 
 import (
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 )
 
+// Uses shared container set up in TestMain
 func TestAccUserPassword_basic(t *testing.T) {
+	// Use shared container set up in TestMain
+	_ = getSharedMySQLContainer(t, "")
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
 		ProviderFactories: testAccProviderFactories,
@@ -22,14 +27,3 @@ func TestAccUserPassword_basic(t *testing.T) {
 		},
 	})
 }
-
-const testAccUserPasswordConfig_basic = `
-resource "mysql_user" "test" {
-  user = "jdoe"
-}
-
-resource "mysql_user_password" "test" {
-  user               = "${mysql_user.test.user}"
-  plaintext_password = "somepass"
-}
-`

@@ -2,16 +2,18 @@ package mysql
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
 	"testing"
 
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
+// Uses shared container set up in TestMain (MySQL 8.0 required for roles)
+// Skips RDS and MySQL < 8.0 (same as original test)
 func TestAccRole_basic(t *testing.T) {
+	// Use shared container set up in TestMain
+	_ = getSharedMySQLContainer(t, "")
+
 	roleName := "tf-test-role"
 	resourceName := "mysql_role.test"
 
@@ -19,6 +21,7 @@ func TestAccRole_basic(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckSkipRds(t)
+			// Check MySQL version (roles require 8.0+)
 			ctx := context.Background()
 			db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 			if err != nil {
@@ -49,28 +52,6 @@ func TestAccRole_basic(t *testing.T) {
 	})
 }
 
-func testAccRoleExists(roleName string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		ctx := context.Background()
-		db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
-		if err != nil {
-			return err
-		}
-
-		count, err := testAccGetRoleGrantCount(roleName, db)
-
-		if err != nil {
-			return err
-		}
-
-		if count > 0 {
-			return nil
-		}
-
-		return fmt.Errorf("no grants found for role %s", roleName)
-	}
-}
-
 func testAccGetRoleGrantCount(roleName string, db *sql.DB) (int, error) {
 	rows, err := db.Query(fmt.Sprintf("SHOW GRANTS FOR '%s'", roleName))
 	if err != nil {
@@ -85,29 +66,4 @@ func testAccGetRoleGrantCount(roleName string, db *sql.DB) (int, error) {
 	}
 
 	return count, nil
-}
-
-func testAccRoleCheckDestroy(roleName string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		ctx := context.Background()
-		db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
-		if err != nil {
-			return err
-		}
-
-		count, err := testAccGetRoleGrantCount(roleName, db)
-		if count > 0 {
-			return fmt.Errorf("role %s still has grants/exists", roleName)
-		}
-
-		return nil
-	}
-}
-
-func testAccRoleConfigBasic(roleName string) string {
-	return fmt.Sprintf(`
-resource "mysql_role" "test" {
-  name = "%s"
-}
-`, roleName)
 }
