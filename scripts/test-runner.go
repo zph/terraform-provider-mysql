@@ -371,7 +371,7 @@ func runTest(job testJob) testResult {
 		dockerImage = "tidb:" + job.image
 	}
 	envVars = append(envVars, "DOCKER_IMAGE="+dockerImage)
-	envVars = append(envVars, "TF_ACC=1", "GOTOOLCHAIN=auto")
+	envVars = append(envVars, "TF_ACC=1")
 
 	// Handle platform-specific issues for older MySQL/Percona versions on ARM64
 	// MySQL 5.6, 5.7 and Percona 5.7, 8.0 don't have ARM64 builds

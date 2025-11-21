@@ -224,7 +224,6 @@ jobs:
         env:
           GOFLAGS: -mod=vendor
           TF_ACC: 1
-          GOTOOLCHAIN: auto
         run: |
           export PATH="${{ github.workspace }}/bin:$PATH"
           echo "Running ${{ matrix.db_type }} ${{ matrix.db_version }} tests using Makefile target: ${{ matrix.make_target }}"

@@ -90,13 +90,13 @@ test-sequential: acceptance
 # Run testcontainers tests with a matrix of all database versions
 # Usage: make testcontainers-matrix TESTARGS="TestAccUser"
 testcontainers-matrix: fmtcheck bin/terraform ## Run test matrix across all database versions
-	@cd $(CURDIR) && PATH="$(CURDIR)/bin:${PATH}" PARALLEL=4 GOTOOLCHAIN=auto TF_ACC=1 go run scripts/test-runner.go $(if $(TESTARGS),$(TESTARGS),WithTestcontainers)
+	@cd $(CURDIR) && PATH="$(CURDIR)/bin:${PATH}" PARALLEL=4 TF_ACC=1 go run scripts/test-runner.go $(if $(TESTARGS),$(TESTARGS),WithTestcontainers)
 
 # Run testcontainers tests for a specific database image
 # Usage: make testcontainers-image DOCKER_IMAGE=mysql:8.0
 #        make testcontainers-image DOCKER_IMAGE=tidb:8.5.3
 testcontainers-image: fmtcheck bin/terraform ## Run tests for a specific database image (set DOCKER_IMAGE)
-	@PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers $(TEST) -v $(TESTARGS) -timeout=15m
+	@PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test -tags=testcontainers $(TEST) -v $(TESTARGS) -timeout=15m
 
 bin/terraform: ## Download Terraform binary
 	mkdir -p "$(CURDIR)/bin"
@@ -124,13 +124,13 @@ testversion%: ## Run tests against MySQL version (e.g., testversion8.0) [backwar
 		docker rmi mysql:$* 2>/dev/null || true; \
 		docker manifest rm mysql:$* 2>/dev/null || true; \
 		docker pull --platform linux/amd64 mysql:$* 2>&1 | grep -v "no match" || true; \
-		DOCKER_DEFAULT_PLATFORM=linux/amd64 DOCKER_IMAGE=mysql:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m; \
+		DOCKER_DEFAULT_PLATFORM=linux/amd64 DOCKER_IMAGE=mysql:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m; \
 	else \
-		DOCKER_IMAGE=mysql:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m; \
+		DOCKER_IMAGE=mysql:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m; \
 	fi
 
 testversion: ## Run tests against MySQL version (set MYSQL_VERSION)
-	@DOCKER_IMAGE=mysql:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
+	@DOCKER_IMAGE=mysql:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 # Percona test targets - use testcontainers
 # Preferred format: test-percona-VERSION (e.g., test-percona-8.0)
@@ -145,10 +145,10 @@ testpercona%: ## Run tests against Percona version (e.g., testpercona8.0) [backw
 		docker manifest rm percona:$* 2>/dev/null || true; \
 		docker pull --platform linux/amd64 percona:$* || true; \
 	fi
-	@DOCKER_IMAGE=percona:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
+	@DOCKER_IMAGE=percona:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 testpercona: ## Run tests against Percona version (set MYSQL_VERSION)
-	@DOCKER_IMAGE=percona:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
+	@DOCKER_IMAGE=percona:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 testrdsdb%: ## Run tests against RDS MySQL version (requires MYSQL_ENDPOINT env vars)
 	$(MAKE) MYSQL_VERSION=$* MYSQL_USERNAME=${MYSQL_USERNAME} MYSQL_HOST=$(shell echo ${MYSQL_ENDPOINT} | cut -d: -f1) MYSQL_PASSWORD=${MYSQL_PASSWORD} MYSQL_PORT=$(shell echo ${MYSQL_ENDPOINT} | cut -d: -f2) testrdsdb
@@ -164,10 +164,10 @@ test-tidb-%: ## Run tests against TiDB version (e.g., test-tidb-8.5.3)
 	@$(MAKE) testtidb$*
 
 testtidb%: ## Run tests against TiDB version (e.g., testtidb8.5.3) [backwards compatible]
-	@DOCKER_IMAGE=tidb:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
+	@DOCKER_IMAGE=tidb:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 testtidb: ## Run tests against TiDB version (set MYSQL_VERSION)
-	@DOCKER_IMAGE=tidb:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
+	@DOCKER_IMAGE=tidb:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 # MariaDB test targets - use testcontainers
 # Preferred format: test-mariadb-VERSION (e.g., test-mariadb-10.10)
@@ -175,10 +175,10 @@ test-mariadb-%: ## Run tests against MariaDB version (e.g., test-mariadb-10.10)
 	@$(MAKE) testmariadb$*
 
 testmariadb%: ## Run tests against MariaDB version (e.g., testmariadb10.10) [backwards compatible]
-	@DOCKER_IMAGE=mariadb:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
+	@DOCKER_IMAGE=mariadb:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 testmariadb: ## Run tests against MariaDB version (set MYSQL_VERSION)
-	@DOCKER_IMAGE=mariadb:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
+	@DOCKER_IMAGE=mariadb:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 vet: ## Run go vet
 	@echo "go vet ."
@@ -197,10 +197,32 @@ deps: ## Update dependencies and vendor
 	go mod vendor
 
 fmtcheck: ## Check Go code formatting
-	@sh -c "'$(CURDIR)/scripts/gofmtcheck.sh'"
+	@echo "==> Checking that code complies with gofmt requirements..."
+	@gofmt_files=$$(gofmt -l `find . -name '*.go' | grep -v vendor`); \
+	if [ -n "$$gofmt_files" ]; then \
+		echo 'gofmt needs running on the following files:'; \
+		echo "$$gofmt_files"; \
+		echo "You can use the command: \`make fmt\` to reformat code."; \
+		exit 1; \
+	fi
 
 errcheck: ## Run errcheck
-	@sh -c "'$(CURDIR)/scripts/errcheck.sh'"
+	@echo "==> Checking for unchecked errors..."
+	@if ! which errcheck > /dev/null; then \
+		echo "==> Installing errcheck..."; \
+		go install github.com/kisielk/errcheck@latest; \
+	fi
+	@err_files=$$(errcheck -ignoretests \
+		-ignore 'github.com/hashicorp/terraform/helper/schema:Set' \
+		-ignore 'bytes:.*' \
+		-ignore 'io:Close|Write' \
+		$$(go list ./... | grep -v /vendor/)); \
+	if [ -n "$$err_files" ]; then \
+		echo 'Unchecked errors found in the following places:'; \
+		echo "$$err_files"; \
+		echo "Please handle returned errors. You can check directly with \`make errcheck\`"; \
+		exit 1; \
+	fi
 
 vendor-status: ## Show vendor status
 	@govendor status

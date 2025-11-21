@@ -1,7 +1,6 @@
 # Exclude unnecessary files from Docker build context
 .git
 .gitignore
-.travis.yml
 .github
 *.md
 *.sh
