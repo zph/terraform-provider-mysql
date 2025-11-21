@@ -304,6 +304,15 @@ func runTest(job testJob) testResult {
 	}
 	envVars = append(envVars, "DOCKER_IMAGE="+dockerImage)
 	envVars = append(envVars, "TF_ACC=1", "GOTOOLCHAIN=auto")
+
+	// Handle platform-specific issues for older MySQL/Percona versions on ARM64
+	// MySQL 5.6, 5.7 and Percona 5.7, 8.0 don't have ARM64 builds
+	// Docker Desktop on Apple Silicon needs explicit platform specification
+	if (job.dbType == "MySQL" && (job.image == "5.6" || job.image == "5.7")) ||
+		(job.dbType == "Percona" && (job.image == "5.7" || job.image == "8.0")) {
+		envVars = append(envVars, "DOCKER_DEFAULT_PLATFORM=linux/amd64")
+	}
+
 	cmd.Env = envVars
 
 	// Create log file
