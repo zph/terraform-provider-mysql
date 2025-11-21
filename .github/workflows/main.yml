@@ -256,24 +256,32 @@ jobs:
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          # Install gnupg2 if not already available (includes gpg-preset-passphrase)
+          # Install gnupg2 if not already available
           sudo apt-get update && sudo apt-get install -y gnupg2 || true
 
           # Create GPG directory
           mkdir -p ~/.gnupg
           chmod 700 ~/.gnupg
 
+          # Remove any existing gpg.conf to avoid conflicts
+          rm -f ~/.gnupg/gpg.conf
+
           # Configure GPG for non-interactive use
-          # Note: allow-loopback-pinentry is a gpg-agent option, not gpg.conf option
-          echo "use-agent" > ~/.gnupg/gpg.conf
-          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          # pinentry-mode is a valid GPG option, but use simpler config
+          cat > ~/.gnupg/gpg.conf <<EOF
+          use-agent
+          EOF
 
           # Configure gpg-agent for loopback pinentry
-          echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
+          cat > ~/.gnupg/gpg-agent.conf <<EOF
+          allow-loopback-pinentry
+          EOF
           chmod 600 ~/.gnupg/gpg-agent.conf
 
-          # Start gpg-agent with loopback pinentry (ignore error if already running)
-          gpg-agent --daemon --allow-loopback-pinentry 2>&1 || true
+          # Kill any existing gpg-agent and start fresh with loopback pinentry
+          gpgconf --kill gpg-agent 2>/dev/null || true
+          gpg-agent --daemon --allow-loopback-pinentry > /dev/null 2>&1 || true
+          sleep 1  # Give gpg-agent time to start
 
           # Import the subkey
           # Write key to temp file (key data is okay, but passphrase never touches disk)
@@ -287,10 +295,10 @@ jobs:
           rm -f "$KEY_FILE"
 
           # Trust the key (required for signing)
-          # Format: fingerprint:trust-level: (fingerprint must be uppercase, no spaces)
+          # Format: fingerprint:trust-level: (fingerprint must be uppercase, no spaces, no colons)
           # Use ultimate trust (6) for the subkey
-          FINGERPRINT_UPPER=$(echo "$GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d ' ')
-          echo "$FINGERPRINT_UPPER:6:" | gpg --import-ownertrust
+          FINGERPRINT_UPPER=$(echo "$GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d ' ' | tr -d ':')
+          echo "$FINGERPRINT_UPPER:6:" | gpg --batch --import-ownertrust
 
           # Verify key is available
           gpg --list-secret-keys --keyid-format LONG
