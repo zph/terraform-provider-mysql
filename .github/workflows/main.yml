@@ -256,14 +256,21 @@ jobs:
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
+          # Install gnupg2 if not already available (includes gpg-preset-passphrase)
+          sudo apt-get update && sudo apt-get install -y gnupg2 || true
+
           # Create GPG directory
           mkdir -p ~/.gnupg
           chmod 700 ~/.gnupg
 
-          # Configure GPG for non-interactive use with passphrase
-          echo "use-agent" >> ~/.gnupg/gpg.conf
+          # Configure GPG for non-interactive use
+          # Note: allow-loopback-pinentry is a gpg-agent option, not gpg.conf option
+          echo "use-agent" > ~/.gnupg/gpg.conf
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
-          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg.conf
+
+          # Configure gpg-agent for loopback pinentry
+          echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
+          chmod 600 ~/.gnupg/gpg-agent.conf
 
           # Start gpg-agent with loopback pinentry (ignore error if already running)
           gpg-agent --daemon --allow-loopback-pinentry 2>&1 || true
@@ -273,39 +280,22 @@ jobs:
           KEY_FILE=$(mktemp)
           echo "$GPG_PRIVATE_KEY" > "$KEY_FILE"
           
-          # Get keygrip from the key without importing (dry-run with import-show)
-          IMPORT_OUTPUT=$(gpg --batch --with-colons --import-options import-show --dry-run --import "$KEY_FILE" 2>&1 || true)
-          KEYGRIP=$(echo "$IMPORT_OUTPUT" | grep -E "^grp:" | cut -d: -f10 | head -1)
-          
-          # If we found a keygrip, preset the passphrase in gpg-agent (passphrase never touches disk)
-          # gpg-preset-passphrase communicates directly with gpg-agent via socket
-          if [ -n "$KEYGRIP" ]; then
-            echo "$GPG_PASSPHRASE" | gpg-preset-passphrase --preset "$KEYGRIP" 2>&1 || true
-          fi
-          
-          # Now import the key (passphrase is cached in gpg-agent if keygrip was found)
-          # If keygrip wasn't found, use passphrase-fd (passphrase from env var, not disk)
-          if [ -n "$KEYGRIP" ]; then
-            gpg --batch --yes --import "$KEY_FILE"
-          else
-            # Fallback: passphrase comes from environment variable via stdin, never written to disk
-            echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --import "$KEY_FILE"
-          fi
+          # Import the key with passphrase from stdin (never written to disk)
+          echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --import "$KEY_FILE"
           
           # Clean up temp file (only contains key data, not passphrase)
           rm -f "$KEY_FILE"
 
           # Trust the key (required for signing)
+          # Format: fingerprint:trust-level:
           # Use ultimate trust (6) for the subkey
           echo "$GPG_FINGERPRINT:6:" | gpg --import-ownertrust
 
-          # Verify key is available and can sign
+          # Verify key is available
           gpg --list-secret-keys --keyid-format LONG
 
-          # Test signing capability
-          # Passphrase should be cached in gpg-agent from preset-passphrase above
-          # If not cached, this will fail and we'll know import didn't work
-          echo "test" | gpg --batch --pinentry-mode loopback --sign --armor > /dev/null 2>&1 && echo "✓ GPG signing test successful" || echo "⚠ GPG signing test failed - passphrase may not be cached"
+          # Test signing capability with passphrase from stdin
+          echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --local-user "$GPG_FINGERPRINT" --sign --armor <<< "test" > /dev/null 2>&1 && echo "✓ GPG signing test successful" || echo "⚠ GPG signing test failed"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
