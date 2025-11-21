@@ -600,15 +600,13 @@ func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
 		return nil, fmt.Errorf("Dockerfile.tiup-playground not found at %s (moduleRoot=%s): %v", dockerfilePath, moduleRoot, err)
 	}
 
-	// Use a consistent image tag for caching
-	imageTag := fmt.Sprintf("terraform-provider-mysql-tiup-playground:latest")
-
 	req := testcontainers.ContainerRequest{
 		FromDockerfile: testcontainers.FromDockerfile{
 			Context:       moduleRoot,
 			Dockerfile:    "Dockerfile.tiup-playground",
-			PrintBuildLog: true,     // Helpful for debugging
-			Tag:           imageTag, // Use consistent tag for caching
+			PrintBuildLog: true, // Helpful for debugging
+			// Don't set Tag - let testcontainers generate its own tag format
+			// Setting Tag causes invalid format like UUID:TAG:latest
 		},
 		ExposedPorts: []string{"4000/tcp"},
 		// TiUP Playground needs to run processes and requires elevated capabilities
