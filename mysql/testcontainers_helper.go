@@ -434,12 +434,9 @@ func startTiDBCluster(ctx context.Context, t *testing.T, version string) *TiDBTe
 					},
 				}
 			},
-			WaitingFor: wait.ForAll(
-				// Wait for TiKV to connect to PD and start serving
-				wait.ForLog("succeed to update max timestamp").
-					WithOccurrence(3), // Wait for at least 3 region updates
-				wait.ForListeningPort("20180/tcp"), // Status port
-			).WithStartupTimeout(180 * time.Second),
+			WaitingFor: wait.ForLog("succeed to update max timestamp").
+				WithOccurrence(3). // Wait for at least 3 region updates - indicates TiKV is ready
+				WithStartupTimeout(180 * time.Second),
 		},
 		Started: true,
 	})
@@ -762,12 +759,9 @@ func startSharedTiDBClusterLegacy(version string) (*TiDBTestCluster, error) {
 					},
 				}
 			},
-			WaitingFor: wait.ForAll(
-				// Wait for TiKV to connect to PD and start serving
-				wait.ForLog("succeed to update max timestamp").
-					WithOccurrence(3), // Wait for at least 3 region updates
-				wait.ForListeningPort("20180/tcp"), // Status port
-			).WithStartupTimeout(180 * time.Second),
+			WaitingFor: wait.ForLog("succeed to update max timestamp").
+				WithOccurrence(3). // Wait for at least 3 region updates - indicates TiKV is ready
+				WithStartupTimeout(180 * time.Second),
 		},
 		Started: true,
 	})
