@@ -69,7 +69,9 @@ signs:
       - "--detach-sign"
       - "${artifact}"
 release:
-  # If you want to manually examine the release before its live, uncomment this line:
+  # Draft releases still upload assets - they're just not published yet
   draft: true
+  # Ensure assets are uploaded
+  mode: replace
 changelog:
   use: git
