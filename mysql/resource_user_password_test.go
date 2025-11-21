@@ -1,3 +1,6 @@
+//go:build testcontainers
+// +build testcontainers
+
 package mysql
 
 import (

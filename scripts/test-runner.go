@@ -51,6 +51,8 @@ type testResult struct {
 	image       string
 	dbType      string
 	passed      bool
+	skipped     bool
+	skipReason  string
 	logFile     string
 	duration    time.Duration
 	totalTests  int
@@ -102,16 +104,36 @@ func main() {
 	// Get parallelism from environment variable
 	parallel := getParallelism()
 
-	fmt.Printf("Testcontainers Matrix Test Suite\n")
-	fmt.Printf("Test pattern: %s | Parallelism: %d\n\n", testPattern, parallel)
+	// Detect platform architecture
+	isARM := isARMPlatform()
 
-	// Build all test jobs
+	fmt.Printf("Testcontainers Matrix Test Suite\n")
+	fmt.Printf("Test pattern: %s | Parallelism: %d", testPattern, parallel)
+	if isARM {
+		fmt.Printf(" | Platform: ARM (Apple Silicon)")
+	}
+	fmt.Printf("\n\n")
+
+	// Build all test jobs and track skipped ones
 	var jobs []testJob
+	var skippedResults []testResult
 	testNum := 0
 
 	// MySQL tests
 	for _, version := range mysqlVersions {
 		testNum++
+		// Skip MySQL 5.6 and 5.7 on ARM (no ARM64 builds available)
+		if isARM && (version == "mysql:5.6" || version == "mysql:5.7") {
+			skippedResults = append(skippedResults, testResult{
+				image:      version,
+				dbType:     "MySQL",
+				passed:     true, // Skipped tests don't fail the suite
+				skipped:    true,
+				skipReason: "No ARM64 builds available",
+				duration:   0,
+			})
+			continue
+		}
 		jobs = append(jobs, testJob{
 			image:       version,
 			dbType:      "MySQL",
@@ -123,6 +145,18 @@ func main() {
 	// Percona tests
 	for _, version := range perconaVersions {
 		testNum++
+		// Skip Percona 5.7 and 8.0 on ARM (no ARM64 builds available)
+		if isARM && (version == "percona:5.7" || version == "percona:8.0") {
+			skippedResults = append(skippedResults, testResult{
+				image:      version,
+				dbType:     "Percona",
+				passed:     true, // Skipped tests don't fail the suite
+				skipped:    true,
+				skipReason: "No ARM64 builds available",
+				duration:   0,
+			})
+			continue
+		}
 		jobs = append(jobs, testJob{
 			image:       version,
 			dbType:      "Percona",
@@ -165,15 +199,25 @@ func main() {
 		results = runTestsSequential(jobs)
 	}
 
+	// Add skipped results to the results list
+	results = append(results, skippedResults...)
+
 	// Print summary
 	printSummary(results)
 
-	// Exit with error code if any tests failed
+	// Exit with error code if any tests failed (skipped tests don't count as failures)
 	for _, result := range results {
-		if !result.passed {
+		if !result.passed && !result.skipped {
 			os.Exit(1)
 		}
 	}
+}
+
+// isARMPlatform detects if we're running on ARM architecture (including Apple Silicon)
+func isARMPlatform() bool {
+	arch := runtime.GOARCH
+	// Check for ARM architectures
+	return arch == "arm64" || arch == "arm"
 }
 
 func getParallelism() int {
@@ -250,6 +294,30 @@ func runTestsParallel(jobs []testJob, parallel int) []testResult {
 
 func runTest(job testJob) testResult {
 	key := fmt.Sprintf("%s-%s", job.dbType, job.image)
+
+	// Check if this test should be skipped on ARM
+	isARM := isARMPlatform()
+	shouldSkip := false
+	skipReason := ""
+	if isARM {
+		if (job.dbType == "MySQL" && (job.image == "mysql:5.6" || job.image == "mysql:5.7")) ||
+			(job.dbType == "Percona" && (job.image == "percona:5.7" || job.image == "percona:8.0")) {
+			shouldSkip = true
+			skipReason = "No ARM64 builds available"
+		}
+	}
+
+	if shouldSkip {
+		// Return skipped result immediately
+		return testResult{
+			image:      job.image,
+			dbType:     job.dbType,
+			passed:     true, // Skipped tests don't fail the suite
+			skipped:    true,
+			skipReason: skipReason,
+			duration:   0,
+		}
+	}
 
 	// Initialize progress tracker
 	progress.mu.Lock()
@@ -630,12 +698,17 @@ func printSummary(results []testResult) {
 	)
 
 	// Add rows
+	skippedCount := 0
 	for _, result := range sortedResults {
-		status := "PASS"
-		if !result.passed {
+		var status string
+		if result.skipped {
+			status = fmt.Sprintf("SKIP (%s)", result.skipReason)
+			skippedCount++
+		} else if !result.passed {
 			status = "FAIL"
 			failed++
 		} else {
+			status = "PASS"
 			passed++
 		}
 
@@ -643,8 +716,8 @@ func printSummary(results []testResult) {
 		version := extractVersion(result.image)
 		duration := formatDuration(result.duration)
 
-		// Add test counts to status
-		if result.totalTests > 0 {
+		// Add test counts to status (only for non-skipped tests)
+		if !result.skipped && result.totalTests > 0 {
 			if result.failedTests > 0 {
 				status = fmt.Sprintf("%s (%d/%d, %d failed)", status, result.passedTests, result.totalTests, result.failedTests)
 			} else {
@@ -663,9 +736,16 @@ func printSummary(results []testResult) {
 
 	table.Render()
 
-	fmt.Printf("\nSummary: %d/%d passed", passed, total)
+	totalRun := passed + failed
+	fmt.Printf("\nSummary: %d/%d passed", passed, totalRun)
+	if skippedCount > 0 {
+		fmt.Printf(", %d skipped", skippedCount)
+	}
 	if failed > 0 {
 		fmt.Printf(", %d failed", failed)
+	}
+	if skippedCount > 0 {
+		fmt.Printf(" (%d total test suites)", total)
 	}
 	fmt.Println()
 
