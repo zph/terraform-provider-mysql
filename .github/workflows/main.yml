@@ -254,12 +254,7 @@ jobs:
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          # GPG_PASSPHRASE is optional - subkey may not have a passphrase
-          if [ -z "$GPG_PASSPHRASE" ]; then
-            echo "ℹ GPG_PASSPHRASE not set - assuming subkey has no passphrase"
-          fi
           # Install gnupg2 if not already available
           sudo apt-get update && sudo apt-get install -y gnupg2 || true
 
@@ -291,20 +286,10 @@ jobs:
           gpg-agent --daemon --allow-loopback-pinentry > /dev/null 2>&1 || true
           sleep 2  # Give gpg-agent time to start
 
-          # Import the subkey
-          # Write key to temp file (key data is okay, but passphrase never touches disk)
+          # Import the subkey (no passphrase required)
           KEY_FILE=$(mktemp)
           echo "$GPG_PRIVATE_KEY" > "$KEY_FILE"
-          
-          # Import the key - handle both with and without passphrase
-          if [ -n "$GPG_PASSPHRASE" ]; then
-            echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --import "$KEY_FILE"
-          else
-            # No passphrase - import directly
-            gpg --batch --yes --import "$KEY_FILE"
-          fi
-          
-          # Clean up temp file (only contains key data, not passphrase)
+          gpg --batch --yes --import "$KEY_FILE"
           rm -f "$KEY_FILE"
 
           # Trust the key (required for signing)
@@ -316,53 +301,20 @@ jobs:
           # Verify key is available
           gpg --list-secret-keys --keyid-format LONG
 
-          # Preset passphrase in gpg-agent only if passphrase is provided
-          # If subkey has no passphrase, skip this step
-          if [ -n "$GPG_PASSPHRASE" ]; then
-            # Extract keygrip - try both sec (master key) and ssb (subkey) lines
-            KEYGRIP=$(gpg --list-secret-keys --with-keygrip --keyid-format LONG "$FINGERPRINT_UPPER" 2>/dev/null | grep -E "^sec|^ssb" | head -1 | awk '{print $NF}')
-            if [ -z "$KEYGRIP" ]; then
-              # Try alternative method - get keygrip from the subkey line
-              KEYGRIP=$(gpg --list-secret-keys --with-keygrip --keyid-format LONG "$FINGERPRINT_UPPER" 2>/dev/null | grep -A5 "^sec" | grep "Keygrip" | head -1 | awk '{print $3}')
-            fi
-            
-            if [ -n "$KEYGRIP" ] && [ ${#KEYGRIP} -eq 40 ]; then
-              echo "$GPG_PASSPHRASE" | gpg-preset-passphrase --preset "$KEYGRIP" 2>&1
-              if [ $? -eq 0 ]; then
-                echo "✓ Passphrase preset in gpg-agent for keygrip: $KEYGRIP"
-              else
-                echo "⚠ Warning: Failed to preset passphrase for keygrip: $KEYGRIP"
-              fi
-            else
-              echo "⚠ Warning: Could not find valid keygrip for fingerprint $FINGERPRINT_UPPER"
-            fi
-          else
-            echo "ℹ No passphrase provided - subkey should work without passphrase"
-          fi
-          
-          # Verify gpg-agent is running and can sign
+          # Verify signing works (subkey has no passphrase)
           echo "test" | gpg --batch --no-tty --pinentry-mode loopback --sign --local-user "$FINGERPRINT_UPPER" -o /dev/null 2>&1 && echo "✓ Test signing successful" || echo "⚠ Test signing failed"
 
-          # Test signing capability (GoReleaser will test this anyway, but verify key is importable)
-          # Note: We skip actual signing test here since --passphrase-fd consumes stdin
-          # GoReleaser uses --passphrase flag directly, which works differently
           echo "✓ GPG key imported successfully"
 
       - name: Verify GPG setup before GoReleaser
         env:
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          echo "Verifying GPG environment variables..."
+          echo "Verifying GPG setup..."
           echo "GPG_FINGERPRINT length: ${#GPG_FINGERPRINT}"
-          echo "GPG_PASSPHRASE length: ${#GPG_PASSPHRASE:-0}"
           gpg --list-secret-keys --keyid-format LONG
-          # Test signing - handle both with and without passphrase
-          if [ -n "$GPG_PASSPHRASE" ]; then
-            echo "test" | gpg --batch --yes --no-tty --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --local-user "$GPG_FINGERPRINT" --sign -o /tmp/test.sig - 2>&1 && echo "✓ Test signing successful (with passphrase)" || echo "⚠ Test signing failed"
-          else
-            echo "test" | gpg --batch --yes --no-tty --pinentry-mode loopback --local-user "$GPG_FINGERPRINT" --sign -o /tmp/test.sig - 2>&1 && echo "✓ Test signing successful (no passphrase)" || echo "⚠ Test signing failed"
-          fi
+          # Test signing (subkey has no passphrase)
+          echo "test" | gpg --batch --yes --no-tty --pinentry-mode loopback --local-user "$GPG_FINGERPRINT" --sign -o /tmp/test.sig - 2>&1 && echo "✓ Test signing successful" || echo "⚠ Test signing failed"
           rm -f /tmp/test.sig
 
       - name: Run GoReleaser
@@ -375,9 +327,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           GPG_TTY: $(tty)
-          # GPG_PASSPHRASE is optional - if empty, GoReleaser won't use --passphrase flag
 
   # terraform-provider-release:
   #   needs: [release]
