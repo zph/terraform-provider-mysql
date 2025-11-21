@@ -1,0 +1,26 @@
+# Dockerfile for TiUP Playground container
+# This image contains TiUP and can run TiDB Playground inside a container
+
+FROM ubuntu:22.04
+
+# Install dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    mysql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install TiUP
+RUN curl --proto '=https' --tlsv1.2 -sSf https://tiup-mirrors.pingcap.com/install.sh | sh
+
+# Add TiUP to PATH
+ENV PATH="/root/.tiup/bin:${PATH}"
+
+# Update TiUP and playground component
+RUN /root/.tiup/bin/tiup update --self && \
+    /root/.tiup/bin/tiup update playground || true
+
+# Default command runs TiUP Playground
+# This will be overridden by testcontainers with specific version and port
+CMD ["/root/.tiup/bin/tiup", "playground"]

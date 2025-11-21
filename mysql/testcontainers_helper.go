@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/go-connections/nat"
 	"github.com/go-sql-driver/mysql"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
@@ -357,6 +358,8 @@ type TiDBTestCluster struct {
 	Endpoint      string
 	Username      string
 	Password      string
+	// PlaygroundContainer is used when TiUP Playground is used instead of separate containers
+	PlaygroundContainer testcontainers.Container
 }
 
 // startTiDBCluster starts a TiDB cluster (PD, TiKV, TiDB) for testing
@@ -423,8 +426,8 @@ func startTiDBCluster(ctx context.Context, t *testing.T, version string) *TiDBTe
 				hostConfig.Ulimits = []*container.Ulimit{
 					{
 						Name: "nofile",
-						Soft: tikvFdLimit,
-						Hard: tikvFdLimit,
+						Soft: int64(tikvFdLimit),
+						Hard: int64(tikvFdLimit),
 					},
 				}
 			},
@@ -487,9 +490,89 @@ func startTiDBCluster(ctx context.Context, t *testing.T, version string) *TiDBTe
 	}
 }
 
+// startSharedTiDBClusterWithTiUP starts a TiDB cluster using TiUP Playground inside a single container
+// This is faster and simpler than managing separate PD, TiKV, and TiDB containers
+func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
+	ctx := context.Background()
+
+	// Build TiUP Playground image from Dockerfile
+	// This builds a container with TiUP installed that can run playground
+	req := testcontainers.ContainerRequest{
+		FromDockerfile: testcontainers.FromDockerfile{
+			Context:       ".",
+			Dockerfile:    "Dockerfile.tiup-playground",
+			PrintBuildLog: true, // Helpful for debugging
+		},
+		ExposedPorts: []string{"4000/tcp"},
+		// TiUP Playground needs to run processes, so we need privileged mode
+		HostConfigModifier: func(hostConfig *container.HostConfig) {
+			hostConfig.Privileged = true
+			// Set ulimit for file descriptors (TiKV inside playground needs this)
+			hostConfig.Ulimits = []*container.Ulimit{
+				{
+					Name: "nofile",
+					Soft: 250000,
+					Hard: 250000,
+				},
+			}
+		},
+		Cmd: []string{
+			"/root/.tiup/bin/tiup", "playground", version,
+			"--db", "1",
+			"--kv", "1",
+			"--pd", "1",
+			"--tiflash", "0",
+			"--without-monitor",
+			"--host", "0.0.0.0",
+			"--db.port", "4000",
+		},
+		WaitingFor: wait.ForAll(
+			wait.ForListeningPort("4000/tcp"),
+			wait.ForSQL(nat.Port("4000/tcp"), "mysql", func(host string, port nat.Port) string {
+				return fmt.Sprintf("root@tcp(%s:%s)/", host, port.Port())
+			}),
+		).WithStartupTimeout(240 * time.Second), // Longer timeout for first-time TiUP component downloads
+	}
+
+	playgroundContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to start TiUP Playground container: %v", err)
+	}
+
+	// Get endpoint
+	host, err := playgroundContainer.Host(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get playground container host: %v", err)
+	}
+
+	port, err := playgroundContainer.MappedPort(ctx, "4000")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get playground container port: %v", err)
+	}
+
+	endpoint := fmt.Sprintf("%s:%s", host, port.Port())
+
+	return &TiDBTestCluster{
+		PlaygroundContainer: playgroundContainer,
+		Endpoint:            endpoint,
+		Username:            "root",
+		Password:            "",
+	}, nil
+}
+
 // startSharedTiDBCluster starts a shared TiDB cluster without requiring a testing.T
 // Used by TestMain for initial setup
+// Now uses TiUP Playground for better performance and reliability
 func startSharedTiDBCluster(version string) (*TiDBTestCluster, error) {
+	// Use TiUP Playground approach - much faster and simpler
+	return startSharedTiDBClusterWithTiUP(version)
+}
+
+// Legacy multi-container approach (kept for reference, but not used)
+func startSharedTiDBClusterLegacy(version string) (*TiDBTestCluster, error) {
 	ctx := context.Background()
 
 	// Create a Docker network for TiDB cluster components
@@ -553,8 +636,8 @@ func startSharedTiDBCluster(version string) (*TiDBTestCluster, error) {
 				hostConfig.Ulimits = []*container.Ulimit{
 					{
 						Name: "nofile",
-						Soft: tikvFdLimit,
-						Hard: tikvFdLimit,
+						Soft: int64(tikvFdLimit),
+						Hard: int64(tikvFdLimit),
 					},
 				}
 			},
@@ -624,17 +707,34 @@ func cleanupSharedTiDBCluster() {
 
 	if sharedTiDBCluster != nil {
 		ctx := context.Background()
-		if err := sharedTiDBCluster.TiDBContainer.Terminate(ctx); err != nil {
-			fmt.Printf("Warning: Failed to terminate TiDB container: %v\n", err)
-		}
-		if err := sharedTiDBCluster.TiKVContainer.Terminate(ctx); err != nil {
-			fmt.Printf("Warning: Failed to terminate TiKV container: %v\n", err)
-		}
-		if err := sharedTiDBCluster.PDContainer.Terminate(ctx); err != nil {
-			fmt.Printf("Warning: Failed to terminate PD container: %v\n", err)
-		}
-		if err := sharedTiDBCluster.Network.Remove(ctx); err != nil {
-			fmt.Printf("Warning: Failed to remove TiDB network: %v\n", err)
+
+		// If using TiUP Playground (single container)
+		if sharedTiDBCluster.PlaygroundContainer != nil {
+			if err := sharedTiDBCluster.PlaygroundContainer.Terminate(ctx); err != nil {
+				fmt.Printf("Warning: Failed to terminate TiUP Playground container: %v\n", err)
+			}
+		} else {
+			// Legacy multi-container approach
+			if sharedTiDBCluster.TiDBContainer != nil {
+				if err := sharedTiDBCluster.TiDBContainer.Terminate(ctx); err != nil {
+					fmt.Printf("Warning: Failed to terminate TiDB container: %v\n", err)
+				}
+			}
+			if sharedTiDBCluster.TiKVContainer != nil {
+				if err := sharedTiDBCluster.TiKVContainer.Terminate(ctx); err != nil {
+					fmt.Printf("Warning: Failed to terminate TiKV container: %v\n", err)
+				}
+			}
+			if sharedTiDBCluster.PDContainer != nil {
+				if err := sharedTiDBCluster.PDContainer.Terminate(ctx); err != nil {
+					fmt.Printf("Warning: Failed to terminate PD container: %v\n", err)
+				}
+			}
+			if sharedTiDBCluster.Network != nil {
+				if err := sharedTiDBCluster.Network.Remove(ctx); err != nil {
+					fmt.Printf("Warning: Failed to remove TiDB network: %v\n", err)
+				}
+			}
 		}
 		sharedTiDBCluster = nil
 	}
