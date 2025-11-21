@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/go-sql-driver/mysql"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
@@ -397,6 +398,7 @@ func startTiDBCluster(ctx context.Context, t *testing.T, version string) *TiDBTe
 	}
 
 	// Start TiKV (storage layer) - connects to PD
+	// TiKV requires increased file descriptor limit (at least 82920)
 	tikvContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:          fmt.Sprintf("pingcap/tikv:v%s", version),
@@ -408,6 +410,16 @@ func startTiDBCluster(ctx context.Context, t *testing.T, version string) *TiDBTe
 				"--status-addr=0.0.0.0:20180",
 				"--data-dir=/data",
 				"--pd=pd:2379",
+			},
+			HostConfigModifier: func(hostConfig *container.HostConfig) {
+				// Set ulimit for file descriptors to 100000 (TiKV requires at least 82920)
+				hostConfig.Ulimits = []*container.Ulimit{
+					{
+						Name: "nofile",
+						Soft: 100000,
+						Hard: 100000,
+					},
+				}
 			},
 			WaitingFor: wait.ForLog("TiKV started").
 				WithStartupTimeout(120 * time.Second),
@@ -505,6 +517,7 @@ func startSharedTiDBCluster(version string) (*TiDBTestCluster, error) {
 	}
 
 	// Start TiKV (storage layer) - connects to PD
+	// TiKV requires increased file descriptor limit (at least 82920)
 	tikvContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:          fmt.Sprintf("pingcap/tikv:v%s", version),
@@ -516,6 +529,16 @@ func startSharedTiDBCluster(version string) (*TiDBTestCluster, error) {
 				"--status-addr=0.0.0.0:20180",
 				"--data-dir=/data",
 				"--pd=pd:2379",
+			},
+			HostConfigModifier: func(hostConfig *container.HostConfig) {
+				// Set ulimit for file descriptors to 100000 (TiKV requires at least 82920)
+				hostConfig.Ulimits = []*container.Ulimit{
+					{
+						Name: "nofile",
+						Soft: 100000,
+						Hard: 100000,
+					},
+				}
 			},
 			WaitingFor: wait.ForLog("TiKV started").
 				WithStartupTimeout(120 * time.Second),
