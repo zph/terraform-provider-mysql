@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -382,21 +383,25 @@ func pushBranchAndTag(branch, tag string) error {
 func showSuccessMessage(releaseBranch, defaultBranch, tag string) {
 	fmt.Println()
 	green.Println("════════════════════════════════════════")
-	green.Println("  Release PR Created Successfully!")
+	green.Println("  Release Branch and Tag Created Successfully!")
 	green.Println("════════════════════════════════════════")
 	fmt.Println()
 
-	cyan.Println("📋 Next steps:")
-	fmt.Println("  1. GitHub Actions will automatically build the release when the tag is pushed.")
-	fmt.Println("  2. Create a pull request:")
-
 	// Get repository URL
 	repoURL, err := getRepositoryURL()
+	prURL := ""
 	if err == nil {
+		prURL = fmt.Sprintf("https://github.com/%s/compare/%s...%s", repoURL, defaultBranch, releaseBranch)
+		cyan.Println("📋 Next steps:")
+		fmt.Println("  1. GitHub Actions will automatically build the release when the tag is pushed.")
+		fmt.Println("  2. Create a pull request:")
 		fmt.Printf("     - Source: %s\n", releaseBranch)
 		fmt.Printf("     - Target: %s\n", defaultBranch)
-		fmt.Printf("     - URL: https://github.com/%s/compare/%s...%s\n", repoURL, defaultBranch, releaseBranch)
+		fmt.Printf("     - URL: %s\n", prURL)
 	} else {
+		cyan.Println("📋 Next steps:")
+		fmt.Println("  1. GitHub Actions will automatically build the release when the tag is pushed.")
+		fmt.Println("  2. Create a pull request:")
 		fmt.Printf("     - Source: %s\n", releaseBranch)
 		fmt.Printf("     - Target: %s\n", defaultBranch)
 	}
@@ -405,11 +410,37 @@ func showSuccessMessage(releaseBranch, defaultBranch, tag string) {
 	fmt.Printf("  4. Review and merge the PR into %s to complete the release.\n", defaultBranch)
 	fmt.Println()
 
+	// Open browser to PR creation page
+	if prURL != "" {
+		cyan.Println("🌐 Opening GitHub PR creation page...")
+		if err := openBrowser(prURL); err != nil {
+			yellow.Printf("⚠ Could not open browser automatically. Please visit: %s\n", prURL)
+		} else {
+			green.Println("✓ Browser opened.")
+		}
+		fmt.Println()
+	}
+
 	// Suggest switching back to original branch
 	if originalBranch != "" && originalBranch != releaseBranch {
 		yellow.Printf("💡 To switch back to your previous branch, run:\n")
 		fmt.Printf("     git checkout %s\n", originalBranch)
 	}
+}
+
+func openBrowser(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", url)
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "linux":
+		cmd = exec.Command("xdg-open", url)
+	default:
+		return fmt.Errorf("unsupported platform")
+	}
+	return cmd.Run()
 }
 
 func getRepositoryURL() (string, error) {
