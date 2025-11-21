@@ -69,7 +69,7 @@ The `make release` command implements a PR-based workflow:
 
 3. **Version File Update**: If a new version was determined, the `VERSION` file is automatically updated with the new version number.
 
-4. **Default Branch Update**: Fetches and updates the default branch (`3.0.62`) to ensure the release branch is created from the latest code.
+4. **Default Branch Update**: Fetches and updates the default branch (`r3.0.62`) to ensure the release branch is created from the latest code.
 
 5. **Release Branch Creation**: Creates a new branch named `release/v{VERSION}` (e.g., `release/v3.0.62007`) from the updated default branch.
 
@@ -86,7 +86,7 @@ The `make release` command implements a PR-based workflow:
    - Signs the checksum file with GPG (configured in CI/CD)
    - Creates a GitHub release
 
-10. **Pull Request**: Create a pull request from the release branch (`release/v{VERSION}`) to the default branch (`3.0.62`).
+10. **Pull Request**: Create a pull request from the release branch (`release/v{VERSION}`) to the default branch (`r3.0.62`).
 
 11. **Merge**: After CI completes successfully, merge the PR to complete the release.
 
@@ -100,15 +100,15 @@ make release
 
 The process will guide you through each step with clear prompts. You can cancel at any point if needed.
 
-**Note**: The command automatically updates the default branch (`3.0.62`) before creating the release branch, so you can run it from any branch. The release branch will always be created from the latest version of the default branch.
+**Note**: The command automatically updates the default branch (`r3.0.62`) before creating the release branch, so you can run it from any branch. The release branch will always be created from the latest version of the default branch.
 
 ### Example Release Session
 
 ```bash
 $ make release
-Updating default branch (3.0.62) before creating release branch...
+Updating default branch (r3.0.62) before creating release branch...
 Fetching latest changes from origin...
-Checking out default branch 3.0.62...
+Checking out default branch r3.0.62...
 Default branch updated successfully.
 Checking if tag v3.0.62006 already exists...
 Tag v3.0.62006 already exists!
@@ -126,13 +126,13 @@ Release Summary:
   Tag: v3.0.62007
   Version: 3.0.62007
   Release Branch: release/v3.0.62007
-  Target Branch: 3.0.62
+  Target Branch: r3.0.62
 =========================================
 
 Do you want to create release branch and tag v3.0.62007? (yes/no): yes
 
-Creating release branch release/v3.0.62007 from updated default branch (3.0.62)...
-Release branch created from updated 3.0.62.
+Creating release branch release/v3.0.62007 from updated default branch (r3.0.62)...
+Release branch created from updated r3.0.62.
 
 Committing VERSION file change...
 VERSION file change committed.
@@ -151,10 +151,10 @@ Next steps:
 1. GitHub Actions will automatically build the release when the tag is pushed.
 2. Create a pull request:
    - Source: release/v3.0.62007
-   - Target: 3.0.62
-   - URL: https://github.com/zph/terraform-provider-mysql/compare/3.0.62...release/v3.0.62007
+   - Target: r3.0.62
+   - URL: https://github.com/zph/terraform-provider-mysql/compare/r3.0.62...release/v3.0.62007
 3. Wait for CI to complete the release build.
-4. Review and merge the PR into 3.0.62 to complete the release.
+4. Review and merge the PR into r3.0.62 to complete the release.
 
 To switch back to your previous branch, run:
   git checkout your-feature-branch

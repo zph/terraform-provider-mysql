@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	defaultBranch = "3.0.62"
+	defaultBranch = "r3.0.62"
 	versionFile   = "VERSION"
 )
 
