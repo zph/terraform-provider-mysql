@@ -398,7 +398,14 @@ func startTiDBCluster(ctx context.Context, t *testing.T, version string) *TiDBTe
 	}
 
 	// Start TiKV (storage layer) - connects to PD
-	// TiKV requires increased file descriptor limit (at least 82920)
+	// TiKV requires increased file descriptor limit
+	// v8.x versions require at least 123880, older versions require at least 82920
+	tikvFdLimit := 200000 // Default for older versions
+	if strings.HasPrefix(version, "8.") {
+		// TiDB v8.x requires higher file descriptor limit
+		tikvFdLimit = 250000
+	}
+
 	tikvContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:          fmt.Sprintf("pingcap/tikv:v%s", version),
@@ -412,12 +419,12 @@ func startTiDBCluster(ctx context.Context, t *testing.T, version string) *TiDBTe
 				"--pd=pd:2379",
 			},
 			HostConfigModifier: func(hostConfig *container.HostConfig) {
-				// Set ulimit for file descriptors to 200000 (TiKV requires at least 123880)
+				// Set ulimit for file descriptors (v8.x requires at least 123880)
 				hostConfig.Ulimits = []*container.Ulimit{
 					{
 						Name: "nofile",
-						Soft: 200000,
-						Hard: 200000,
+						Soft: tikvFdLimit,
+						Hard: tikvFdLimit,
 					},
 				}
 			},
@@ -517,7 +524,14 @@ func startSharedTiDBCluster(version string) (*TiDBTestCluster, error) {
 	}
 
 	// Start TiKV (storage layer) - connects to PD
-	// TiKV requires increased file descriptor limit (at least 82920)
+	// TiKV requires increased file descriptor limit
+	// v8.x versions require at least 123880, older versions require at least 82920
+	tikvFdLimit := 200000 // Default for older versions
+	if strings.HasPrefix(version, "8.") {
+		// TiDB v8.x requires higher file descriptor limit
+		tikvFdLimit = 250000
+	}
+
 	tikvContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:          fmt.Sprintf("pingcap/tikv:v%s", version),
@@ -531,12 +545,12 @@ func startSharedTiDBCluster(version string) (*TiDBTestCluster, error) {
 				"--pd=pd:2379",
 			},
 			HostConfigModifier: func(hostConfig *container.HostConfig) {
-				// Set ulimit for file descriptors to 200000 (TiKV requires at least 123880)
+				// Set ulimit for file descriptors (v8.x requires at least 123880)
 				hostConfig.Ulimits = []*container.Ulimit{
 					{
 						Name: "nofile",
-						Soft: 200000,
-						Hard: 200000,
+						Soft: tikvFdLimit,
+						Hard: tikvFdLimit,
 					},
 				}
 			},
