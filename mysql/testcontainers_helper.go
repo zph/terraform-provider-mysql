@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -547,25 +548,32 @@ func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
 
 	// Build TiUP Playground image from Dockerfile
 	// Get the git root directory (where Dockerfile.tiup-playground is located)
+	// Use absolute path to avoid issues with working directory
 	moduleRoot := os.Getenv("GITHUB_WORKSPACE")
 	if moduleRoot == "" {
 		// For local development, find git root using git rev-parse
 		gitPath, err := exec.LookPath("git")
 		if err != nil {
 			// Git not found, try to find repo root by looking for .git directory
-			cwd, err := os.Getwd()
-			if err != nil {
-				return nil, fmt.Errorf("failed to get current working directory: %v", err)
-			}
-			dir := cwd
+			// Start from the directory where this source file is located
+			_, sourceFile, _, _ := runtime.Caller(0)
+			sourceDir := filepath.Dir(sourceFile)
+			// Go up from mysql/ to repo root
+			dir := filepath.Dir(sourceDir)
 			for {
+				dockerfilePath := filepath.Join(dir, "Dockerfile.tiup-playground")
+				if _, err := os.Stat(dockerfilePath); err == nil {
+					moduleRoot = dir
+					break
+				}
+				// Also check for .git as fallback
 				if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 					moduleRoot = dir
 					break
 				}
 				parent := filepath.Dir(dir)
 				if parent == dir {
-					return nil, fmt.Errorf("could not find git root (.git directory) in parent directories of %s", cwd)
+					return nil, fmt.Errorf("could not find Dockerfile.tiup-playground or .git in parent directories of %s", sourceDir)
 				}
 				dir = parent
 			}
@@ -579,10 +587,17 @@ func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
 		}
 	}
 
+	// Convert to absolute path to ensure consistency
+	absModuleRoot, err := filepath.Abs(moduleRoot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absolute path for module root %s: %v", moduleRoot, err)
+	}
+	moduleRoot = absModuleRoot
+
 	// Verify Dockerfile exists
 	dockerfilePath := filepath.Join(moduleRoot, "Dockerfile.tiup-playground")
 	if _, err := os.Stat(dockerfilePath); err != nil {
-		return nil, fmt.Errorf("Dockerfile.tiup-playground not found at %s: %v", dockerfilePath, err)
+		return nil, fmt.Errorf("Dockerfile.tiup-playground not found at %s (moduleRoot=%s): %v", dockerfilePath, moduleRoot, err)
 	}
 
 	// Use a consistent image tag for caching
