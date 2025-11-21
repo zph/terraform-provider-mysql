@@ -45,6 +45,7 @@ signs:
       # Use passphrase directly from environment variable
       - "--batch"
       - "--yes"
+      - "--no-tty"
       - "--pinentry-mode"
       - "loopback"
       - "--passphrase"
@@ -60,6 +61,7 @@ signs:
     args:
       - "--batch"
       - "--yes"
+      - "--no-tty"
       - "--pinentry-mode"
       - "loopback"
       - "--passphrase"
