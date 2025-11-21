@@ -503,12 +503,34 @@ func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
 	moduleRoot := os.Getenv("GITHUB_WORKSPACE")
 	if moduleRoot == "" {
 		// For local development, find git root using git rev-parse
-		cmd := exec.Command("git", "rev-parse", "--show-toplevel")
-		output, err := cmd.Output()
+		// First try to find git in PATH
+		gitPath, err := exec.LookPath("git")
 		if err != nil {
-			return nil, fmt.Errorf("failed to find git root: %v", err)
+			// Git not found, try to find repo root by looking for .git directory
+			cwd, err := os.Getwd()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get current working directory: %v", err)
+			}
+			dir := cwd
+			for {
+				if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+					moduleRoot = dir
+					break
+				}
+				parent := filepath.Dir(dir)
+				if parent == dir {
+					return nil, fmt.Errorf("could not find git root (.git directory) in parent directories of %s", cwd)
+				}
+				dir = parent
+			}
+		} else {
+			cmd := exec.Command(gitPath, "rev-parse", "--show-toplevel")
+			output, err := cmd.Output()
+			if err != nil {
+				return nil, fmt.Errorf("failed to find git root: %v", err)
+			}
+			moduleRoot = strings.TrimSpace(string(output))
 		}
-		moduleRoot = strings.TrimSpace(string(output))
 	}
 
 	// Verify Dockerfile exists
@@ -528,8 +550,9 @@ func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
 			Tag:           imageTag, // Use consistent tag for caching
 		},
 		ExposedPorts: []string{"4000/tcp"},
-		// TiUP Playground needs to run processes, so we need privileged mode
+		// TiUP Playground needs to run processes and requires elevated capabilities
 		HostConfigModifier: func(hostConfig *container.HostConfig) {
+			// Privileged mode allows TiUP to run multiple processes (PD, TiKV, TiDB)
 			hostConfig.Privileged = true
 			// Set ulimit for file descriptors (TiKV inside playground needs this)
 			hostConfig.Ulimits = []*container.Ulimit{
