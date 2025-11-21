@@ -287,15 +287,16 @@ jobs:
           rm -f "$KEY_FILE"
 
           # Trust the key (required for signing)
-          # Format: fingerprint:trust-level:
+          # Format: fingerprint:trust-level: (fingerprint must be uppercase, no spaces)
           # Use ultimate trust (6) for the subkey
-          echo "$GPG_FINGERPRINT:6:" | gpg --import-ownertrust
+          FINGERPRINT_UPPER=$(echo "$GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d ' ')
+          echo "$FINGERPRINT_UPPER:6:" | gpg --import-ownertrust
 
           # Verify key is available
           gpg --list-secret-keys --keyid-format LONG
 
           # Test signing capability with passphrase from stdin
-          echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --local-user "$GPG_FINGERPRINT" --sign --armor <<< "test" > /dev/null 2>&1 && echo "✓ GPG signing test successful" || echo "⚠ GPG signing test failed"
+          (echo "$GPG_PASSPHRASE"; echo "test") | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --local-user "$GPG_FINGERPRINT" --sign --armor > /dev/null 2>&1 && echo "✓ GPG signing test successful" || echo "⚠ GPG signing test failed"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
