@@ -89,9 +89,14 @@ jobs:
           push: false
           load: true
       
+      - name: Save TiUP Playground Docker image
+        run: |
+          docker save terraform-provider-mysql-tiup-playground:latest | gzip > tiup-playground-image.tar.gz
+          echo "Image saved: $(du -h tiup-playground-image.tar.gz | cut -f1)"
+      
       # Note: Tests now use testcontainers - no mysql-client or Docker Buildx caching needed
       # Testcontainers handles container lifecycle and image pulling automatically
-      # TiUP Playground image is pre-built above with layer caching to speed up builds
+      # TiUP Playground image is pre-built above and saved as artifact for test jobs
       
       - name: Upload Terraform binary
         uses: actions/upload-artifact@v4
@@ -105,6 +110,14 @@ jobs:
         with:
           name: vendor-dir
           path: vendor/
+          retention-days: 1
+          compression-level: 6
+      
+      - name: Upload TiUP Playground Docker image
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiup-playground-image
+          path: tiup-playground-image.tar.gz
           retention-days: 1
           compression-level: 6
 
@@ -190,12 +203,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Load cached TiUP Playground Docker image
-        run: |
-          # Try to load from cache - if not available, testcontainers will build it
-          docker images | grep terraform-provider-mysql-tiup-playground || echo "TiUP Playground image not found, will be built on-demand"
+      - name: Download TiUP Playground Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: tiup-playground-image
+          path: ./
       
-      # Note: Docker Buildx is used for TiUP Playground image caching
+      - name: Load TiUP Playground Docker image
+        run: |
+          echo "Loading pre-built TiUP Playground Docker image..."
+          gunzip -c tiup-playground-image.tar.gz | docker load
+          docker images | grep terraform-provider-mysql-tiup-playground
+          echo "✓ TiUP Playground image loaded successfully"
+      
+      # Note: TiUP Playground image is pre-built in prepare-dependencies and loaded here
+      # This avoids rebuilding the image during each test run
       # Testcontainers handles container lifecycle and image pulling automatically
       
       - name: Run testcontainers tests via Makefile
