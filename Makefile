@@ -52,6 +52,37 @@ default: help
 build: fmtcheck ## Build the provider
 	go install
 
+clean: ## Aggressively clear Docker cache and test artifacts
+	@echo "Clearing Docker cache and test artifacts..."
+	@# Remove testcontainers-related images (mysql, percona, mariadb, tidb)
+	@docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "(mysql|percona|mariadb|tidb|pingcap)" | xargs -r docker rmi -f 2>/dev/null || true
+	@# Remove Docker manifests for problematic images (force remove even if they don't exist)
+	@for img in mysql:5.6 mysql:5.7 percona:5.7 percona:8.0; do \
+		docker manifest rm $$img 2>/dev/null || true; \
+	done
+	@# Prune build cache (all, not just 24h)
+	@docker builder prune -af 2>/dev/null || true
+	@# Prune unused images (all, not just 24h)
+	@docker image prune -af 2>/dev/null || true
+	@# Prune unused containers
+	@docker container prune -f 2>/dev/null || true
+	@# Prune unused networks (but keep default networks)
+	@docker network prune -f 2>/dev/null || true
+	@# Clear testcontainers temp files
+	@rm -rf /tmp/testcontainers-* 2>/dev/null || true
+	@# Clear Docker's content-addressable storage for problematic images (if possible)
+	@echo "Docker cache cleared. Note: For MySQL 5.6/5.7 and Percona on Apple Silicon,"
+	@echo "you may need to restart Docker Desktop to fully clear manifest cache."
+
+build-tiup-playground-image: ## Pre-build TiUP Playground Docker image for caching
+	@echo "Building TiUP Playground Docker image..."
+	@if [ ! -f Dockerfile.tiup-playground ]; then \
+		echo "ERROR: Dockerfile.tiup-playground not found"; \
+		exit 1; \
+	fi
+	@docker build -f Dockerfile.tiup-playground -t terraform-provider-mysql-tiup-playground:latest .
+	@echo "✓ TiUP Playground image built successfully: terraform-provider-mysql-tiup-playground:latest"
+
 test: testcontainers-matrix ## Run all acceptance tests
 test-sequential: acceptance
 
@@ -62,8 +93,8 @@ testcontainers-matrix: fmtcheck bin/terraform ## Run test matrix across all data
 
 # Run testcontainers tests for a specific database image
 # Usage: make testcontainers-image DOCKER_IMAGE=mysql:8.0
-#        make testcontainers-image TIDB_VERSION=8.5.3
-testcontainers-image: fmtcheck bin/terraform ## Run tests for a specific database image (set DOCKER_IMAGE or TIDB_VERSION)
+#        make testcontainers-image DOCKER_IMAGE=tidb:8.5.3
+testcontainers-image: fmtcheck bin/terraform ## Run tests for a specific database image (set DOCKER_IMAGE)
 	@PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers $(TEST) -v $(TESTARGS) -timeout=15m
 
 bin/terraform: ## Download Terraform binary
@@ -79,18 +110,44 @@ testacc: fmtcheck bin/terraform ## Run acceptance tests (requires MYSQL_ENDPOINT
 acceptance: testversion5.6 testversion5.7 testversion8.0 testpercona5.7 testpercona8.0 testmariadb10.3 testmariadb10.8 testmariadb10.10 testtidb6.1.7 testtidb6.5.12 testtidb7.1.6 testtidb7.5.7 testtidb8.1.2 testtidb8.5.3 ## Run all acceptance tests across all database versions
 
 # MySQL test targets - use testcontainers
-testversion%: ## Run tests against MySQL version (e.g., testversion8.0)
-	@DOCKER_IMAGE=mysql:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
+# Preferred format: test-mysql-VERSION (e.g., test-mysql-5.6)
+test-mysql-%: ## Run tests against MySQL version (e.g., test-mysql-8.0)
+	@$(MAKE) testversion$*
+
+testversion%: ## Run tests against MySQL version (e.g., testversion8.0) [backwards compatible]
+	@# MySQL 5.6 and 5.7 don't have ARM64 builds - Docker Desktop on Apple Silicon has manifest cache issues
+	@# The workaround: restart Docker Desktop or use CI (GitHub Actions uses linux/amd64)
+	@if [ "$*" = "5.6" ] || [ "$*" = "5.7" ]; then \
+		echo "WARNING: MySQL $* doesn't have ARM64 support. Docker Desktop manifest cache may cause issues."; \
+		echo "If tests fail with 'no match for platform in manifest', try: make clean && restart Docker Desktop"; \
+		docker rmi mysql:$* 2>/dev/null || true; \
+		docker manifest rm mysql:$* 2>/dev/null || true; \
+		docker pull --platform linux/amd64 mysql:$* 2>&1 | grep -v "no match" || true; \
+		DOCKER_DEFAULT_PLATFORM=linux/amd64 DOCKER_IMAGE=mysql:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m; \
+	else \
+		DOCKER_IMAGE=mysql:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m; \
+	fi
 
 testversion: ## Run tests against MySQL version (set MYSQL_VERSION)
-	@DOCKER_IMAGE=mysql:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
+	@DOCKER_IMAGE=mysql:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 # Percona test targets - use testcontainers
-testpercona%: ## Run tests against Percona version (e.g., testpercona8.0)
-	@DOCKER_IMAGE=percona:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
+# Preferred format: test-percona-VERSION (e.g., test-percona-8.0)
+test-percona-%: ## Run tests against Percona version (e.g., test-percona-8.0)
+	@$(MAKE) testpercona$*
+
+testpercona%: ## Run tests against Percona version (e.g., testpercona8.0) [backwards compatible]
+	@# Percona 5.7 and 8.0 don't have ARM64 builds, so pre-pull with platform specification for Apple Silicon
+	@if [ "$*" = "5.7" ] || [ "$*" = "8.0" ]; then \
+		echo "Pre-pulling percona:$* with platform linux/amd64 for Apple Silicon compatibility..."; \
+		docker rmi percona:$* 2>/dev/null || true; \
+		docker manifest rm percona:$* 2>/dev/null || true; \
+		docker pull --platform linux/amd64 percona:$* || true; \
+	fi
+	@DOCKER_IMAGE=percona:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 testpercona: ## Run tests against Percona version (set MYSQL_VERSION)
-	@DOCKER_IMAGE=percona:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
+	@DOCKER_IMAGE=percona:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 testrdsdb%: ## Run tests against RDS MySQL version (requires MYSQL_ENDPOINT env vars)
 	$(MAKE) MYSQL_VERSION=$* MYSQL_USERNAME=${MYSQL_USERNAME} MYSQL_HOST=$(shell echo ${MYSQL_ENDPOINT} | cut -d: -f1) MYSQL_PASSWORD=${MYSQL_PASSWORD} MYSQL_PORT=$(shell echo ${MYSQL_ENDPOINT} | cut -d: -f2) testrdsdb
@@ -101,18 +158,26 @@ testrdsdb: ## Run tests against Amazon RDS (requires MYSQL_ENDPOINT env vars)
 	$(MAKE) testacc
 
 # TiDB test targets - use testcontainers
-testtidb%: ## Run tests against TiDB version (e.g., testtidb8.5.3)
-	@TIDB_VERSION=$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
+# Preferred format: test-tidb-VERSION (e.g., test-tidb-8.5.3)
+test-tidb-%: ## Run tests against TiDB version (e.g., test-tidb-8.5.3)
+	@$(MAKE) testtidb$*
+
+testtidb%: ## Run tests against TiDB version (e.g., testtidb8.5.3) [backwards compatible]
+	@DOCKER_IMAGE=tidb:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 testtidb: ## Run tests against TiDB version (set MYSQL_VERSION)
-	@TIDB_VERSION=$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
+	@DOCKER_IMAGE=tidb:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 # MariaDB test targets - use testcontainers
-testmariadb%: ## Run tests against MariaDB version (e.g., testmariadb10.10)
-	@DOCKER_IMAGE=mariadb:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
+# Preferred format: test-mariadb-VERSION (e.g., test-mariadb-10.10)
+test-mariadb-%: ## Run tests against MariaDB version (e.g., test-mariadb-10.10)
+	@$(MAKE) testmariadb$*
+
+testmariadb%: ## Run tests against MariaDB version (e.g., testmariadb10.10) [backwards compatible]
+	@DOCKER_IMAGE=mariadb:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 testmariadb: ## Run tests against MariaDB version (set MYSQL_VERSION)
-	@DOCKER_IMAGE=mariadb:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS).*WithTestcontainers",-run WithTestcontainers) -timeout=30m
+	@DOCKER_IMAGE=mariadb:$(MYSQL_VERSION) PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 GOTOOLCHAIN=auto go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 vet: ## Run go vet
 	@echo "go vet ."

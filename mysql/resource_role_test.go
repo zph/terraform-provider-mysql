@@ -1,3 +1,6 @@
+//go:build testcontainers
+// +build testcontainers
+
 package mysql
 
 import (
@@ -11,7 +14,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
+// Uses shared container set up in TestMain (MySQL 8.0 required for roles)
+// Skips RDS and MySQL < 8.0 (same as original test)
 func TestAccRole_basic(t *testing.T) {
+	// Use shared container set up in TestMain
+	_ = getSharedMySQLContainer(t, "")
+
 	roleName := "tf-test-role"
 	resourceName := "mysql_role.test"
 
@@ -19,6 +27,7 @@ func TestAccRole_basic(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckSkipRds(t)
+			// Check MySQL version (roles require 8.0+)
 			ctx := context.Background()
 			db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 			if err != nil {

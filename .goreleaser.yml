@@ -39,13 +39,31 @@ checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
   algorithm: sha256
 signs:
-  - artifacts: checksum
+  - id: checksum
+    artifacts: checksum
     args:
-      # if you are using this is a GitHub action or some other automated pipeline, you
-      # need to pass the batch flag to indicate its not interactive.
+      # Subkey has no passphrase - no --passphrase flag needed
       - "--batch"
+      - "--yes"
+      - "--no-tty"
+      - "--pinentry-mode"
+      - "loopback"
       - "--local-user"
       - "{{ .Env.GPG_FINGERPRINT }}" # set this environment variable for your signing key
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+  - id: archive
+    artifacts: archive
+    args:
+      - "--batch"
+      - "--yes"
+      - "--no-tty"
+      - "--pinentry-mode"
+      - "loopback"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
       - "--output"
       - "${signature}"
       - "--detach-sign"

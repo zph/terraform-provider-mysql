@@ -1,3 +1,6 @@
+//go:build testcontainers
+// +build testcontainers
+
 package mysql
 
 import (
@@ -10,10 +13,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
+// Uses shared container set up in TestMain
 func TestAccDatabase(t *testing.T) {
+	// Use shared container set up in TestMain
+	_ = getSharedMySQLContainer(t, "")
+
 	dbName := "terraform_acceptance_test"
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() {},
+		PreCheck:          func() { testAccPreCheck(t) },
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccDatabaseCheckDestroy(dbName),
 		Steps: []resource.TestStep{
@@ -34,7 +41,11 @@ func TestAccDatabase(t *testing.T) {
 	})
 }
 
+// Uses shared container set up in TestMain
 func TestAccDatabase_collationChange(t *testing.T) {
+	// Use shared container set up in TestMain
+	_ = getSharedMySQLContainer(t, "")
+
 	dbName := "terraform_acceptance_test"
 
 	charset1 := "latin1"
@@ -43,10 +54,9 @@ func TestAccDatabase_collationChange(t *testing.T) {
 	collation2 := "utf8mb4_general_ci"
 
 	resourceName := "mysql_database.test"
-	ctx := context.Background()
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() {},
+		PreCheck:          func() { testAccPreCheck(t) },
 		ProviderFactories: testAccProviderFactories,
 		CheckDestroy:      testAccDatabaseCheckDestroy(dbName),
 		Steps: []resource.TestStep{
@@ -63,6 +73,7 @@ func TestAccDatabase_collationChange(t *testing.T) {
 			},
 			{
 				PreConfig: func() {
+					ctx := context.Background()
 					db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 					if err != nil {
 						return
@@ -73,44 +84,6 @@ func TestAccDatabase_collationChange(t *testing.T) {
 				Config: testAccDatabaseConfigFull(dbName, charset1, collation1, ""),
 				Check: resource.ComposeTestCheckFunc(
 					testAccDatabaseCheckFull(resourceName, dbName, charset1, collation1, ""),
-				),
-			},
-		},
-	})
-}
-
-func TestAccDatabase_placementPolicyChange(t *testing.T) {
-	dbName := "terraform_acceptance_test"
-
-	charset1 := "latin1"
-	collation1 := "latin1_bin"
-	placementPolicy1 := "test_policy"
-	placementPolicy2 := "test_policy_v2"
-	placementPolicyResourceName := "mysql_ti_placement_policy.test.name"
-
-	resource.Test(t, resource.TestCase{
-		PreCheck: func() {
-			testAccPreCheckSkipNotTiDB(t)
-		},
-		ProviderFactories: testAccProviderFactories,
-		CheckDestroy:      testAccDatabaseCheckDestroy(dbName),
-		Steps: []resource.TestStep{
-			{
-				Config: testAccDatabaseAndPlacementPolicy(dbName, charset1, collation1, placementPolicy1, placementPolicyResourceName),
-				Check: resource.ComposeTestCheckFunc(
-					testAccDatabaseCheckFull("mysql_database.test", dbName, charset1, collation1, placementPolicy1),
-				),
-			},
-			{
-				Config: testAccDatabaseAndPlacementPolicy(dbName, charset1, collation1, placementPolicy1, ""),
-				Check: resource.ComposeTestCheckFunc(
-					testAccDatabaseCheckFull("mysql_database.test", dbName, charset1, collation1, ""),
-				),
-			},
-			{
-				Config: testAccDatabaseAndPlacementPolicy(dbName, charset1, collation1, placementPolicy2, placementPolicyResourceName),
-				Check: resource.ComposeTestCheckFunc(
-					testAccDatabaseCheckFull("mysql_database.test", dbName, charset1, collation1, placementPolicy2),
 				),
 			},
 		},
@@ -213,6 +186,8 @@ resource "mysql_database" "test" {
 }
 
 func testAccDatabaseAndPlacementPolicy(name string, charset string, collation string, placementPolicy string, databasePlacementPolicy string) string {
+	// Note: testAccPlacementPolicyConfigBasic is defined in resource_ti_placement_policy_test.go
+	// This function is only used for TiDB-specific placement policy tests
 	return fmt.Sprintf(
 		"%s\n%s",
 		testAccPlacementPolicyConfigBasic(placementPolicy),

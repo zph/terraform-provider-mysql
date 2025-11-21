@@ -1,3 +1,6 @@
+//go:build testcontainers
+// +build testcontainers
+
 package mysql
 
 import (
@@ -10,7 +13,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
+// Uses shared container set up in TestMain (MySQL 8.0 required for default roles)
+// Skips MySQL < 8.0, MariaDB, TiDB (same as original test)
 func TestAccDefaultRoles_basic(t *testing.T) {
+	// Use shared container set up in TestMain
+	_ = getSharedMySQLContainer(t, "")
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)

@@ -75,8 +75,28 @@ jobs:
       - name: Vendor Go dependencies
         run: go mod vendor
       
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build and cache TiUP Playground Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.tiup-playground
+          tags: terraform-provider-mysql-tiup-playground:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          push: false
+          load: true
+      
+      - name: Save TiUP Playground Docker image
+        run: |
+          docker save terraform-provider-mysql-tiup-playground:latest | gzip > tiup-playground-image.tar.gz
+          echo "Image saved: $(du -h tiup-playground-image.tar.gz | cut -f1)"
+      
       # Note: Tests now use testcontainers - no mysql-client or Docker Buildx caching needed
       # Testcontainers handles container lifecycle and image pulling automatically
+      # TiUP Playground image is pre-built above and saved as artifact for test jobs
       
       - name: Upload Terraform binary
         uses: actions/upload-artifact@v4
@@ -92,6 +112,14 @@ jobs:
           path: vendor/
           retention-days: 1
           compression-level: 6
+      
+      - name: Upload TiUP Playground Docker image
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiup-playground-image
+          path: tiup-playground-image.tar.gz
+          retention-days: 1
+          compression-level: 6
 
   tests:
     runs-on: ubuntu-22.04
@@ -103,43 +131,49 @@ jobs:
         # MySQL versions
         - db_type: mysql
           db_version: "5.6"
-          docker_image: "mysql:5.6"
+          make_target: "test-mysql-5.6"
         - db_type: mysql
           db_version: "5.7"
-          docker_image: "mysql:5.7"
+          make_target: "test-mysql-5.7"
         - db_type: mysql
           db_version: "8.0"
-          docker_image: "mysql:8.0"
+          make_target: "test-mysql-8.0"
         # Percona versions
         - db_type: percona
           db_version: "5.7"
-          docker_image: "percona:5.7"
+          make_target: "test-percona-5.7"
         - db_type: percona
           db_version: "8.0"
-          docker_image: "percona:8.0"
+          make_target: "test-percona-8.0"
         # MariaDB versions
         - db_type: mariadb
           db_version: "10.3"
-          docker_image: "mariadb:10.3"
+          make_target: "test-mariadb-10.3"
         - db_type: mariadb
           db_version: "10.8"
-          docker_image: "mariadb:10.8"
+          make_target: "test-mariadb-10.8"
         - db_type: mariadb
           db_version: "10.10"
-          docker_image: "mariadb:10.10"
+          make_target: "test-mariadb-10.10"
         # TiDB versions - must match env.TIDB_VERSIONS: 6.1.7 6.5.12 7.1.6 7.5.7 8.1.2 8.5.3
         - db_type: tidb
           db_version: "6.1.7"
+          make_target: "test-tidb-6.1.7"
         - db_type: tidb
           db_version: "6.5.12"
+          make_target: "test-tidb-6.5.12"
         - db_type: tidb
           db_version: "7.1.6"
+          make_target: "test-tidb-7.1.6"
         - db_type: tidb
           db_version: "7.5.7"
+          make_target: "test-tidb-7.5.7"
         - db_type: tidb
           db_version: "8.1.2"
+          make_target: "test-tidb-8.1.2"
         - db_type: tidb
           db_version: "8.5.3"
+          make_target: "test-tidb-8.5.3"
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v4
@@ -169,56 +203,131 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Pre-pull Docker images for caching
-        if: matrix.db_type != 'tidb'
-        run: |
-          docker pull ${{ matrix.docker_image }} || true
+      - name: Download TiUP Playground Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: tiup-playground-image
+          path: ./
       
-      - name: Pre-pull TiDB images for caching
-        if: matrix.db_type == 'tidb'
+      - name: Load TiUP Playground Docker image
         run: |
-          docker pull pingcap/tidb:v${{ matrix.db_version }} || true
-          docker pull pingcap/pd:v${{ matrix.db_version }} || true
-          docker pull pingcap/tikv:v${{ matrix.db_version }} || true
+          echo "Loading pre-built TiUP Playground Docker image..."
+          gunzip -c tiup-playground-image.tar.gz | docker load
+          docker images | grep terraform-provider-mysql-tiup-playground
+          echo "✓ TiUP Playground image loaded successfully"
       
-      - name: Run testcontainers tests
+      # Note: TiUP Playground image is pre-built in prepare-dependencies and loaded here
+      # This avoids rebuilding the image during each test run
+      # Testcontainers handles container lifecycle and image pulling automatically
+      
+      - name: Run testcontainers tests via Makefile
         env:
           GOFLAGS: -mod=vendor
           TF_ACC: 1
           GOTOOLCHAIN: auto
         run: |
           export PATH="${{ github.workspace }}/bin:$PATH"
-          if [ "${{ matrix.db_type }}" == "tidb" ]; then
-            TIDB_VERSION=${{ matrix.db_version }} go test -tags=testcontainers -v ./mysql/... -run WithTestcontainers -timeout=30m
-          else
-            DOCKER_IMAGE=${{ matrix.docker_image }} go test -tags=testcontainers -v ./mysql/... -run WithTestcontainers -timeout=30m
-          fi
-  # DISABLED to figure out GPG signing issue on Github Actions
-  #         possibly due to lack of TTY inside docker?
-  # release:
-  #   name: Release
-  #   needs: [tests]
-  #   # Can't use non-semvar for the testing tag
-  #   # https://github.com/orgs/goreleaser/discussions/3708
-  #   if: ( startsWith( github.ref, 'refs/tags/v' ) ||
-  #           startsWith(github.ref, 'refs/tags/v0.0.0-rc') )
-  #   runs-on: ubuntu-22.04
-  #   steps:
-  #     - name: Checkout Git repo
-  #       uses: actions/checkout@v4
+          echo "Running ${{ matrix.db_type }} ${{ matrix.db_version }} tests using Makefile target: ${{ matrix.make_target }}"
+          make ${{ matrix.make_target }}
+  release:
+    name: Release
+    needs: [tests]
+    # Can't use non-semvar for the testing tag
+    # https://github.com/orgs/goreleaser/discussions/3708
+    if: ( startsWith( github.ref, 'refs/tags/v' ) ||
+          startsWith(github.ref, 'refs/tags/v0.0.0-rc') )
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write  # Required for creating releases
+    steps:
+      - name: Checkout Git repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for changelog
 
-  #     # Goreleaser
-  #     - name: Set up Go
-  #       uses: actions/setup-go@v4
-  #     - name: Run GoReleaser
-  #       uses: goreleaser/goreleaser-action@v6
-  #       with:
-  #         distribution: goreleaser
-  #         version: '~> v2'
-  #         # Run goreleaser and ignore non-committed files (downloaded artifacts)
-  #         args: release --clean --skip=validate --verbose
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
+      - name: Import GPG Subkey
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
+        run: |
+          # Install gnupg2 if not already available
+          sudo apt-get update && sudo apt-get install -y gnupg2 || true
+
+          # Create GPG directory
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+
+          # Remove any existing gpg.conf to avoid conflicts
+          rm -f ~/.gnupg/gpg.conf
+
+          # Configure GPG for non-interactive use
+          cat > ~/.gnupg/gpg.conf <<EOF
+          use-agent
+          pinentry-mode loopback
+          EOF
+
+          # Configure gpg-agent for loopback pinentry
+          cat > ~/.gnupg/gpg-agent.conf <<EOF
+          allow-loopback-pinentry
+          default-cache-ttl 3600
+          max-cache-ttl 3600
+          EOF
+          chmod 600 ~/.gnupg/gpg-agent.conf
+
+          # Kill any existing gpg-agent and start fresh with loopback pinentry
+          gpgconf --kill gpg-agent 2>/dev/null || true
+          gpgconf --kill dirmngr 2>/dev/null || true
+          sleep 1
+          gpg-agent --daemon --allow-loopback-pinentry > /dev/null 2>&1 || true
+          sleep 2  # Give gpg-agent time to start
+
+          # Import the subkey (no passphrase required)
+          KEY_FILE=$(mktemp)
+          echo "$GPG_PRIVATE_KEY" > "$KEY_FILE"
+          gpg --batch --yes --import "$KEY_FILE"
+          rm -f "$KEY_FILE"
+
+          # Trust the key (required for signing)
+          # Format: fingerprint:trust-level: (fingerprint must be uppercase, no spaces, no colons)
+          # Use ultimate trust (6) for the subkey
+          FINGERPRINT_UPPER=$(echo "$GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d ' ' | tr -d ':')
+          echo "$FINGERPRINT_UPPER:6:" | gpg --batch --import-ownertrust
+
+          # Verify key is available
+          gpg --list-secret-keys --keyid-format LONG
+
+          # Verify signing works (subkey has no passphrase)
+          echo "test" | gpg --batch --no-tty --pinentry-mode loopback --sign --local-user "$FINGERPRINT_UPPER" -o /dev/null 2>&1 && echo "✓ Test signing successful" || echo "⚠ Test signing failed"
+
+          echo "✓ GPG key imported successfully"
+
+      - name: Verify GPG setup before GoReleaser
+        env:
+          GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
+        run: |
+          echo "Verifying GPG setup..."
+          echo "GPG_FINGERPRINT length: ${#GPG_FINGERPRINT}"
+          gpg --list-secret-keys --keyid-format LONG
+          # Test signing (subkey has no passphrase)
+          echo "test" | gpg --batch --yes --no-tty --pinentry-mode loopback --local-user "$GPG_FINGERPRINT" --sign -o /tmp/test.sig - 2>&1 && echo "✓ Test signing successful" || echo "⚠ Test signing failed"
+          rm -f /tmp/test.sig
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          # Run goreleaser and ignore non-committed files (downloaded artifacts)
+          args: release --clean --skip=validate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
+          GPG_TTY: $(tty)
 
   # terraform-provider-release:
   #   needs: [release]

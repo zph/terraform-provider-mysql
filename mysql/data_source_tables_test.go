@@ -1,3 +1,6 @@
+//go:build testcontainers
+// +build testcontainers
+
 package mysql
 
 import (
@@ -10,6 +13,9 @@ import (
 )
 
 func TestAccDataSourceTables(t *testing.T) {
+	// Use shared container set up in TestMain
+	_ = getSharedMySQLContainer(t, "")
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
 		ProviderFactories: testAccProviderFactories,
