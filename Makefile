@@ -42,6 +42,7 @@ help: ## Show this help message
 	@echo ''
 	@echo 'Examples:'
 	@echo '  make build              Build the provider'
+	@echo '  make release            Create a release PR branch (PR-based workflow)'
 	@echo '  make testversion8.0    Run tests against MySQL 8.0'
 	@echo '  make testtidb8.5.3     Run tests against TiDB 8.5.3'
 	@echo '  make acceptance        Run all acceptance tests'
@@ -181,7 +182,7 @@ testmariadb: ## Run tests against MariaDB version (set MYSQL_VERSION)
 
 vet: ## Run go vet
 	@echo "go vet ."
-	@go vet $$(go list ./... | grep -v vendor/) ; if [ $$? -eq 1 ]; then \
+	@go vet $$(go list ./... | grep -v vendor/ | grep -v '/scripts') ; if [ $$? -eq 1 ]; then \
 		echo ""; \
 		echo "Vet found suspicious constructs. Please check the reported constructs"; \
 		echo "and fix them if necessary before submitting the code for review."; \
@@ -241,7 +242,7 @@ tag: ## Create git tag from VERSION file
 	@echo git tag -a $(shell cat VERSION) -m $(shell cat VERSION)
 	@git tag -a v$(shell cat VERSION) -m v$(shell cat VERSION)
 
-release: ## Create a release (tag, build, and optionally push to GitHub)
+release-local: ## Create a release locally (for testing - use 'make release' for PR-based workflow)
 	@VERSION=$$(cat VERSION); \
 	TAG="v$$VERSION"; \
 	echo "Checking if tag $$TAG already exists..."; \
@@ -347,4 +348,7 @@ release: ## Create a release (tag, build, and optionally push to GitHub)
 	echo ""; \
 	echo "Release complete! Tag $$TAG has been pushed to GitHub."
 
-.PHONY: help build test testacc vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag release
+release: ## Create a release PR branch (tag, push branch and tag, then create PR to merge to default branch)
+	@go run scripts/make-release.go
+
+.PHONY: help build test testacc vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag release release-local

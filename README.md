@@ -40,36 +40,25 @@ https://www.linkedin.com/in/zph/ that appropriate safeguards are being taken.
 
 ## Release Process
 
-The release process is automated through the `make release` command, which handles tag management, version file updates, GitHub releases, and pushing changes.
+The release process uses a PR-based workflow through the `make release` command. This creates a release branch, tags the release, and pushes both to GitHub. GitHub Actions then automatically builds and creates the release when the tag is pushed.
 
 ### Prerequisites
 
 Before running the release process, ensure you have the following set up:
 
-1. **GPG Key for Signing**: A GPG key must be configured for signing release artifacts.
-   - Set the `GPG_FINGERPRINT` environment variable to your GPG key fingerprint:
-     ```bash
-     export GPG_FINGERPRINT="your-gpg-key-fingerprint"
-     ```
-   - To find your GPG key fingerprint:
-     ```bash
-     gpg --list-secret-keys --keyid-format LONG
-     ```
-   - The fingerprint is the long string after the key type (e.g., `RSA 4096/ABC123DEF456...`)
-
-2. **GitHub Authentication**: You need authentication configured for pushing to GitHub.
+1. **GitHub Authentication**: You need authentication configured for pushing to GitHub.
    - Either configure SSH keys for git push, or
    - Set up a GitHub Personal Access Token with appropriate permissions
-   - goreleaser will use `GITHUB_TOKEN` environment variable if set, otherwise it will use git credentials
 
-3. **Required Tools**:
-   - `goreleaser` - Install from https://goreleaser.com/install/
+2. **Required Tools**:
    - `git` - For version control operations
    - `make` - For running the release command
 
-### Release Workflow
+**Note**: GPG signing and release building are handled automatically by GitHub Actions CI/CD. You don't need to configure GPG keys or goreleaser locally for the PR-based workflow.
 
-The `make release` command performs the following steps:
+### Release Workflow (PR-Based)
+
+The `make release` command implements a PR-based workflow:
 
 1. **Version Check**: Reads the current version from the `VERSION` file and checks if a tag for that version already exists.
 
@@ -80,27 +69,30 @@ The `make release` command performs the following steps:
 
 3. **Version File Update**: If a new version was determined, the `VERSION` file is automatically updated with the new version number.
 
-4. **Confirmation Prompts**: The process includes interactive confirmations at key steps:
-   - Confirmation to create and tag the release
-   - Confirmation to deploy as a GitHub release
-   - Confirmation to push tags and commits to GitHub
+4. **Default Branch Update**: Fetches and updates the default branch (`r3.0.62`) to ensure the release branch is created from the latest code.
 
-5. **Tag Creation**: Creates an annotated git tag with the version number.
+5. **Release Branch Creation**: Creates a new branch named `release/v{VERSION}` (e.g., `release/v3.0.62007`) from the updated default branch.
 
-6. **Version File Commit**: If the `VERSION` file was modified, it commits the change with message "Update VERSION to {version}".
+6. **Version File Commit**: If the `VERSION` file was modified, it commits the change on the release branch with message "Update VERSION to {version}".
 
-7. **GitHub Release**: Uses `goreleaser` to:
-   - Build binaries for all supported platforms (Linux, macOS, Windows, FreeBSD)
-   - Create archives (zip files) for each platform/architecture combination
-   - Generate SHA256 checksums
-   - Sign the checksum file with your GPG key
-   - Create a draft GitHub release (you can publish it manually after review)
+7. **Tag Creation**: Creates an annotated git tag with the version number on the release branch.
 
-8. **Push to GitHub**: Pushes the tag and commits to the remote repository.
+8. **Push to GitHub**: Pushes both the release branch and tag to GitHub.
+
+9. **GitHub Actions**: When the tag is pushed, GitHub Actions automatically:
+   - Builds binaries for all supported platforms (Linux, macOS, Windows, FreeBSD)
+   - Creates archives (zip files) for each platform/architecture combination
+   - Generates SHA256 checksums
+   - Signs the checksum file with GPG (configured in CI/CD)
+   - Creates a GitHub release
+
+10. **Pull Request**: Create a pull request from the release branch (`release/v{VERSION}`) to the default branch (`r3.0.62`).
+
+11. **Merge**: After CI completes successfully, merge the PR to complete the release.
 
 ### Usage
 
-To create a release, simply run:
+To create a release using the PR-based workflow:
 
 ```bash
 make release
@@ -108,10 +100,16 @@ make release
 
 The process will guide you through each step with clear prompts. You can cancel at any point if needed.
 
+**Note**: The command automatically updates the default branch (`r3.0.62`) before creating the release branch, so you can run it from any branch. The release branch will always be created from the latest version of the default branch.
+
 ### Example Release Session
 
 ```bash
 $ make release
+Updating default branch (r3.0.62) before creating release branch...
+Fetching latest changes from origin...
+Checking out default branch r3.0.62...
+Default branch updated successfully.
 Checking if tag v3.0.62006 already exists...
 Tag v3.0.62006 already exists!
 Current version from VERSION file: 3.0.62006
@@ -127,30 +125,69 @@ VERSION file updated.
 Release Summary:
   Tag: v3.0.62007
   Version: 3.0.62007
+  Release Branch: release/v3.0.62007
+  Target Branch: r3.0.62
 =========================================
 
-Do you want to create tag v3.0.62007? (yes/no): yes
+Do you want to create release branch and tag v3.0.62007? (yes/no): yes
 
-Creating tag v3.0.62007...
+Creating release branch release/v3.0.62007 from updated default branch (r3.0.62)...
+Release branch created from updated r3.0.62.
+
+Committing VERSION file change...
 VERSION file change committed.
+
+Creating annotated tag v3.0.62007...
 Tag v3.0.62007 created successfully.
 
-Do you want to deploy this as a GitHub release? (yes/no): yes
+Pushing branch and tag to origin...
+Branch and tag pushed successfully.
 
-Running goreleaser to create GitHub release...
-[... goreleaser output ...]
+=========================================
+Release PR Created Successfully!
+=========================================
 
-Do you want to push tags and commits to GitHub? (yes/no): yes
+Next steps:
+1. GitHub Actions will automatically build the release when the tag is pushed.
+2. Create a pull request:
+   - Source: release/v3.0.62007
+   - Target: r3.0.62
+   - URL: https://github.com/zph/terraform-provider-mysql/compare/r3.0.62...release/v3.0.62007
+3. Wait for CI to complete the release build.
+4. Review and merge the PR into r3.0.62 to complete the release.
 
-Pushing to GitHub...
-Release complete! Tag v3.0.62007 has been pushed to GitHub.
+To switch back to your previous branch, run:
+  git checkout your-feature-branch
 ```
+
+### Local Testing Workflow (`make release-local`)
+
+For local testing and debugging, you can use `make release-local` which runs goreleaser locally:
+
+```bash
+make release-local
+```
+
+This command:
+- Runs the same version detection and tag management logic as `make release`
+- Creates tags and commits locally
+- Runs `goreleaser` locally to build and create a GitHub release
+- Requires GPG key setup (set `GPG_FINGERPRINT` environment variable)
+- Requires `goreleaser` installed locally
+
+**Use `make release-local` only for:**
+- Testing release builds locally
+- Debugging goreleaser configuration
+- Creating releases without CI/CD (not recommended for production)
+
+**For production releases, always use `make release` (PR-based workflow).**
 
 ### Troubleshooting
 
-- **GPG signing fails**: Ensure `GPG_FINGERPRINT` is set correctly and your GPG key is available in your keyring
 - **GitHub push fails**: Check your git credentials or SSH keys are configured correctly
-- **goreleaser fails**: Ensure you have the latest version of goreleaser installed and check the `.goreleaser.yml` configuration
+- **Branch already exists**: If the release branch already exists, delete it first or use a different version
+- **CI/CD build fails**: Check GitHub Actions logs for build errors. The release will be created automatically when the tag is pushed successfully
+- **PR merge conflicts**: Resolve conflicts in the PR before merging. The tag and release are already created, so merging just updates the default branch
 
 ## Original Readme
 Below is from petoju/terraform-provider-mysql:
