@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -498,30 +499,16 @@ func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
 
 	// Build TiUP Playground image from Dockerfile
 	// This builds a container with TiUP installed that can run playground
-	// Get the module root directory (where Dockerfile.tiup-playground is located)
-	// Try multiple strategies to find the repo root
+	// Get the git root directory (where Dockerfile.tiup-playground is located)
 	moduleRoot := os.Getenv("GITHUB_WORKSPACE")
 	if moduleRoot == "" {
-		// For local development, find repo root by looking for go.mod
-		cwd, err := os.Getwd()
+		// For local development, find git root using git rev-parse
+		cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+		output, err := cmd.Output()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get current working directory: %v", err)
+			return nil, fmt.Errorf("failed to find git root: %v", err)
 		}
-
-		// Walk up the directory tree to find go.mod
-		dir := cwd
-		for {
-			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-				moduleRoot = dir
-				break
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				// Reached filesystem root without finding go.mod
-				return nil, fmt.Errorf("could not find go.mod in parent directories of %s", cwd)
-			}
-			dir = parent
-		}
+		moduleRoot = strings.TrimSpace(string(output))
 	}
 
 	// Verify Dockerfile exists
