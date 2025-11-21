@@ -412,12 +412,12 @@ func startTiDBCluster(ctx context.Context, t *testing.T, version string) *TiDBTe
 				"--pd=pd:2379",
 			},
 			HostConfigModifier: func(hostConfig *container.HostConfig) {
-				// Set ulimit for file descriptors to 100000 (TiKV requires at least 82920)
+				// Set ulimit for file descriptors to 200000 (TiKV requires at least 123880)
 				hostConfig.Ulimits = []*container.Ulimit{
 					{
 						Name: "nofile",
-						Soft: 100000,
-						Hard: 100000,
+						Soft: 200000,
+						Hard: 200000,
 					},
 				}
 			},
@@ -531,12 +531,12 @@ func startSharedTiDBCluster(version string) (*TiDBTestCluster, error) {
 				"--pd=pd:2379",
 			},
 			HostConfigModifier: func(hostConfig *container.HostConfig) {
-				// Set ulimit for file descriptors to 100000 (TiKV requires at least 82920)
+				// Set ulimit for file descriptors to 200000 (TiKV requires at least 123880)
 				hostConfig.Ulimits = []*container.Ulimit{
 					{
 						Name: "nofile",
-						Soft: 100000,
-						Hard: 100000,
+						Soft: 200000,
+						Hard: 200000,
 					},
 				}
 			},
