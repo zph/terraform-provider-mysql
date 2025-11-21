@@ -42,30 +42,34 @@ signs:
   - id: checksum
     artifacts: checksum
     args:
-      # Use gpg-agent with preset passphrase (set in GitHub Actions workflow)
+      # Use passphrase from environment variable via file descriptor
       - "--batch"
       - "--pinentry-mode"
       - "loopback"
-      - "--use-agent"
+      - "--passphrase-fd"
+      - "0"
       - "--local-user"
       - "{{ .Env.GPG_FINGERPRINT }}" # set this environment variable for your signing key
       - "--output"
       - "${signature}"
       - "--detach-sign"
       - "${artifact}"
+    stdin: "{{ .Env.GPG_PASSPHRASE }}"
   - id: archive
     artifacts: archive
     args:
       - "--batch"
       - "--pinentry-mode"
       - "loopback"
-      - "--use-agent"
+      - "--passphrase-fd"
+      - "0"
       - "--local-user"
       - "{{ .Env.GPG_FINGERPRINT }}"
       - "--output"
       - "${signature}"
       - "--detach-sign"
       - "${artifact}"
+    stdin: "{{ .Env.GPG_PASSPHRASE }}"
 release:
   # If you want to manually examine the release before its live, uncomment this line:
   draft: true
