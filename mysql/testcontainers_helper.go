@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -497,9 +498,41 @@ func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
 
 	// Build TiUP Playground image from Dockerfile
 	// This builds a container with TiUP installed that can run playground
+	// Get the module root directory (where Dockerfile.tiup-playground is located)
+	// Try multiple strategies to find the repo root
+	moduleRoot := os.Getenv("GITHUB_WORKSPACE")
+	if moduleRoot == "" {
+		// For local development, find repo root by looking for go.mod
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current working directory: %v", err)
+		}
+
+		// Walk up the directory tree to find go.mod
+		dir := cwd
+		for {
+			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+				moduleRoot = dir
+				break
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				// Reached filesystem root without finding go.mod
+				return nil, fmt.Errorf("could not find go.mod in parent directories of %s", cwd)
+			}
+			dir = parent
+		}
+	}
+
+	// Verify Dockerfile exists
+	dockerfilePath := filepath.Join(moduleRoot, "Dockerfile.tiup-playground")
+	if _, err := os.Stat(dockerfilePath); err != nil {
+		return nil, fmt.Errorf("Dockerfile.tiup-playground not found at %s: %v", dockerfilePath, err)
+	}
+
 	req := testcontainers.ContainerRequest{
 		FromDockerfile: testcontainers.FromDockerfile{
-			Context:       ".",
+			Context:       moduleRoot,
 			Dockerfile:    "Dockerfile.tiup-playground",
 			PrintBuildLog: true, // Helpful for debugging
 		},
