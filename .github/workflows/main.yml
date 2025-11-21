@@ -267,21 +267,25 @@ jobs:
           rm -f ~/.gnupg/gpg.conf
 
           # Configure GPG for non-interactive use
-          # pinentry-mode is a valid GPG option, but use simpler config
           cat > ~/.gnupg/gpg.conf <<EOF
           use-agent
+          pinentry-mode loopback
           EOF
 
           # Configure gpg-agent for loopback pinentry
           cat > ~/.gnupg/gpg-agent.conf <<EOF
           allow-loopback-pinentry
+          default-cache-ttl 3600
+          max-cache-ttl 3600
           EOF
           chmod 600 ~/.gnupg/gpg-agent.conf
 
           # Kill any existing gpg-agent and start fresh with loopback pinentry
           gpgconf --kill gpg-agent 2>/dev/null || true
+          gpgconf --kill dirmngr 2>/dev/null || true
+          sleep 1
           gpg-agent --daemon --allow-loopback-pinentry > /dev/null 2>&1 || true
-          sleep 1  # Give gpg-agent time to start
+          sleep 2  # Give gpg-agent time to start
 
           # Import the subkey
           # Write key to temp file (key data is okay, but passphrase never touches disk)
@@ -305,13 +309,28 @@ jobs:
 
           # Preset passphrase in gpg-agent for non-interactive signing
           # This allows GoReleaser to sign without prompting for passphrase
-          KEYGRIP=$(gpg --list-secret-keys --with-keygrip --keyid-format LONG "$FINGERPRINT_UPPER" | grep -A1 "^sec" | tail -1 | awk '{print $3}')
-          if [ -n "$KEYGRIP" ]; then
-            echo "$GPG_PASSPHRASE" | gpg-preset-passphrase --preset "$KEYGRIP"
-            echo "✓ Passphrase preset in gpg-agent for keygrip: $KEYGRIP"
-          else
-            echo "⚠ Warning: Could not find keygrip for fingerprint $FINGERPRINT_UPPER"
+          # Extract keygrip - try both sec (master key) and ssb (subkey) lines
+          KEYGRIP=$(gpg --list-secret-keys --with-keygrip --keyid-format LONG "$FINGERPRINT_UPPER" 2>/dev/null | grep -E "^sec|^ssb" | head -1 | awk '{print $NF}')
+          if [ -z "$KEYGRIP" ]; then
+            # Try alternative method - get keygrip from the subkey line
+            KEYGRIP=$(gpg --list-secret-keys --with-keygrip --keyid-format LONG "$FINGERPRINT_UPPER" 2>/dev/null | grep -A5 "^sec" | grep "Keygrip" | head -1 | awk '{print $3}')
           fi
+          
+          if [ -n "$KEYGRIP" ] && [ ${#KEYGRIP} -eq 40 ]; then
+            echo "$GPG_PASSPHRASE" | gpg-preset-passphrase --preset "$KEYGRIP" 2>&1
+            if [ $? -eq 0 ]; then
+              echo "✓ Passphrase preset in gpg-agent for keygrip: $KEYGRIP"
+            else
+              echo "⚠ Warning: Failed to preset passphrase for keygrip: $KEYGRIP"
+            fi
+          else
+            echo "⚠ Warning: Could not find valid keygrip for fingerprint $FINGERPRINT_UPPER"
+            echo "Debug: Listing keys with keygrips:"
+            gpg --list-secret-keys --with-keygrip --keyid-format LONG "$FINGERPRINT_UPPER" 2>&1 || true
+          fi
+          
+          # Verify gpg-agent is running and can sign
+          echo "test" | gpg --batch --pinentry-mode loopback --sign --local-user "$FINGERPRINT_UPPER" -o /dev/null 2>&1 && echo "✓ Test signing successful" || echo "⚠ Test signing failed"
 
           # Test signing capability (GoReleaser will test this anyway, but verify key is importable)
           # Note: We skip actual signing test here since --passphrase-fd consumes stdin
