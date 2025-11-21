@@ -323,7 +323,7 @@ jobs:
           distribution: goreleaser
           version: '~> v2'
           # Run goreleaser and ignore non-committed files (downloaded artifacts)
-          args: release --clean --skip=validate
+          args: release --clean --skip=validate --debug
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
