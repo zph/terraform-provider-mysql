@@ -1,5 +1,6 @@
 # Dockerfile for TiUP Playground container
 # This image contains TiUP and can run TiDB Playground inside a container
+# Pre-installs all TiDB versions used in tests to avoid downloads during test runs
 
 FROM ubuntu:22.04
 
@@ -20,6 +21,31 @@ ENV PATH="/root/.tiup/bin:${PATH}"
 # Update TiUP and playground component
 RUN /root/.tiup/bin/tiup update --self && \
     /root/.tiup/bin/tiup update playground || true
+
+# Pre-install all TiDB versions used in tests
+# This avoids downloading components during test runs, making tests faster
+# Versions must match .github/workflows/main.yml env.TIDB_VERSIONS
+RUN /root/.tiup/bin/tiup install tidb:v6.1.7 && \
+    /root/.tiup/bin/tiup install tidb:v6.5.12 && \
+    /root/.tiup/bin/tiup install tidb:v7.1.6 && \
+    /root/.tiup/bin/tiup install tidb:v7.5.7 && \
+    /root/.tiup/bin/tiup install tidb:v8.1.2 && \
+    /root/.tiup/bin/tiup install tidb:v8.5.3 || true
+
+# Also pre-install PD and TiKV components for these versions (needed by playground)
+# Note: TiUP playground will download these if not present, but pre-installing speeds things up
+RUN /root/.tiup/bin/tiup install pd:v6.1.7 && \
+    /root/.tiup/bin/tiup install tikv:v6.1.7 && \
+    /root/.tiup/bin/tiup install pd:v6.5.12 && \
+    /root/.tiup/bin/tiup install tikv:v6.5.12 && \
+    /root/.tiup/bin/tiup install pd:v7.1.6 && \
+    /root/.tiup/bin/tiup install tikv:v7.1.6 && \
+    /root/.tiup/bin/tiup install pd:v7.5.7 && \
+    /root/.tiup/bin/tiup install tikv:v7.5.7 && \
+    /root/.tiup/bin/tiup install pd:v8.1.2 && \
+    /root/.tiup/bin/tiup install tikv:v8.1.2 && \
+    /root/.tiup/bin/tiup install pd:v8.5.3 && \
+    /root/.tiup/bin/tiup install tikv:v8.5.3 || true
 
 # Default command runs TiUP Playground
 # This will be overridden by testcontainers with specific version and port
