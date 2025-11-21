@@ -517,11 +517,15 @@ func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
 		return nil, fmt.Errorf("Dockerfile.tiup-playground not found at %s: %v", dockerfilePath, err)
 	}
 
+	// Use a consistent image tag for caching
+	imageTag := fmt.Sprintf("terraform-provider-mysql-tiup-playground:latest")
+
 	req := testcontainers.ContainerRequest{
 		FromDockerfile: testcontainers.FromDockerfile{
 			Context:       moduleRoot,
 			Dockerfile:    "Dockerfile.tiup-playground",
-			PrintBuildLog: true, // Helpful for debugging
+			PrintBuildLog: true,     // Helpful for debugging
+			Tag:           imageTag, // Use consistent tag for caching
 		},
 		ExposedPorts: []string{"4000/tcp"},
 		// TiUP Playground needs to run processes, so we need privileged mode
@@ -531,8 +535,8 @@ func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
 			hostConfig.Ulimits = []*container.Ulimit{
 				{
 					Name: "nofile",
-					Soft: 250000,
-					Hard: 250000,
+					Soft: int64(250000),
+					Hard: int64(250000),
 				},
 			}
 		},
@@ -551,7 +555,7 @@ func startSharedTiDBClusterWithTiUP(version string) (*TiDBTestCluster, error) {
 			wait.ForSQL(nat.Port("4000/tcp"), "mysql", func(host string, port nat.Port) string {
 				return fmt.Sprintf("root@tcp(%s:%s)/", host, port.Port())
 			}),
-		).WithStartupTimeout(240 * time.Second), // Longer timeout for first-time TiUP component downloads
+		).WithStartupTimeout(300 * time.Second), // Longer timeout for Docker build + TiUP component downloads
 	}
 
 	playgroundContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
