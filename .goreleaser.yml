@@ -39,7 +39,8 @@ checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
   algorithm: sha256
 signs:
-  - artifacts: checksum
+  - id: checksum
+    artifacts: checksum
     args:
       # if you are using this is a GitHub action or some other automated pipeline, you
       # need to pass the batch flag to indicate its not interactive.
@@ -54,7 +55,8 @@ signs:
       - "${signature}"
       - "--detach-sign"
       - "${artifact}"
-  - artifacts: archive
+  - id: archive
+    artifacts: archive
     args:
       - "--batch"
       - "--pinentry-mode"
