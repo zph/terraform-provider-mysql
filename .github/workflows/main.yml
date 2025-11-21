@@ -303,6 +303,16 @@ jobs:
           # Verify key is available
           gpg --list-secret-keys --keyid-format LONG
 
+          # Preset passphrase in gpg-agent for non-interactive signing
+          # This allows GoReleaser to sign without prompting for passphrase
+          KEYGRIP=$(gpg --list-secret-keys --with-keygrip --keyid-format LONG "$FINGERPRINT_UPPER" | grep -A1 "^sec" | tail -1 | awk '{print $3}')
+          if [ -n "$KEYGRIP" ]; then
+            echo "$GPG_PASSPHRASE" | gpg-preset-passphrase --preset "$KEYGRIP"
+            echo "✓ Passphrase preset in gpg-agent for keygrip: $KEYGRIP"
+          else
+            echo "⚠ Warning: Could not find keygrip for fingerprint $FINGERPRINT_UPPER"
+          fi
+
           # Test signing capability (GoReleaser will test this anyway, but verify key is importable)
           # Note: We skip actual signing test here since --passphrase-fd consumes stdin
           # GoReleaser uses --passphrase flag directly, which works differently
