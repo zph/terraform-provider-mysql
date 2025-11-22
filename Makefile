@@ -224,6 +224,20 @@ errcheck: ## Run errcheck
 		exit 1; \
 	fi
 
+lint: ## Run golangci-lint (correctness-focused linters)
+	@echo "==> Running golangci-lint..."
+	@GOPATH_BIN=$$(go env GOPATH)/bin; \
+	GOLANGCI_LINT=$$GOPATH_BIN/golangci-lint; \
+	if [ ! -f $$GOLANGCI_LINT ]; then \
+		echo "==> Installing golangci-lint..."; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$GOPATH_BIN latest; \
+	fi; \
+	$$GOLANGCI_LINT run ./mysql/... ; if [ $$? -eq 1 ]; then \
+		echo ""; \
+		echo "Linter found issues. Please review and fix them before submitting code."; \
+		exit 1; \
+	fi
+
 vendor-status: ## Show vendor status
 	@govendor status
 
@@ -373,4 +387,4 @@ release-local: ## Create a release locally (for testing - use 'make release' for
 release: ## Create a release PR branch (tag, push branch and tag, then create PR to merge to default branch)
 	@go run scripts/make-release.go
 
-.PHONY: help build test testacc vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag release release-local
+.PHONY: help build test testacc vet fmt fmtcheck errcheck lint vendor-status test-compile website website-test tag format-tag release release-local

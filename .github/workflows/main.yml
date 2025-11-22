@@ -24,8 +24,25 @@ jobs:
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
       - name: Running ${{ matrix.command }}
         run: ${{ matrix.command }}
+
+  lint-optional:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Git repo
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+      - name: Running make lint
+        continue-on-error: true
+        run: make lint
 
   prepare-dependencies:
     name: Prepare Dependencies
