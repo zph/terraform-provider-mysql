@@ -39,29 +39,9 @@ checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
   algorithm: sha256
 signs:
-  - id: checksum
-    artifacts: checksum
-    args:
-      # Subkey has no passphrase - no --passphrase flag needed
-      - "--batch"
-      - "--yes"
-      - "--no-tty"
-      - "--pinentry-mode"
-      - "loopback"
-      - "--local-user"
-      - "{{ .Env.GPG_FINGERPRINT }}" # set this environment variable for your signing key
-      - "--output"
-      - "${signature}"
-      - "--detach-sign"
-      - "${artifact}"
-  - id: archive
-    artifacts: archive
+  - artifacts: checksum
     args:
       - "--batch"
-      - "--yes"
-      - "--no-tty"
-      - "--pinentry-mode"
-      - "loopback"
       - "--local-user"
       - "{{ .Env.GPG_FINGERPRINT }}"
       - "--output"
@@ -69,7 +49,6 @@ signs:
       - "--detach-sign"
       - "${artifact}"
 release:
-  # If you want to manually examine the release before its live, uncomment this line:
-  draft: true
+  draft: false
 changelog:
   use: git
