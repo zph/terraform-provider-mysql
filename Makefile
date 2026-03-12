@@ -44,7 +44,7 @@ help: ## Show this help message
 	@echo '  make build              Build the provider'
 	@echo '  make release            Create a release PR branch (PR-based workflow)'
 	@echo '  make testversion8.0    Run tests against MySQL 8.0'
-	@echo '  make testtidb8.5.3     Run tests against TiDB 8.5.3'
+	@echo '  make testtidb8.5.5     Run tests against TiDB 8.5.5'
 	@echo '  make acceptance        Run all acceptance tests'
 	@echo '  make testcontainers-matrix  Run test matrix across all database versions'
 
@@ -94,7 +94,7 @@ testcontainers-matrix: fmtcheck bin/terraform ## Run test matrix across all data
 
 # Run testcontainers tests for a specific database image
 # Usage: make testcontainers-image DOCKER_IMAGE=mysql:8.0
-#        make testcontainers-image DOCKER_IMAGE=tidb:8.5.3
+#        make testcontainers-image DOCKER_IMAGE=tidb:8.5.5
 testcontainers-image: fmtcheck bin/terraform ## Run tests for a specific database image (set DOCKER_IMAGE)
 	@PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test -tags=testcontainers $(TEST) -v $(TESTARGS) -timeout=15m
 
@@ -107,8 +107,8 @@ testacc: fmtcheck bin/terraform ## Run acceptance tests (requires MYSQL_ENDPOINT
 	PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout=90s
 
 # TiDB versions: latest of each minor series (must match .github/workflows/main.yml TIDB_VERSIONS)
-# 6.1.x → 6.1.7, 6.5.x → 6.5.12, 7.1.x → 7.1.6, 7.5.x → 7.5.7, 8.1.x → 8.1.2, 8.5.x → 8.5.3
-acceptance: testversion5.6 testversion5.7 testversion8.0 testpercona5.7 testpercona8.0 testmariadb10.3 testmariadb10.8 testmariadb10.10 testtidb6.1.7 testtidb6.5.12 testtidb7.1.6 testtidb7.5.7 testtidb8.1.2 testtidb8.5.3 ## Run all acceptance tests across all database versions
+# 6.1.x → 6.1.7, 6.5.x → 6.5.12, 7.1.x → 7.1.6, 7.5.x → 7.5.7, 8.1.x → 8.1.2, 8.5.x → 8.5.5
+acceptance: testversion5.6 testversion5.7 testversion8.0 testpercona5.7 testpercona8.0 testmariadb10.3 testmariadb10.8 testmariadb10.10 testtidb6.1.7 testtidb6.5.12 testtidb7.1.6 testtidb7.5.7 testtidb8.1.2 testtidb8.5.5 ## Run all acceptance tests across all database versions
 
 # MySQL test targets - use testcontainers
 # Preferred format: test-mysql-VERSION (e.g., test-mysql-5.6)
@@ -159,11 +159,11 @@ testrdsdb: ## Run tests against Amazon RDS (requires MYSQL_ENDPOINT env vars)
 	$(MAKE) testacc
 
 # TiDB test targets - use testcontainers
-# Preferred format: test-tidb-VERSION (e.g., test-tidb-8.5.3)
-test-tidb-%: ## Run tests against TiDB version (e.g., test-tidb-8.5.3)
+# Preferred format: test-tidb-VERSION (e.g., test-tidb-8.5.5)
+test-tidb-%: ## Run tests against TiDB version (e.g., test-tidb-8.5.5)
 	@$(MAKE) testtidb$*
 
-testtidb%: ## Run tests against TiDB version (e.g., testtidb8.5.3) [backwards compatible]
+testtidb%: ## Run tests against TiDB version (e.g., testtidb8.5.5) [backwards compatible]
 	@DOCKER_IMAGE=tidb:$* PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test -tags=testcontainers ./mysql/... -v $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=30m
 
 testtidb: ## Run tests against TiDB version (set MYSQL_VERSION)

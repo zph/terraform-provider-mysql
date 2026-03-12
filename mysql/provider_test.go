@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 		os.Stderr.WriteString("ERROR: DOCKER_IMAGE environment variable is not set.\n")
 		os.Stderr.WriteString("Please set DOCKER_IMAGE to the appropriate Docker image:\n")
 		os.Stderr.WriteString("  - MySQL/Percona/MariaDB: mysql:5.6, percona:8.0, mariadb:10.10\n")
-		os.Stderr.WriteString("  - TiDB: tidb:6.1.7, tidb:8.5.3\n")
+		os.Stderr.WriteString("  - TiDB: tidb:6.1.7, tidb:8.5.5\n")
 		os.Exit(1)
 	}
 

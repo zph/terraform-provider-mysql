@@ -177,7 +177,7 @@ func getSharedMySQLContainer(t *testing.T, image string) *MySQLTestContainer {
 		t.Fatalf("ERROR: DOCKER_IMAGE environment variable is not set.\n" +
 			"Please set DOCKER_IMAGE to the appropriate Docker image:\n" +
 			"  - MySQL/Percona/MariaDB: mysql:5.6, percona:8.0, mariadb:10.10\n" +
-			"  - TiDB: tidb:6.1.7, tidb:8.5.3\n" +
+			"  - TiDB: tidb:6.1.7, tidb:8.5.5\n" +
 			"The 'image' parameter to getSharedMySQLContainer is ignored - use DOCKER_IMAGE env var instead.")
 	}
 
