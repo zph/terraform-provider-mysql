@@ -107,9 +107,18 @@ provider "mysql" {
 }
 ```
 
-**Note** It it is _strongly_ recommended to ensure that these values/variables are marked as sensitive
+**Note** It is _strongly_ recommended to ensure that these values/variables are marked as sensitive
 
+## TiDB Support
 
+This provider includes resources for managing TiDB-specific features:
+
+* `mysql_ti_config` - Manage TiDB cluster configuration variables (PD and TiKV)
+* `mysql_ti_resource_group` - Create and manage TiDB resource groups for workload isolation
+* `mysql_ti_resource_group_user_assignment` - Assign users to TiDB resource groups
+* `mysql_ti_placement_policy` - Create and manage TiDB placement policies for data distribution
+
+These resources use TiDB-specific SQL extensions and are not compatible with standard MySQL.
 
 
 ### GCP CloudSQL Connection
