@@ -10,7 +10,7 @@ on:
 # TiDB versions used in tests - single source of truth
 # Latest version of each minor series: 6.1.x, 6.5.x, 7.1.x, 7.5.x, 8.1.x, 8.5.x
 env:
-  TIDB_VERSIONS: "6.1.7 6.5.12 7.1.6 7.5.7 8.1.2 8.5.3"
+  TIDB_VERSIONS: "6.1.7 6.5.12 7.1.6 7.5.7 8.1.2 8.5.5"
 
 jobs:
   lint:
@@ -130,9 +130,6 @@ jobs:
         include:
         # MySQL versions
         - db_type: mysql
-          db_version: "5.6"
-          make_target: "test-mysql-5.6"
-        - db_type: mysql
           db_version: "5.7"
           make_target: "test-mysql-5.7"
         - db_type: mysql
@@ -155,7 +152,7 @@ jobs:
         - db_type: mariadb
           db_version: "10.10"
           make_target: "test-mariadb-10.10"
-        # TiDB versions - must match env.TIDB_VERSIONS: 6.1.7 6.5.12 7.1.6 7.5.7 8.1.2 8.5.3
+        # TiDB versions - must match env.TIDB_VERSIONS: 6.1.7 6.5.12 7.1.6 7.5.7 8.1.2 8.5.5
         - db_type: tidb
           db_version: "6.1.7"
           make_target: "test-tidb-6.1.7"
@@ -172,8 +169,8 @@ jobs:
           db_version: "8.1.2"
           make_target: "test-tidb-8.1.2"
         - db_type: tidb
-          db_version: "8.5.3"
-          make_target: "test-tidb-8.5.3"
+          db_version: "8.5.5"
+          make_target: "test-tidb-8.5.5"
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v4
