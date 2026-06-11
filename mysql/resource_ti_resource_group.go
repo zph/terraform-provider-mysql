@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -56,6 +57,8 @@ var DefaultResourceGroup = ResourceGroup{
 }
 
 var ResourceGroupTiDBMinVersion = "7.5.0"
+
+const tiDBUnlimitedResourceUnits = 2147483647
 
 func resourceTiResourceGroup() *schema.Resource {
 	return &schema.Resource{
@@ -207,6 +210,7 @@ func DeleteResourceGroup(ctx context.Context, d *schema.ResourceData, meta inter
 
 func getResourceGroupFromDB(db *sql.DB, name string) (*ResourceGroup, error) {
 	rg := ResourceGroup{Name: name}
+	var rawResourceUnits string
 
 	/*
 		Coerce types on SQL side into good types for golang
@@ -220,7 +224,7 @@ func getResourceGroupFromDB(db *sql.DB, name string) (*ResourceGroup, error) {
 	tflog.SetField(ctx, "query", query)
 	tflog.Debug(ctx, "getResourceGroupFromDB")
 
-	err := db.QueryRow(query, name).Scan(&rg.Name, &rg.ResourceUnits, &rg.Priority, &rg.Burstable, &rg.QueryLimit)
+	err := db.QueryRow(query, name).Scan(&rg.Name, &rawResourceUnits, &rg.Priority, &rg.Burstable, &rg.QueryLimit)
 	if errors.Is(err, sql.ErrNoRows) {
 		log.Printf("[DEBUG] resource group doesn't exist (%s): %s", name, err)
 		return nil, nil
@@ -228,7 +232,21 @@ func getResourceGroupFromDB(db *sql.DB, name string) (*ResourceGroup, error) {
 		return nil, fmt.Errorf("error during get resource group (%s): %s", name, err)
 	}
 
+	rg.ResourceUnits, err = parseTiDBResourceUnits(rawResourceUnits)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing resource group (%s) RU_PER_SEC %q: %w", name, rawResourceUnits, err)
+	}
+
 	return &rg, nil
+}
+
+func parseTiDBResourceUnits(raw string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if strings.EqualFold(raw, "UNLIMITED") {
+		return tiDBUnlimitedResourceUnits, nil
+	}
+
+	return strconv.Atoi(raw)
 }
 
 func NewResourceGroupFromResourceData(d *schema.ResourceData) ResourceGroup {
