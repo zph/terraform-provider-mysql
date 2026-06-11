@@ -107,9 +107,18 @@ provider "mysql" {
 }
 ```
 
-**Note** It it is _strongly_ recommended to ensure that these values/variables are marked as sensitive
+**Note** It is _strongly_ recommended to ensure that these values/variables are marked as sensitive
 
+## TiDB Support
 
+This provider includes resources for managing TiDB-specific features:
+
+* `mysql_ti_config` - Manage TiDB cluster configuration variables (PD and TiKV)
+* `mysql_ti_resource_group` - Create and manage TiDB resource groups for workload isolation
+* `mysql_ti_resource_group_user_assignment` - Assign users to TiDB resource groups
+* `mysql_ti_placement_policy` - Create and manage TiDB placement policies for data distribution
+
+These resources use TiDB-specific SQL extensions and are not compatible with standard MySQL.
 
 
 ### GCP CloudSQL Connection
@@ -192,7 +201,7 @@ The following arguments are supported:
 * `password` - (Optional) Password for the given user, if that user has a password, can also be sourced from the `MYSQL_PASSWORD` environment variable.
 * `proxy` - (Optional) Proxy socks url, can also be sourced from `ALL_PROXY` or `all_proxy` environment variables.
 * `tls` - (Optional) The TLS configuration. One of `false`, `true`, or `skip-verify`. Defaults to `false`. Can also be sourced from the `MYSQL_TLS_CONFIG` environment variable.
-* `custom_tls` - (Optional) Sets custom tls options for the connection. Documentation for encrypted connections can be found [here](https://dev.mysql.com/doc/refman/8.0/en/using-encrypted-connections.html). Consider setting shorter `connect_retry_timeout_sec` for debugging, as the default is 10 minutes .This is a block containing an optional `config_key`, which value is discarded but might be useful when troubleshooting, and the following required arguments:
+* `custom_tls` - (Optional) Sets custom tls options for the connection. Documentation for encrypted connections can be found [here](https://dev.mysql.com/doc/refman/8.0/en/using-encrypted-connections.html). Consider setting shorter `connect_retry_timeout_sec` for debugging, as the default is 300 seconds. This is a block containing an optional `config_key`, whose value is discarded but might be useful when troubleshooting, and the following required arguments:
   * `ca_cert` - Local filesystem path or string containing Certificate - If value begins with `-----BEGIN` we assume you're passing the certificate directly, otherwise a file from the local filesystem will be used.
   * `client_cert` - Local filesystem path or string containing Certificate - If value begins with `-----BEGIN` we assume you're passing the certificate directly, otherwise a file from the local filesystem will be used.
   * `client_key` - Local filesystem path or string containing Certificate - If value begins with `-----BEGIN` we assume you're passing the certificate directly, otherwise a file from the local filesystem will be used.
@@ -201,7 +210,7 @@ The following arguments are supported:
 * `max_open_conns` - (Optional) Sets the maximum number of open connections to the database. If n <= 0, then there is no limit on the number of open connections.
 * `conn_params` - (Optional) Sets extra mysql connection parameters (ODBC parameters). Most useful for session variables such as `default_storage_engine`, `foreign_key_checks` or `sql_log_bin`.
 * `authentication_plugin` - (Optional) Sets the authentication plugin, it can be one of the following: `native` or `cleartext`. Defaults to `native`.
-* `iam_database_authentication` - (Optional) For Cloud SQL databases, it enabled the use of IAM authentication. Make sure to declare the `password` field with a temporary OAuth2 token of the user that will connect to the MySQL server.
+* `iam_database_authentication` - (Optional) For Cloud SQL databases, enables IAM authentication. Make sure to declare the `password` field with a temporary OAuth2 token of the user that will connect to the MySQL server.
 * `private_ip` - (Optional) Whether to use a connection to an instance with a private ip. Defaults to `false`. This argument only applies to CloudSQL and is ignored elsewhere.
 * `azure_config` - (Optional) Sets the Azure configuration for the connection. This is a block containing the following arguments:
   * `client_id` - (Optional) The client ID for the Azure AD application. Can also be sourced from the `AZURE_CLIENT_ID` or `ARM_CLIENT_ID` environment variables.

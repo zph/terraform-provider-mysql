@@ -51,7 +51,7 @@ resource "mysql_user" "nologin" {
 
 ```hcl
 resource "mysql_user" "aadupn" {
-  user = "aliasToUseWhenConnectiong"
+  user = "alias_to_use_when_connecting"
   auth_plugin = "aad_auth"
   aad_identity {
     type = "user" # user | group | service_principal
@@ -107,13 +107,8 @@ The `auth_plugin` value supports:
 The following attributes are exported:
 
 * `user` - The name of the user.
-* `password` - The password of the user.
-* `id` - The id of the user created, composed as "username@host".
 * `host` - The host where the user was created.
-
-## Attributes Reference
-
-No further attributes are exported.
+* `id` - The id of the user created, composed as "username@host".
 
 ## Import
 

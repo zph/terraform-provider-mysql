@@ -42,12 +42,31 @@ The following arguments are supported:
   ``utf8mb4_general_ci``. Each character set has its own set of collations, so
   changing the character set requires also changing the collation.
 
+* `placement_policy` - (Optional) The TiDB placement policy to assign to the
+  database. This argument is only supported when the connected server is TiDB.
+  When omitted on TiDB, the provider emits `PLACEMENT POLICY=default`.
+
 Note that the defaults for character set and collation above do not respect
 any defaults set on the MySQL server, so that the configuration can be set
 appropriately even though Terraform cannot see the server-level defaults. If
 you wish to use the server's defaults you must consult the server's
 configuration and then set the ``default_character_set`` and
 ``default_collation`` to match.
+
+### TiDB placement policy
+
+```hcl
+resource "mysql_ti_placement_policy" "regional" {
+  name           = "regional"
+  primary_region = "us-east-1"
+  regions        = ["us-east-1", "us-west-2"]
+}
+
+resource "mysql_database" "app" {
+  name             = "my_app"
+  placement_policy = mysql_ti_placement_policy.regional.name
+}
+```
 
 ## Attributes Reference
 

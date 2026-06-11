@@ -10,12 +10,13 @@ description: |-
 The `mysql_user_password` resource sets and manages a password for a given
 user on a MySQL server.
 
-~> **NOTE on MySQL Passwords:** This resource conflicts with the `password`
-   argument for `mysql_user`. This resource uses PGP encryption to avoid
-   storing unencrypted passwords in Terraform state.
+~> **NOTE on MySQL Passwords:** This resource should not be used together with
+   password arguments on `mysql_user` for the same account.
 
-~> **NOTE on How Passwords are Created:** This resource **automatically**
-   generates a **random** password. The password will be a random UUID.
+~> **NOTE on How Passwords are Created:** When `plaintext_password` is omitted,
+   this resource automatically generates a random UUID password and stores it
+   in Terraform state. Provide `plaintext_password` yourself if you want to
+   control the value.
 
 ## Example Usage
 
@@ -36,15 +37,13 @@ password will be updated accordingly.
 ## Argument Reference
 The following arguments are supported:
 
-* `user` - (Required) The IAM user to associate with this access key.
+* `user` - (Required) The MySQL user whose password should be managed.
 * `host` - (Optional) The source host of the user. Defaults to `localhost`.
+* `plaintext_password` - (Optional) The password to set. When omitted, a random UUID is generated.
+* `retain_old_password` - (Optional) When `true`, the old password is retained while setting a new password. Requires MySQL 8.0.14 or newer.
 
 ## Attributes Reference
 
 The following additional attributes are exported:
 
-* `key_fingerprint` - The fingerprint of the PGP key used to encrypt the password
-* `encrypted_password` - The encrypted password, base64 encoded.
-
-~> **NOTE:** The encrypted password may be decrypted using the command line,
-   for example: `terraform output encrypted_password | base64 --decode | keybase pgp decrypt`.
+* `id` - The user and host, composed as `user@host`.
