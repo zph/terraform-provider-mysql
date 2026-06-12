@@ -18,13 +18,11 @@ func TestActionsMatrixUsesSingleEntrySource(t *testing.T) {
 		if row.DBVersion != entry.Version {
 			t.Fatalf("row %d db_version = %q, want %q", i, row.DBVersion, entry.Version)
 		}
-		if row.MakeTarget != entry.MakeTarget() {
-			t.Fatalf("row %d make_target = %q, want %q", i, row.MakeTarget, entry.MakeTarget())
+		key := row.DBType + ":" + row.DBVersion
+		if seenTargets[key] {
+			t.Fatalf("duplicate matrix row %q", key)
 		}
-		if seenTargets[row.MakeTarget] {
-			t.Fatalf("duplicate make target %q", row.MakeTarget)
-		}
-		seenTargets[row.MakeTarget] = true
+		seenTargets[key] = true
 	}
 }
 
@@ -34,28 +32,24 @@ func TestEntryImages(t *testing.T) {
 		entry       Entry
 		wantDisplay string
 		wantDocker  string
-		wantMake    string
 	}{
 		{
 			name:        "mysql",
 			entry:       Entry{Database: MySQL, Version: "8.0"},
 			wantDisplay: "mysql:8.0",
 			wantDocker:  "mysql:8.0",
-			wantMake:    "test-mysql-8.0",
 		},
 		{
 			name:        "percona 8 uses native image",
 			entry:       Entry{Database: Percona, Version: "8.0"},
 			wantDisplay: "percona/percona-server:8.0",
 			wantDocker:  "percona/percona-server:8.0",
-			wantMake:    "test-percona-8.0",
 		},
 		{
 			name:        "tidb displays version",
 			entry:       Entry{Database: TiDB, Version: "8.5.5"},
 			wantDisplay: "8.5.5",
 			wantDocker:  "tidb:8.5.5",
-			wantMake:    "test-tidb-8.5.5",
 		},
 	}
 
@@ -66,9 +60,6 @@ func TestEntryImages(t *testing.T) {
 			}
 			if got := tt.entry.DockerImage(); got != tt.wantDocker {
 				t.Fatalf("DockerImage() = %q, want %q", got, tt.wantDocker)
-			}
-			if got := tt.entry.MakeTarget(); got != tt.wantMake {
-				t.Fatalf("MakeTarget() = %q, want %q", got, tt.wantMake)
 			}
 		})
 	}

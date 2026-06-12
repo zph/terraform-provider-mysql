@@ -156,8 +156,8 @@ jobs:
           TF_ACC: 1
         run: |
           export PATH="${{ github.workspace }}/bin:$PATH"
-          echo "Running ${{ matrix.db_type }} ${{ matrix.db_version }} tests using Makefile target: ${{ matrix.make_target }}"
-          make ${{ matrix.make_target }}
+          echo "Running ${{ matrix.db_type }} ${{ matrix.db_version }} tests"
+          make testcontainers-db DB="${{ matrix.db_type }}" VERSION="${{ matrix.db_version }}"
 
   release:
     name: 'Terraform Provider Release'

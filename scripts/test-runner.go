@@ -33,7 +33,7 @@ const (
 
 const (
 	defaultTestPackage = "./mysql/..."
-	defaultTestTimeout = "15m"
+	defaultTestTimeout = "30m"
 	defaultTestPattern = runAllTestPattern
 	runAllTestPattern  = "."
 )

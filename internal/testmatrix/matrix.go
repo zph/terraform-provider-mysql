@@ -61,9 +61,8 @@ type GitHubActionsMatrix struct {
 }
 
 type GitHubActionsEntry struct {
-	DBType     string `json:"db_type"`
-	DBVersion  string `json:"db_version"`
-	MakeTarget string `json:"make_target"`
+	DBType    string `json:"db_type"`
+	DBVersion string `json:"db_version"`
 }
 
 func All() []Entry {
@@ -77,9 +76,8 @@ func ActionsMatrix() GitHubActionsMatrix {
 	matrix := GitHubActionsMatrix{Include: make([]GitHubActionsEntry, 0, len(entries))}
 	for _, entry := range entries {
 		matrix.Include = append(matrix.Include, GitHubActionsEntry{
-			DBType:     entry.Database.CLIName(),
-			DBVersion:  entry.Version,
-			MakeTarget: entry.MakeTarget(),
+			DBType:    entry.Database.CLIName(),
+			DBVersion: entry.Version,
 		})
 	}
 	return matrix
@@ -108,10 +106,6 @@ func (entry Entry) DockerImage() string {
 	default:
 		return entry.Database.CLIName() + ":" + entry.Version
 	}
-}
-
-func (entry Entry) MakeTarget() string {
-	return fmt.Sprintf("test-%s-%s", entry.Database.CLIName(), entry.Version)
 }
 
 func ImageForDBVersion(dbType, version string) (string, error) {
