@@ -11,46 +11,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/zph/terraform-provider-mysql/v3/internal/testmatrix"
 )
 
-var (
-	// MySQL versions to test
-	mysqlVersions = []string{
-		imageMySQL57,
-		imageMySQL80,
-	}
-
-	// Percona versions to test
-	perconaVersions = []string{
-		imagePercona57,
-		imagePercona80Native,
-	}
-
-	// MariaDB versions to test
-	mariadbVersions = []string{
-		imageMariaDB103,
-		imageMariaDB108,
-		imageMariaDB1010,
-	}
-
-	// TiDB versions to test (version numbers only, not full image names)
-	tidbVersions = []string{
-		versionTiDB617,
-		versionTiDB6512,
-		versionTiDB716,
-		versionTiDB757,
-		versionTiDB812,
-		versionTiDB855,
-	}
-)
-
-type databaseType string
+type databaseType = testmatrix.Database
 
 const (
-	dbMySQL   databaseType = "MySQL"
-	dbPercona databaseType = "Percona"
-	dbMariaDB databaseType = "MariaDB"
-	dbTiDB    databaseType = "TiDB"
+	dbMySQL   = testmatrix.MySQL
+	dbPercona = testmatrix.Percona
+	dbMariaDB = testmatrix.MariaDB
+	dbTiDB    = testmatrix.TiDB
 )
 
 const (
@@ -65,37 +36,6 @@ const (
 	defaultTestTimeout = "15m"
 	defaultTestPattern = runAllTestPattern
 	runAllTestPattern  = "."
-)
-
-const (
-	imageMySQLPrefix             = "mysql:"
-	imagePerconaPrefix           = "percona:"
-	imagePerconaRepoPrefix       = "percona/"
-	imagePerconaServerPrefix     = "percona/percona-server:"
-	imageDockerPerconaRepoPrefix = "docker.io/percona/"
-	imageMariaDBPrefix           = "mariadb:"
-	imageTiDBPrefix              = "tidb:"
-
-	imageMySQL57         = "mysql:5.7"
-	imageMySQL80         = "mysql:8.0"
-	imagePercona57       = "percona:5.7"
-	imagePercona80Alias  = "percona:8.0"
-	imagePercona80Native = "percona/percona-server:8.0"
-	imageMariaDB103      = "mariadb:10.3"
-	imageMariaDB108      = "mariadb:10.8"
-	imageMariaDB1010     = "mariadb:10.10"
-)
-
-const (
-	versionPercona80 = "8.0"
-	versionMySQL57   = "5.7"
-	versionPercona57 = "5.7"
-	versionTiDB617   = "6.1.7"
-	versionTiDB6512  = "6.5.12"
-	versionTiDB716   = "7.1.6"
-	versionTiDB757   = "7.5.7"
-	versionTiDB812   = "8.1.2"
-	versionTiDB855   = "8.5.5"
 )
 
 const (
@@ -301,29 +241,14 @@ func matrixJobs(cfg testRunnerConfig) ([]testJob, []testResult) {
 	var skippedResults []testResult
 	testNum := 0
 
-	for _, image := range mysqlVersions {
+	for _, entry := range testmatrix.All() {
 		testNum++
-		jobs = append(jobs, newTestJob(dbMySQL, image, image, cfg, testNum))
-	}
-
-	for _, image := range perconaVersions {
-		testNum++
-		job := newTestJob(dbPercona, image, image, cfg, testNum)
+		job := newTestJob(entry.Database, entry.DisplayImage(), entry.DockerImage(), cfg, testNum)
 		if skipped, ok := skipResult(job); ok {
 			skippedResults = append(skippedResults, *skipped)
 			continue
 		}
 		jobs = append(jobs, job)
-	}
-
-	for _, image := range mariadbVersions {
-		testNum++
-		jobs = append(jobs, newTestJob(dbMariaDB, image, image, cfg, testNum))
-	}
-
-	for _, version := range tidbVersions {
-		testNum++
-		jobs = append(jobs, newTestJob(dbTiDB, version, imageTiDBPrefix+version, cfg, testNum))
 	}
 
 	return jobs, skippedResults
@@ -351,21 +276,7 @@ func skipResult(job testJob) (*testResult, bool) {
 }
 
 func imageForDBVersion(dbType, version string) (string, error) {
-	switch strings.ToLower(dbType) {
-	case cliDBMySQL:
-		return imageMySQLPrefix + version, nil
-	case cliDBPercona:
-		if isVersionInSeries(version, versionPercona80) {
-			return imagePerconaServerPrefix + version, nil
-		}
-		return imagePerconaPrefix + version, nil
-	case cliDBMariaDB:
-		return imageMariaDBPrefix + version, nil
-	case cliDBTiDB:
-		return imageTiDBPrefix + version, nil
-	default:
-		return "", fmt.Errorf("unsupported database type %q", dbType)
-	}
+	return testmatrix.ImageForDBVersion(dbType, version)
 }
 
 func jobFromImage(rawImage string, cfg testRunnerConfig, testNum int) (testJob, error) {
@@ -378,28 +289,11 @@ func jobFromImage(rawImage string, cfg testRunnerConfig, testNum int) (testJob, 
 }
 
 func normalizeImageAlias(image string) string {
-	if strings.HasPrefix(image, imagePerconaPrefix) {
-		version := strings.TrimPrefix(image, imagePerconaPrefix)
-		if isVersionInSeries(version, versionPercona80) {
-			return imagePerconaServerPrefix + version
-		}
-	}
-	return image
+	return testmatrix.NormalizeImageAlias(image)
 }
 
 func inferDBTypeAndDisplayImage(image string) (databaseType, string, error) {
-	switch {
-	case strings.HasPrefix(image, imageMySQLPrefix):
-		return dbMySQL, image, nil
-	case strings.HasPrefix(image, imagePerconaPrefix) || strings.HasPrefix(image, imagePerconaRepoPrefix) || strings.HasPrefix(image, imageDockerPerconaRepoPrefix):
-		return dbPercona, image, nil
-	case strings.HasPrefix(image, imageMariaDBPrefix):
-		return dbMariaDB, image, nil
-	case strings.HasPrefix(image, imageTiDBPrefix):
-		return dbTiDB, strings.TrimPrefix(image, imageTiDBPrefix), nil
-	default:
-		return "", "", fmt.Errorf("could not infer database type from image %q", image)
-	}
+	return testmatrix.InferDatabaseAndDisplayImage(image)
 }
 
 func newTestJob(dbType databaseType, image, dockerImage string, cfg testRunnerConfig, testNum int) testJob {
@@ -423,8 +317,8 @@ func isARMPlatform() bool {
 }
 
 func needsAMD64Platform(dbType databaseType, image string) bool {
-	return (dbType == dbMySQL && imageIsInSeries(image, imageMySQLPrefix, versionMySQL57)) ||
-		(dbType == dbPercona && imageIsInSeries(image, imagePerconaPrefix, versionPercona57))
+	return (dbType == dbMySQL && testmatrix.ImageIsInSeries(image, testmatrix.ImageMySQLPrefix, testmatrix.VersionMySQL57)) ||
+		(dbType == dbPercona && testmatrix.ImageIsInSeries(image, testmatrix.ImagePerconaPrefix, testmatrix.VersionPercona57))
 }
 
 func shouldDisableRyukForPodman() bool {
@@ -435,18 +329,7 @@ func shouldSkipForPodmanPercona57Emulation(dbType databaseType, image string) bo
 	return isARMPlatform() &&
 		strings.Contains(os.Getenv(envDockerHost), podmanSocketName) &&
 		dbType == dbPercona &&
-		imageIsInSeries(image, imagePerconaPrefix, versionPercona57)
-}
-
-func imageIsInSeries(image, prefix, series string) bool {
-	if !strings.HasPrefix(image, prefix) {
-		return false
-	}
-	return isVersionInSeries(strings.TrimPrefix(image, prefix), series)
-}
-
-func isVersionInSeries(version, series string) bool {
-	return version == series || strings.HasPrefix(version, series+".")
+		testmatrix.ImageIsInSeries(image, testmatrix.ImagePerconaPrefix, testmatrix.VersionPercona57)
 }
 
 func truthyEnv(key string) bool {
@@ -928,7 +811,7 @@ func (t *incrementalResultTable) append(result testResult) {
 
 	t.printHeaderLocked()
 	printResultTableRow([]string{
-		string(result.dbType),
+		result.dbType.Label(),
 		extractVersion(result.image),
 		resultStatus(result),
 		formatDuration(result.duration),

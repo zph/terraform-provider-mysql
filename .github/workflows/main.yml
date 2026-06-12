@@ -7,11 +7,6 @@ on:
   pull_request:
     branches: [ "*" ]
 
-# TiDB versions used in tests - single source of truth
-# Latest version of each minor series: 6.1.x, 6.5.x, 7.1.x, 7.5.x, 8.1.x, 8.5.x
-env:
-  TIDB_VERSIONS: "6.1.7 6.5.12 7.1.6 7.5.7 8.1.2 8.5.5"
-
 jobs:
   lint:
     runs-on: ubuntu-22.04
@@ -30,41 +25,23 @@ jobs:
   prepare-dependencies:
     name: Prepare Dependencies
     runs-on: ubuntu-22.04
+    outputs:
+      test_matrix: ${{ steps.test-matrix.outputs.test_matrix }}
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Validate TiDB versions sync
-        run: |
-          # Extract TiDB versions from test matrix and compare with env.TIDB_VERSIONS
-          EXPECTED_VERSIONS="${{ env.TIDB_VERSIONS }}"
-          MATRIX_VERSIONS=$(grep -A 20 "db_type: tidb" .github/workflows/main.yml | grep "db_version:" | sed 's/.*db_version: "\([0-9.]*\)".*/\1/' | tr '\n' ' ' | xargs)
-
-          echo "Expected versions (from env): $EXPECTED_VERSIONS"
-          echo "Matrix versions (from workflow): $MATRIX_VERSIONS"
-
-          # Check if versions match (simple check - both should contain same versions)
-          MISSING=""
-          for version in $EXPECTED_VERSIONS; do
-            if ! echo "$MATRIX_VERSIONS" | grep -q "$version"; then
-              MISSING="$MISSING $version"
-            fi
-          done
-
-          if [ -n "$MISSING" ]; then
-            echo "ERROR: TiDB versions in env.TIDB_VERSIONS not found in test matrix: $MISSING"
-            echo "Please ensure test matrix includes tidb entries for all versions in env.TIDB_VERSIONS"
-            exit 1
-          fi
-
-          echo "✓ TiDB versions are in sync"
-
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version-file: go.mod
+
+      - name: Generate test matrix
+        id: test-matrix
+        run: |
+          printf 'test_matrix=%s\n' "$(go run scripts/test-matrix.go --github-actions)" >> "$GITHUB_OUTPUT"
 
       - name: Download Terraform
         run: |
@@ -126,51 +103,7 @@ jobs:
     needs: [prepare-dependencies]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-        # MySQL versions
-        - db_type: mysql
-          db_version: "5.7"
-          make_target: "test-mysql-5.7"
-        - db_type: mysql
-          db_version: "8.0"
-          make_target: "test-mysql-8.0"
-        # Percona versions
-        - db_type: percona
-          db_version: "5.7"
-          make_target: "test-percona-5.7"
-        - db_type: percona
-          db_version: "8.0"
-          make_target: "test-percona-8.0"
-        # MariaDB versions
-        - db_type: mariadb
-          db_version: "10.3"
-          make_target: "test-mariadb-10.3"
-        - db_type: mariadb
-          db_version: "10.8"
-          make_target: "test-mariadb-10.8"
-        - db_type: mariadb
-          db_version: "10.10"
-          make_target: "test-mariadb-10.10"
-        # TiDB versions - must match env.TIDB_VERSIONS: 6.1.7 6.5.12 7.1.6 7.5.7 8.1.2 8.5.5
-        - db_type: tidb
-          db_version: "6.1.7"
-          make_target: "test-tidb-6.1.7"
-        - db_type: tidb
-          db_version: "6.5.12"
-          make_target: "test-tidb-6.5.12"
-        - db_type: tidb
-          db_version: "7.1.6"
-          make_target: "test-tidb-7.1.6"
-        - db_type: tidb
-          db_version: "7.5.7"
-          make_target: "test-tidb-7.5.7"
-        - db_type: tidb
-          db_version: "8.1.2"
-          make_target: "test-tidb-8.1.2"
-        - db_type: tidb
-          db_version: "8.5.5"
-          make_target: "test-tidb-8.5.5"
+      matrix: ${{ fromJSON(needs.prepare-dependencies.outputs.test_matrix) }}
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v4
