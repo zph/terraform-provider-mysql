@@ -98,9 +98,27 @@ jobs:
           retention-days: 1
           compression-level: 6
 
-  tests:
+  unit-tests:
+    name: Unit Tests
     runs-on: ubuntu-22.04
-    needs: [prepare-dependencies]
+    steps:
+      - name: Checkout Git repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
+      - name: Run unit tests via Makefile
+        run: make test-unit
+
+  tests:
+    name: Acceptance Matrix
+    runs-on: ubuntu-22.04
+    needs: [prepare-dependencies, unit-tests]
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare-dependencies.outputs.test_matrix) }}

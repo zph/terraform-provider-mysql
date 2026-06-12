@@ -1,5 +1,5 @@
 TEST?=./mysql/...
-UNIT_TEST?=./internal/...
+UNIT_TEST?=./internal/... ./mysql
 UNIT_TEST_TIMEOUT?=5m
 GOFMT_FILES?=$$(find . -name '*.go' |grep -v vendor)
 WEBSITE_REPO=github.com/hashicorp/terraform-website
