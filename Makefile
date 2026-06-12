@@ -1,4 +1,6 @@
 TEST?=./mysql/...
+UNIT_TEST?=./internal/...
+UNIT_TEST_TIMEOUT?=5m
 GOFMT_FILES?=$$(find . -name '*.go' |grep -v vendor)
 WEBSITE_REPO=github.com/hashicorp/terraform-website
 PKG_NAME=mysql
@@ -45,9 +47,11 @@ help: ## Show this help message
 	@echo 'Examples:'
 	@echo '  make build              Build the provider'
 	@echo '  make release            Create a release PR branch (PR-based workflow)'
+	@echo '  make test-unit          Run unit tests without testcontainers'
+	@echo '  make test-integration   Run testcontainers integration matrix'
 	@echo '  make testcontainers-db DB=mysql VERSION=8.0'
-	@echo '  make test VERBOSE=1    Run test matrix and stream go test output'
-	@echo '  make acceptance        Run all acceptance tests'
+	@echo '  make test VERBOSE=1    Run unit and integration tests, streaming integration output'
+	@echo '  make acceptance        Run integration tests sequentially'
 	@echo '  make testcontainers-matrix  Run test matrix across all database versions'
 
 default: help
@@ -86,12 +90,16 @@ build-tiup-playground-image: ## Pre-build TiUP Playground Docker image for cachi
 	@docker build -f Dockerfile.tiup-playground -t terraform-provider-mysql-tiup-playground:latest .
 	@echo "✓ TiUP Playground image built successfully: terraform-provider-mysql-tiup-playground:latest"
 
-test: testcontainers-matrix ## Run all acceptance tests
-test-sequential: acceptance
+test: test-unit test-integration ## Run unit tests, then integration tests
+test-unit: fmtcheck ## Run unit tests that do not require testcontainers or external database servers
+	@go test $(UNIT_TEST) $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=$(UNIT_TEST_TIMEOUT)
 
-# Run testcontainers tests with a matrix of all database versions
+test-integration: testcontainers-matrix ## Run testcontainers integration tests
+test-sequential: acceptance ## Run testcontainers integration tests sequentially
+
+# Run testcontainers integration tests with a matrix of all database versions
 # Usage: make testcontainers-matrix TESTARGS="TestAccUser"
-testcontainers-matrix: fmtcheck bin/terraform ## Run test matrix across all database versions
+testcontainers-matrix: fmtcheck bin/terraform ## Run integration test matrix across all database versions
 	@PARALLEL=$(if $(VERBOSE),1,4); $(TESTCONTAINERS_RUNNER) $(TESTARGS)
 
 # Run testcontainers tests for a specific database image
@@ -121,7 +129,7 @@ bin/terraform: ## Download Terraform binary
 testacc: fmtcheck bin/terraform ## Run acceptance tests (requires MYSQL_ENDPOINT env vars)
 	PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout=90s
 
-acceptance: fmtcheck bin/terraform ## Run all acceptance tests across all database versions
+acceptance: fmtcheck bin/terraform ## Run integration test matrix sequentially
 	@PARALLEL=1; $(TESTCONTAINERS_RUNNER) $(TESTARGS)
 
 # MySQL test targets - use testcontainers
@@ -369,4 +377,4 @@ release-local: ## Create a release locally (for testing - use 'make release' for
 release: ## Create a release PR branch (tag, push branch and tag, then create PR to merge to default branch)
 	@go run scripts/make-release.go
 
-.PHONY: help build test testacc vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag release release-local
+.PHONY: help build test test-unit test-integration test-sequential testcontainers-matrix testcontainers-image testcontainers-db testcontainers-matrix-check testcontainers-matrix-update testacc acceptance vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag release release-local
