@@ -2,15 +2,66 @@ package mysql
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
-	"log"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
+
+func TestParseResourceGroupResourceUnits(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		want    int
+		wantErr bool
+	}{
+		{
+			name: "numeric",
+			raw:  "1000",
+			want: 1000,
+		},
+		{
+			name: "max int numeric",
+			raw:  "2147483647",
+			want: tiDBUnlimitedResourceUnits,
+		},
+		{
+			name: "unlimited",
+			raw:  "UNLIMITED",
+			want: tiDBUnlimitedResourceUnits,
+		},
+		{
+			name: "case insensitive unlimited",
+			raw:  " unlimited ",
+			want: tiDBUnlimitedResourceUnits,
+		},
+		{
+			name:    "invalid",
+			raw:     "not-a-number",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseResourceGroupResourceUnits(tt.raw)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("got %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestTIDBResourceGroup_basic_to_full(t *testing.T) {
 	varName := "rg100"
@@ -109,34 +160,14 @@ func testAccResourceGroupExists(varName string) resource.TestCheckFunc {
 	}
 }
 
-func NewResourceGroup(name string) *ResourceGroup {
-	return &ResourceGroup{
-		Name:          name,
-		ResourceUnits: 2000,
-		Priority:      "medium",
-		Burstable:     false,
-		QueryLimit:    "EXEC_ELAPSED='15s', ACTION=COOLDOWN, WATCH=SIMILAR DURATION='10m0s'",
-	}
-}
-
 func getResourceGroup(name string) (*ResourceGroup, error) {
-	rg := NewResourceGroup(name)
-
 	ctx := context.Background()
 	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
 	if err != nil {
 		return nil, err
 	}
-	query := fmt.Sprintf(`SELECT NAME, RU_PER_SEC, LOWER(PRIORITY), BURSTABLE = 'YES' as BURSTABLE, IFNULL(QUERY_LIMIT, "") FROM information_schema.resource_groups WHERE NAME="%s";`, rg.Name)
 
-	log.Printf("[DEBUG] SQL: %s\n", query)
-
-	err = db.QueryRow(query).Scan(&rg.Name, &rg.ResourceUnits, &rg.Priority, &rg.Burstable, &rg.QueryLimit)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("error during get resource group (%s): %s", rg.Name, err)
-	}
-
-	return rg, nil
+	return getResourceGroupFromDB(db, name)
 }
 
 func testAccResourceGroupCheckDestroy(varName string) resource.TestCheckFunc {

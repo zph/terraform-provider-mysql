@@ -76,6 +76,8 @@ var DefaultResourceGroup = ResourceGroup{
 
 var ResourceGroupTiDBMinVersion = "7.5.0"
 
+const tiDBUnlimitedResourceUnits = 2147483647
+
 func resourceTiResourceGroup() *schema.Resource {
 	return &schema.Resource{
 		CreateContext: CreateResourceGroup,
