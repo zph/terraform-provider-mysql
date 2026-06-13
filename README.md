@@ -25,22 +25,19 @@ released there.
 
 ## Security / Chain of Custody
 
-We sign releases with a GPG key currently using goreleaser locally on the personal
-equipment of @ZPH. As the maintainer of this fork, I, @ZPH, attest that the builds
-represent the exact SHA of the version control with no alterations. The credentials
-are stored in a credential manager with layers of safeguards and no other individuals
-have access.
+Production releases are built, checksummed, signed, and published by GitHub Actions
+from pushed `v*` tags. The release job in `.github/workflows/main.yml` uses
+HashiCorp's Terraform provider release workflow after the required tests and matrix
+version policy checks pass.
 
-The near term goal is to setup github actions to provide this guarantee
-so that even if I were a malicious actor or coerced,
-I could not introduce opaque security issues into binary releases.
-
-In the meantime, I certify by my professional reputation and career as:
-https://www.linkedin.com/in/zph/ that appropriate safeguards are being taken.
+Local machines are only used to prepare the release branch and push the annotated
+tag with `make release`. They do not separately build or publish production release
+artifacts. The release artifacts are reproducible and verifiable from the tag SHA,
+the GitHub Actions workflow run, and the published checksums and signature.
 
 ## Release Process
 
-The release process uses a PR-based workflow through the `make release` command. This creates a release branch, tags the release, and pushes both to GitHub. GitHub Actions then automatically builds and creates the release when the tag is pushed.
+The release process uses a PR-based workflow through the `make release` command. This creates a release branch, tags the release, and pushes both to GitHub. A pushed `v*` tag triggers GitHub Actions, and the release job automatically builds and publishes the release after the required checks pass.
 
 ### Prerequisites
 
@@ -79,7 +76,7 @@ The `make release` command implements a PR-based workflow:
 
 8. **Push to GitHub**: Pushes both the release branch and tag to GitHub.
 
-9. **GitHub Actions**: When the tag is pushed, GitHub Actions automatically:
+9. **GitHub Actions**: When the `v*` tag is pushed and the required checks pass, GitHub Actions automatically:
    - Builds binaries for all supported platforms (Linux, macOS, Windows, FreeBSD)
    - Creates archives (zip files) for each platform/architecture combination
    - Generates SHA256 checksums
@@ -186,7 +183,7 @@ This command:
 
 - **GitHub push fails**: Check your git credentials or SSH keys are configured correctly
 - **Branch already exists**: If the release branch already exists, delete it first or use a different version
-- **CI/CD build fails**: Check GitHub Actions logs for build errors. The release will be created automatically when the tag is pushed successfully
+- **CI/CD build fails**: Check GitHub Actions logs for build errors. The release is created automatically by the tag workflow after the required jobs pass
 - **PR merge conflicts**: Resolve conflicts in the PR before merging. The tag and release are already created, so merging just updates the default branch
 
 ## Original Readme
@@ -226,8 +223,12 @@ provider "mysql" {
 Building The Provider
 ---------------------
 
-If you want to reproduce a build (to verify my build confirms to sources),
-download the provider of any version first and find the correct go version:
+For this fork, production release artifacts are built by GitHub Actions from the
+published tag. To verify a release, compare the tag SHA, the GitHub Actions release
+workflow run, and the published checksums and signature.
+
+For local debugging or exploratory reproduction, download the provider of any
+version first and find the correct go version:
 ```
 egrep -a -o 'go1[0-9\.]+' path_to_the_provider_binary
 ```
