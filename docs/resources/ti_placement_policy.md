@@ -66,6 +66,44 @@ resource "mysql_database" "app" {
 }
 ```
 
+### Applying a placement policy to existing objects
+
+```hcl
+resource "mysql_ti_table_placement_policy" "orders" {
+  database         = "my_app"
+  table            = "orders"
+  placement_policy = mysql_ti_placement_policy.regional.name
+}
+
+resource "mysql_ti_partition_placement_policy" "orders_p0" {
+  database         = "my_app"
+  table            = "orders"
+  partition        = "p0"
+  placement_policy = mysql_ti_placement_policy.regional.name
+}
+```
+
+## Provider Behavior and TiDB Readback Limitations
+
+TiDB placement policies are attached to existing objects with DDL such as `ALTER DATABASE`, `ALTER TABLE`, `ALTER TABLE ... PARTITION`, and `ALTER RANGE`. TiDB does not expose a separate "placement attachment" object that Terraform can create or delete. For that reason, the provider models database, table, partition, and range placement assignment as attachment resources.
+
+Destroying an attachment resource does not drop the underlying database, table, partition, or range. Instead, the provider runs the matching TiDB reset DDL with `PLACEMENT POLICY=default`. On TiDB this removes the explicit placement attachment for that scope. It does not restore any previous policy, and for tables or partitions it can cause the object to inherit placement from a broader scope such as a table, database, range, or global default.
+
+Readback is also uneven across TiDB placement scopes:
+
+* Databases, tables, and partitions expose direct policy names through `information_schema.schemata`, `information_schema.tables`, and `information_schema.partitions` as `TIDB_PLACEMENT_POLICY_NAME`.
+* A `NULL` policy name means "no direct policy attached at this scope". It does not necessarily mean that the object has no effective placement policy, because TiDB can inherit placement from broader scopes.
+* The provider maps `NULL` readback to `default` for attachment resources so Terraform has a stable value for "no direct attachment".
+* Range placement is different: `SHOW PLACEMENT` returns the expanded placement and scheduling state for `RANGE TiDB_GLOBAL` and `RANGE TiDB_META`, but does not return the original policy name assigned with `ALTER RANGE`.
+* Because range readback lacks the original policy name, range placement import requires `<range>:<placement_policy>`, and the provider cannot fully detect out-of-band changes that replace a range policy with another policy that expands to the same placement options.
+
+These behaviors line up with TiDB's upstream history:
+
+* Table and partition policy-name readback was added for machine-readable placement lookup in [pingcap/tidb#28798](https://github.com/pingcap/tidb/pull/28798), and schema-level readback was requested in [pingcap/tidb#29758](https://github.com/pingcap/tidb/issues/29758).
+* `TIDB_DIRECT_PLACEMENT` was later removed from the relevant `information_schema` tables in [pingcap/tidb#31741](https://github.com/pingcap/tidb/pull/31741), so this provider intentionally relies only on `TIDB_PLACEMENT_POLICY_NAME`.
+* Range placement has known version-specific defects and open issues, including missing permission checks for `ALTER RANGE` ([pingcap/tidb#62420](https://github.com/pingcap/tidb/issues/62420)) and `ALTER RANGE meta` RawKV range overlap ([pingcap/tidb#63133](https://github.com/pingcap/tidb/issues/63133), [pingcap/tidb#63236](https://github.com/pingcap/tidb/pull/63236)).
+* Older TiDB versions also had fixed defects around `ALTER RANGE meta`, policy updates for ranges, dropping similarly named policies, partition placement DDL, and TiFlash compute placement. See [pingcap/tidb#60888](https://github.com/pingcap/tidb/issues/60888), [pingcap/tidb#51712](https://github.com/pingcap/tidb/issues/51712), [pingcap/tidb#52257](https://github.com/pingcap/tidb/issues/52257), [pingcap/tidb#48630](https://github.com/pingcap/tidb/issues/48630), and [pingcap/tidb#58633](https://github.com/pingcap/tidb/issues/58633).
+
 ## Argument Reference
 
 The following arguments are supported:

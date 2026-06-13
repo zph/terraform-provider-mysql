@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"strconv"
@@ -8,7 +9,11 @@ import (
 )
 
 func querySingleRowStringMap(db *sql.DB, query string, args ...interface{}) (map[string]string, error) {
-	rows, err := db.Query(query, args...)
+	return querySingleRowStringMapContext(context.Background(), db, query, args...)
+}
+
+func querySingleRowStringMapContext(ctx context.Context, db *sql.DB, query string, args ...interface{}) (map[string]string, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -47,6 +47,9 @@ scripts/
 | `mysql_ti_resource_group_user_assignment` | `resource_ti_resource_group_user_assignment.go` | User-to-resource-group binding |
 | `mysql_ti_placement_policy` | `resource_ti_placement_policy.go` | Placement policies for data distribution |
 | `mysql_ti_placement_range_policy` | `resource_ti_placement_range_policy.go` | Global/meta range placement policy assignment |
+| `mysql_ti_database_placement_policy` | `resource_ti_placement_attachment.go` | Database placement policy assignment |
+| `mysql_ti_table_placement_policy` | `resource_ti_placement_attachment.go` | Table placement policy assignment |
+| `mysql_ti_partition_placement_policy` | `resource_ti_placement_attachment.go` | Partition placement policy assignment |
 
 ### Data Sources
 | Data Source | File | Description |
@@ -80,6 +83,14 @@ Supports multiple connection modes:
 - Uses `CREATE/ALTER/DROP PLACEMENT POLICY` SQL
 - Supports primary_region, regions list, and constraints
 - Reads from `information_schema.placement_policies`
+
+### Placement Attachments (`ti_*_placement_policy`)
+- Uses `ALTER DATABASE`, `ALTER TABLE`, and `ALTER TABLE ... PARTITION` placement SQL
+- Reads database, table, and partition policy names from `information_schema.schemata`, `information_schema.tables`, and `information_schema.partitions`
+- Destroy resets the explicit attachment to TiDB's `default` policy rather than dropping the underlying object
+- This is deliberately an attachment/reset model because TiDB does not expose standalone attachment objects and uses `NULL` catalog values to mean "no direct policy at this scope", not "no effective inherited policy"
+- Range placement is intentionally weaker: TiDB `SHOW PLACEMENT` does not return the original range policy name, so import requires `<range>:<placement_policy>` and exact policy-name drift is not detectable
+- Relevant upstream history: readback columns were added in pingcap/tidb#28798 and pingcap/tidb#29758; `TIDB_DIRECT_PLACEMENT` was removed in pingcap/tidb#31741; range placement still has open TiDB issues including pingcap/tidb#62420 and pingcap/tidb#63133
 
 ## Testing
 
