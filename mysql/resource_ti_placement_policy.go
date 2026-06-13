@@ -155,21 +155,18 @@ func resourceTiPlacementPolicy() *schema.Resource {
 			"leader_constraints": {
 				Type:     schema.TypeList,
 				Optional: true,
-				Computed: true,
 				ForceNew: false,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 			"follower_constraints": {
 				Type:     schema.TypeList,
 				Optional: true,
-				Computed: true,
 				ForceNew: false,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 			"learner_constraints": {
 				Type:     schema.TypeList,
 				Optional: true,
-				Computed: true,
 				ForceNew: false,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},

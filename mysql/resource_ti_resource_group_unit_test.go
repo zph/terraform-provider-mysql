@@ -105,6 +105,14 @@ func TestResourceGroupParsesTiDBResourceGroupReadValues(t *testing.T) {
 		t.Fatalf("mode = %q, want %q", mode, ResourceGroupBurstableModeUnlimited)
 	}
 
+	burstable, mode = parseResourceGroupBurstable("YES")
+	if !burstable {
+		t.Fatal("legacy burstable = false, want true")
+	}
+	if mode != "" {
+		t.Fatalf("legacy mode = %q, want empty", mode)
+	}
+
 	burstable, mode = parseResourceGroupBurstable("OFF")
 	if burstable {
 		t.Fatal("burstable = true, want false")

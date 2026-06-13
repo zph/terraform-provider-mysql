@@ -335,8 +335,10 @@ func parseResourceGroupResourceUnits(raw string) (int, error) {
 func parseResourceGroupBurstable(raw string) (bool, string) {
 	switch strings.ToUpper(strings.TrimSpace(raw)) {
 	case "YES", "TRUE", "1":
-		return true, ResourceGroupBurstableModeModerated
-	case "NO", "FALSE", "0", "OFF":
+		return true, ""
+	case "NO", "FALSE", "0":
+		return false, ""
+	case "OFF":
 		return false, ResourceGroupBurstableModeOff
 	case "MODERATED":
 		return true, ResourceGroupBurstableModeModerated
