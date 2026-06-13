@@ -26,6 +26,7 @@ const (
 	VersionMySQL57   = "5.7"
 	VersionPercona57 = "5.7"
 	VersionPercona80 = "8.0"
+	VersionPercona84 = "8.4"
 )
 
 type Entry struct {
@@ -41,19 +42,20 @@ type Entry struct {
 }
 
 var Entries = []Entry{
-	{Database: MySQL, Cycle: "5.7", Version: "5.7", DockerRepo: "library/mysql", EOLProduct: "mysql", EOLCycle: "5.7"},
-	{Database: MySQL, Cycle: "8.0", Version: "8.0", DockerRepo: "library/mysql", EOLProduct: "mysql", EOLCycle: "8.0"},
-	{Database: Percona, Cycle: "5.7", Version: "5.7", DockerRepo: "library/percona", BuildSuffix: true, EOLProduct: "mysql", EOLCycle: "5.7", EOLProxyFor: "Percona Server"},
-	{Database: Percona, Cycle: "8.0", Version: "8.0", DockerRepo: "percona/percona-server", BuildSuffix: true, EOLProduct: "mysql", EOLCycle: "8.0", EOLProxyFor: "Percona Server"},
-	{Database: MariaDB, Cycle: "10.3", Version: "10.3", DockerRepo: "library/mariadb", EOLProduct: "mariadb", EOLCycle: "10.3"},
-	{Database: MariaDB, Cycle: "10.8", Version: "10.8", DockerRepo: "library/mariadb", EOLProduct: "mariadb", EOLCycle: "10.8"},
-	{Database: MariaDB, Cycle: "10.10", Version: "10.10", DockerRepo: "library/mariadb", EOLProduct: "mariadb", EOLCycle: "10.10"},
+	{Database: MySQL, Cycle: "8.0", Version: "8.0.46", DockerRepo: "library/mysql", EOLProduct: "mysql", EOLCycle: "8.0"},
+	{Database: MySQL, Cycle: "8.4", Version: "8.4.9", DockerRepo: "library/mysql", EOLProduct: "mysql", EOLCycle: "8.4"},
+	{Database: MySQL, Cycle: "9.7", Version: "9.7.0", DockerRepo: "library/mysql", EOLProduct: "mysql", EOLCycle: "9.7"},
+	{Database: Percona, Cycle: "8.0", Version: "8.0.46-37", DockerRepo: "percona/percona-server", BuildSuffix: true, EOLProduct: "mysql", EOLCycle: "8.0", EOLProxyFor: "Percona Server"},
+	{Database: Percona, Cycle: "8.4", Version: "8.4.8-8", DockerRepo: "percona/percona-server", BuildSuffix: true, EOLProduct: "mysql", EOLCycle: "8.4", EOLProxyFor: "Percona Server"},
+	{Database: MariaDB, Cycle: "10.11", Version: "10.11.18", DockerRepo: "library/mariadb", EOLProduct: "mariadb", EOLCycle: "10.11"},
+	{Database: MariaDB, Cycle: "11.4", Version: "11.4.12", DockerRepo: "library/mariadb", EOLProduct: "mariadb", EOLCycle: "11.4"},
+	{Database: MariaDB, Cycle: "11.8", Version: "11.8.8", DockerRepo: "library/mariadb", EOLProduct: "mariadb", EOLCycle: "11.8"},
 	{Database: TiDB, Cycle: "6.1", Version: "6.1.7", DockerRepo: "pingcap/tidb", TagPrefix: "v"},
 	{Database: TiDB, Cycle: "6.5", Version: "6.5.12", DockerRepo: "pingcap/tidb", TagPrefix: "v"},
 	{Database: TiDB, Cycle: "7.1", Version: "7.1.6", DockerRepo: "pingcap/tidb", TagPrefix: "v"},
 	{Database: TiDB, Cycle: "7.5", Version: "7.5.7", DockerRepo: "pingcap/tidb", TagPrefix: "v"},
 	{Database: TiDB, Cycle: "8.1", Version: "8.1.2", DockerRepo: "pingcap/tidb", TagPrefix: "v"},
-	{Database: TiDB, Cycle: "8.5", Version: "8.5.5", DockerRepo: "pingcap/tidb", TagPrefix: "v"},
+	{Database: TiDB, Cycle: "8.5", Version: "8.5.6", DockerRepo: "pingcap/tidb", TagPrefix: "v"},
 }
 
 type GitHubActionsMatrix struct {
@@ -95,7 +97,7 @@ func (entry Entry) DockerImage() string {
 	case MySQL:
 		return ImageMySQLPrefix + entry.Version
 	case Percona:
-		if IsVersionInSeries(entry.Version, VersionPercona80) {
+		if UsesPerconaServerImage(entry.Version) {
 			return ImagePerconaServerPrefix + entry.Version
 		}
 		return ImagePerconaPrefix + entry.Version
@@ -113,7 +115,7 @@ func ImageForDBVersion(dbType, version string) (string, error) {
 	case MySQL.CLIName():
 		return ImageMySQLPrefix + version, nil
 	case Percona.CLIName():
-		if IsVersionInSeries(version, VersionPercona80) {
+		if UsesPerconaServerImage(version) {
 			return ImagePerconaServerPrefix + version, nil
 		}
 		return ImagePerconaPrefix + version, nil
@@ -129,7 +131,7 @@ func ImageForDBVersion(dbType, version string) (string, error) {
 func NormalizeImageAlias(image string) string {
 	if strings.HasPrefix(image, ImagePerconaPrefix) {
 		version := strings.TrimPrefix(image, ImagePerconaPrefix)
-		if IsVersionInSeries(version, VersionPercona80) {
+		if UsesPerconaServerImage(version) {
 			return ImagePerconaServerPrefix + version
 		}
 	}
@@ -153,6 +155,10 @@ func InferDatabaseAndDisplayImage(image string) (Database, string, error) {
 
 func IsVersionInSeries(version, series string) bool {
 	return version == series || strings.HasPrefix(version, series+".")
+}
+
+func UsesPerconaServerImage(version string) bool {
+	return IsVersionInSeries(version, VersionPercona80) || IsVersionInSeries(version, VersionPercona84)
 }
 
 func ImageIsInSeries(image, prefix, series string) bool {

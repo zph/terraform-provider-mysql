@@ -41,9 +41,15 @@ func TestEntryImages(t *testing.T) {
 		},
 		{
 			name:        "percona 8 uses native image",
-			entry:       Entry{Database: Percona, Version: "8.0"},
-			wantDisplay: "percona/percona-server:8.0",
-			wantDocker:  "percona/percona-server:8.0",
+			entry:       Entry{Database: Percona, Version: "8.0.46-37"},
+			wantDisplay: "percona/percona-server:8.0.46-37",
+			wantDocker:  "percona/percona-server:8.0.46-37",
+		},
+		{
+			name:        "percona 8.4 uses native image",
+			entry:       Entry{Database: Percona, Version: "8.4.8-8"},
+			wantDisplay: "percona/percona-server:8.4.8-8",
+			wantDocker:  "percona/percona-server:8.4.8-8",
 		},
 		{
 			name:        "tidb displays version",

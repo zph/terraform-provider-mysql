@@ -290,11 +290,15 @@ make testversion8.0
 
 ### CI Testing Strategy
 
-Our CI workflow tests against multiple TiDB versions (latest of each minor series) to ensure compatibility across different releases. To optimize cache performance and avoid timeouts, we cache each TiDB version separately rather than caching all versions together. This approach:
+Our CI workflow tests the database matrix defined in `internal/testmatrix/matrix.go`
+across MySQL, Percona Server, MariaDB, and TiDB. The matrix policy is:
 
-- Prevents cache upload timeouts (each cache is ~700-800MB instead of 4.5GB)
-- Allows each test job to download and cache only the version it needs
-- Shares the TiUP binary cache across all tests for efficiency
-- Automatically cleans up unused caches after 7 days
+- Test the latest patch version for each selected major/minor database line.
+- Include every supported major/minor line that has not reached EOL.
+- Keep EOL major/minor lines in the matrix for two years after their EOL date.
+- Mark lines more than two years past EOL as red in `make eol-versions`; red rows
+  fail the CI matrix version policy check.
 
-This strategy balances test coverage with CI performance and reliability.
+The `make eol-versions` target checks the matrix against upstream release and EOL
+metadata. `make eol-versions-ci` applies the same check in CI and fails only when
+the status column contains a red row.

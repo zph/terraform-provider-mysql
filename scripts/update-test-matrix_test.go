@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zph/terraform-provider-mysql/v3/internal/testmatrix"
 )
@@ -72,6 +73,43 @@ func TestMaxResultSeverity(t *testing.T) {
 
 	if got := maxResultSeverity(results); got != severityRed {
 		t.Fatalf("maxResultSeverity with red = %v, want %v", got, severityRed)
+	}
+}
+
+func TestEOLCriticalSeverityAndNotes(t *testing.T) {
+	result := matrixCheckResult{
+		Entry:       testmatrix.Entry{Database: testmatrix.MySQL, Cycle: "5.7", Version: "5.7.44"},
+		EOLWarning:  true,
+		EOLCritical: true,
+	}
+
+	if got := resultSeverityFor(result); got != severityRed {
+		t.Fatalf("resultSeverityFor() = %v, want %v", got, severityRed)
+	}
+	if got := resultNotes(result); got != "🟢/🔴" {
+		t.Fatalf("resultNotes() = %q, want %q", got, "🟢/🔴")
+	}
+}
+
+func TestEOLIsOlderThanPolicy(t *testing.T) {
+	eolDate := time.Date(2024, 6, 13, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name string
+		now  time.Time
+		want bool
+	}{
+		{name: "before two years", now: time.Date(2026, 6, 12, 23, 59, 59, 0, time.UTC), want: false},
+		{name: "exactly two years", now: time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC), want: false},
+		{name: "after two years", now: time.Date(2026, 6, 13, 0, 0, 1, 0, time.UTC), want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := eolIsOlderThanPolicy(eolDate, tt.now); got != tt.want {
+				t.Fatalf("eolIsOlderThanPolicy() = %t, want %t", got, tt.want)
+			}
+		})
 	}
 }
 

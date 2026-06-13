@@ -53,6 +53,7 @@ type matrixCheckResult struct {
 	Replacement  *versionReplacement
 	PatchWarning bool
 	EOLWarning   bool
+	EOLCritical  bool
 	NewerLine    bool
 }
 
@@ -165,8 +166,12 @@ func checkMatrixEntry(client *http.Client, entry testmatrix.Entry) matrixCheckRe
 			warnEOL()
 			break
 		}
-		if time.Now().After(eolDate) {
+		now := time.Now()
+		if now.After(eolDate) {
 			warnEOL()
+			if eolIsOlderThanPolicy(eolDate, now) {
+				result.EOLCritical = true
+			}
 		}
 	}
 
@@ -174,7 +179,7 @@ func checkMatrixEntry(client *http.Client, entry testmatrix.Entry) matrixCheckRe
 }
 
 func (result matrixCheckResult) HasWarning() bool {
-	return result.PatchWarning || result.EOLWarning || result.NewerLine
+	return result.PatchWarning || result.EOLWarning || result.EOLCritical || result.NewerLine
 }
 
 func displayEOL(eol string) string {
@@ -193,7 +198,7 @@ func printResultsTable(results []matrixCheckResult) {
 
 	writer := table.NewWriter()
 	writer.SetStyle(table.StyleLight)
-	writer.AppendHeader(table.Row{"Status", "Database", "Cycle", "Current", "Latest", "EOL Date", "Notes (patch/EOL)"})
+	writer.AppendHeader(table.Row{"Status", "Database", "Cycle", "Current", "Latest", "EOL Date", "Notes (present/eol)"})
 	for _, result := range results {
 		writer.AppendRow(table.Row{
 			totalStatus(result),
@@ -249,11 +254,16 @@ func resultNotes(result matrixCheckResult) string {
 	if result.NewerLine {
 		patch = "🔴"
 	}
-	return fmt.Sprintf("%s/%s", patch, statusCircle(!result.EOLWarning))
+
+	eol := statusCircle(!result.EOLWarning)
+	if result.EOLCritical {
+		eol = "🔴"
+	}
+	return fmt.Sprintf("%s/%s", patch, eol)
 }
 
 func resultSeverityFor(result matrixCheckResult) resultSeverity {
-	if result.NewerLine {
+	if result.NewerLine || result.EOLCritical {
 		return severityRed
 	}
 	if result.HasWarning() {
@@ -281,6 +291,10 @@ func (severity resultSeverity) Circle() string {
 	default:
 		return "🟢"
 	}
+}
+
+func eolIsOlderThanPolicy(eolDate, now time.Time) bool {
+	return now.After(eolDate.AddDate(2, 0, 0))
 }
 
 func reportGitHubActionsStatus(results []matrixCheckResult, summaryFile string) {
