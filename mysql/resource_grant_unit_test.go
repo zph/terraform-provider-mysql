@@ -17,12 +17,66 @@ func TestNormalizePerms(t *testing.T) {
 	})
 	want := []string{
 		"ALL PRIVILEGES",
-		"INSERT(C1, C3)",
-		"SELECT(A, B)",
+		"INSERT(c1, c3)",
+		"select(a, b)",
 	}
 
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("normalizePerms() = %#v, want %#v", got, want)
+	}
+}
+
+func TestArePrivilegesSetsEqualIgnoresCase(t *testing.T) {
+	a := []string{"SELECT (`id`, `key`, `order`)", "UPDATE(C2, C1)"}
+	b := []string{"select (`ID`, `KEY`, `ORDER`)", "update(c1, c2)"}
+
+	if !arePrivilegesSetsEqual(a, b) {
+		t.Fatalf("arePrivilegesSetsEqual(%#v, %#v) = false, want true", a, b)
+	}
+}
+
+func TestTablePrivilegeGrantPartialRevokePreservesGrantOption(t *testing.T) {
+	grant := &TablePrivilegeGrant{
+		Database:   "app_db",
+		Table:      "accounts",
+		Privileges: []string{"SELECT", "INSERT"},
+		Grant:      true,
+		UserOrRole: UserOrRole{Name: "app", Host: "%"},
+	}
+
+	got := grant.SQLPartialRevokePrivilegesStatement([]string{"INSERT"}, false)
+	want := "REVOKE INSERT ON `app_db`.`accounts` FROM 'app'@'%'"
+	if got != want {
+		t.Fatalf("SQLPartialRevokePrivilegesStatement() = %q, want %q", got, want)
+	}
+
+	got = grant.SQLPartialRevokePrivilegesStatement([]string{"INSERT"}, true)
+	want = "REVOKE INSERT, GRANT OPTION ON `app_db`.`accounts` FROM 'app'@'%'"
+	if got != want {
+		t.Fatalf("SQLPartialRevokePrivilegesStatement() = %q, want %q", got, want)
+	}
+}
+
+func TestProcedurePrivilegeGrantPartialRevokePreservesGrantOption(t *testing.T) {
+	grant := &ProcedurePrivilegeGrant{
+		Database:     "app_db",
+		ObjectT:      kProcedure,
+		CallableName: "rotate_keys",
+		Privileges:   []string{"EXECUTE"},
+		Grant:        true,
+		UserOrRole:   UserOrRole{Name: "app", Host: "localhost"},
+	}
+
+	got := grant.SQLPartialRevokePrivilegesStatement([]string{"EXECUTE"}, false)
+	want := "REVOKE EXECUTE ON PROCEDURE `app_db`.`rotate_keys` FROM 'app'@'localhost'"
+	if got != want {
+		t.Fatalf("SQLPartialRevokePrivilegesStatement() = %q, want %q", got, want)
+	}
+
+	got = grant.SQLPartialRevokePrivilegesStatement([]string{"EXECUTE"}, true)
+	want = "REVOKE EXECUTE, GRANT OPTION ON PROCEDURE `app_db`.`rotate_keys` FROM 'app'@'localhost'"
+	if got != want {
+		t.Fatalf("SQLPartialRevokePrivilegesStatement() = %q, want %q", got, want)
 	}
 }
 
@@ -43,7 +97,7 @@ func TestParseGrantFromRowTableGrant(t *testing.T) {
 	if tableGrant.Table != "accounts" {
 		t.Fatalf("Table = %q, want %q", tableGrant.Table, "accounts")
 	}
-	if !reflect.DeepEqual(tableGrant.Privileges, []string{"INSERT(C1, C2)", "SELECT"}) {
+	if !reflect.DeepEqual(tableGrant.Privileges, []string{"INSERT(c1, c2)", "SELECT"}) {
 		t.Fatalf("Privileges = %#v", tableGrant.Privileges)
 	}
 	if !tableGrant.Grant {
@@ -180,10 +234,37 @@ func TestParseResourceFromDataTableGrant(t *testing.T) {
 	if !ok {
 		t.Fatalf("parseResourceFromData returned %T, want *TablePrivilegeGrant", grant)
 	}
-	if !reflect.DeepEqual(tableGrant.Privileges, []string{"SELECT", "UPDATE(C1, C2)"}) {
+	if !reflect.DeepEqual(tableGrant.Privileges, []string{"select", "update(c1, c2)"}) {
 		t.Fatalf("Privileges = %#v", tableGrant.Privileges)
 	}
-	if got := tableGrant.SQLGrantStatement(); got != "GRANT SELECT, UPDATE(C1, C2) ON `app_db`.`accounts` TO 'app'@'%' REQUIRE SSL WITH GRANT OPTION" {
+	if got := tableGrant.SQLGrantStatement(); got != "GRANT select, update(c1, c2) ON `app_db`.`accounts` TO 'app'@'%' REQUIRE SSL WITH GRANT OPTION" {
+		t.Fatalf("SQLGrantStatement() = %q", got)
+	}
+}
+
+func TestParseResourceFromDataTableGrantDefaultsDatabase(t *testing.T) {
+	d := schema.TestResourceDataRaw(t, resourceGrant().Schema, map[string]interface{}{
+		"user":       "app",
+		"host":       "%",
+		"privileges": []interface{}{"select"},
+	})
+
+	grant, diagErr := parseResourceFromData(d)
+	if diagErr.HasError() {
+		t.Fatalf("parseResourceFromData returned diagnostics: %s", diagErr[0].Summary)
+	}
+
+	tableGrant, ok := grant.(*TablePrivilegeGrant)
+	if !ok {
+		t.Fatalf("parseResourceFromData returned %T, want *TablePrivilegeGrant", grant)
+	}
+	if tableGrant.Database != "*" {
+		t.Fatalf("Database = %q, want *", tableGrant.Database)
+	}
+	if tableGrant.Table != "*" {
+		t.Fatalf("Table = %q, want *", tableGrant.Table)
+	}
+	if got := tableGrant.SQLGrantStatement(); got != "GRANT select ON *.* TO 'app'@'%'" {
 		t.Fatalf("SQLGrantStatement() = %q", got)
 	}
 }

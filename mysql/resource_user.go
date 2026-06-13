@@ -2,10 +2,12 @@ package mysql
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/go-version"
@@ -22,6 +24,19 @@ func resourceUser() *schema.Resource {
 		DeleteContext: DeleteUser,
 		Importer: &schema.ResourceImporter{
 			StateContext: ImportUser,
+		},
+		CustomizeDiff: func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+			if _, ok := d.GetOk("max_user_connections"); ok {
+				if err := checkMaxUserConnectionsSupport(ctx, meta); err != nil {
+					return err
+				}
+			}
+			if _, ok := d.GetOk("max_statement_time"); ok {
+				if err := checkMaxStatementTimeSupport(ctx, meta); err != nil {
+					return err
+				}
+			}
+			return nil
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -116,15 +131,23 @@ func resourceUser() *schema.Resource {
 				DiffSuppressFunc: NewEmptyStringSuppressFunc,
 			},
 
-			// TiDB CREATE/ALTER USER supports MAX_USER_CONNECTIONS, account locking,
-			// comments, JSON attributes, and password lifecycle options.
-			// See https://docs.pingcap.com/tidb/stable/sql-statement-alter-user/.
 			"max_user_connections": {
-				Type:     schema.TypeInt,
-				Optional: true,
-				Computed: true,
+				Type:         schema.TypeInt,
+				Optional:     true,
+				ValidateFunc: validation.IntAtLeast(0),
+				Description:  "Maximum number of simultaneous connections for the user (0 = unlimited). Supported on MySQL, MariaDB, and TiDB 8.5.5 or newer.",
 			},
 
+			"max_statement_time": {
+				Type:         schema.TypeFloat,
+				Optional:     true,
+				ValidateFunc: validation.FloatAtLeast(0),
+				Description:  "Maximum execution time for statements in seconds (0 = unlimited). Supports fractional values. Only supported on MariaDB 10.1.1 or newer.",
+			},
+
+			// TiDB CREATE/ALTER USER supports account locking, comments, JSON
+			// attributes, and password lifecycle options.
+			// See https://docs.pingcap.com/tidb/stable/sql-statement-alter-user/.
 			"account_locked": {
 				Type:     schema.TypeBool,
 				Optional: true,
@@ -183,11 +206,104 @@ func resourceUser() *schema.Resource {
 	}
 }
 
+const tiDBMaxUserConnectionsMinVersion = "8.5.5"
+
 func checkRetainCurrentPasswordSupport(ctx context.Context, meta interface{}) error {
 	ver, _ := version.NewVersion("8.0.14")
 	if getVersionFromMeta(ctx, meta).LessThan(ver) {
 		return errors.New("MySQL version must be at least 8.0.14")
 	}
+	return nil
+}
+
+func serverMariaDB(db *sql.DB) (bool, error) {
+	versionString, err := serverVersionString(db)
+	if err != nil {
+		return false, err
+	}
+
+	return strings.Contains(versionString, "MariaDB"), nil
+}
+
+func tidbVersionSupportsMaxUserConnections(tidbVersion string) (bool, error) {
+	currentVersion, err := version.NewVersion(strings.TrimPrefix(tidbVersion, "v"))
+	if err != nil {
+		return false, err
+	}
+	minVersion, _ := version.NewVersion(tiDBMaxUserConnectionsMinVersion)
+
+	return currentVersion.GreaterThanOrEqual(minVersion), nil
+}
+
+func checkMaxUserConnectionsSupport(ctx context.Context, meta interface{}) error {
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return err
+	}
+
+	isTiDB, tidbVersion, _, err := serverTiDB(db)
+	if err != nil {
+		return err
+	}
+	if !isTiDB {
+		return nil
+	}
+
+	// TiDB added MAX_USER_CONNECTIONS on master in pingcap/tidb#59197.
+	// The first explicit 8.5 release branch backport is pingcap/tidb#67337,
+	// merged as commit 6c7aaa0c8d548cdfaa2c99e216337752de48009f to
+	// release-8.5-20260323-v8.5.5.
+	supported, err := tidbVersionSupportsMaxUserConnections(tidbVersion)
+	if err != nil {
+		return err
+	}
+	if !supported {
+		return fmt.Errorf("MAX_USER_CONNECTIONS is only supported on TiDB %s or newer", tiDBMaxUserConnectionsMinVersion)
+	}
+
+	return nil
+}
+
+func redactCreateUserArgs(args []interface{}, sensitiveValues ...string) []interface{} {
+	redacted := make([]interface{}, len(args))
+	copy(redacted, args)
+
+	for i, arg := range redacted {
+		argString, ok := arg.(string)
+		if !ok {
+			continue
+		}
+		for _, sensitive := range sensitiveValues {
+			if sensitive != "" && argString == sensitive {
+				redacted[i] = "<SENSITIVE>"
+				break
+			}
+		}
+	}
+
+	return redacted
+}
+
+func checkMaxStatementTimeSupport(ctx context.Context, meta interface{}) error {
+	db, err := getDatabaseFromMeta(ctx, meta)
+	if err != nil {
+		return err
+	}
+
+	isMariaDB, err := serverMariaDB(db)
+	if err != nil {
+		return err
+	}
+	if !isMariaDB {
+		return errors.New("MAX_STATEMENT_TIME is only supported on MariaDB 10.1.1 or newer")
+	}
+
+	minVersion, _ := version.NewVersion("10.1.1")
+	currentVersion := getVersionFromMeta(ctx, meta)
+	if currentVersion.LessThan(minVersion) {
+		return fmt.Errorf("MAX_STATEMENT_TIME requires MariaDB 10.1.1 or newer (current version: %s)", currentVersion.String())
+	}
+
 	return nil
 }
 
@@ -200,6 +316,8 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 	var authStm string
 	var auth string
 	var createObj = "USER"
+	user := d.Get("user").(string)
+	host := d.Get("host").(string)
 
 	if v, ok := d.GetOk("auth_plugin"); ok {
 		auth = v.(string)
@@ -219,38 +337,35 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 			authStm = " IDENTIFIED WITH " + auth
 		}
 	}
+	var hashed string
 	if v, ok := d.GetOk("auth_string_hashed"); ok {
-		hashed := v.(string)
+		hashed = v.(string)
 		if hashed != "" {
 			if authStm == "" {
 				return diag.Errorf("auth_string_hashed is not supported for auth plugin %s", auth)
 			}
-			authStm = fmt.Sprintf("%s AS '%s'", authStm, hashed)
+			authStm = fmt.Sprintf("%s AS ?", authStm)
 		}
 	}
 
 	var stmtSQL string
+	var args []interface{}
 
 	if createObj == "AADUSER" {
 		var aadIdentity = d.Get("aad_identity").(*schema.Set).List()[0].(map[string]interface{})
 
 		if aadIdentity["type"].(string) == "service_principal" {
 			// CREATE AADUSER 'mysqlProtocolLoginName"@"mysqlHostRestriction' IDENTIFIED BY 'identityId'
-			stmtSQL = fmt.Sprintf("CREATE AADUSER '%s'@'%s' IDENTIFIED BY '%s'",
-				d.Get("user").(string),
-				d.Get("host").(string),
-				aadIdentity["identity"].(string))
+			stmtSQL = "CREATE AADUSER ?@? IDENTIFIED BY ?"
+			args = []interface{}{user, host, aadIdentity["identity"].(string)}
 		} else {
 			// CREATE AADUSER 'identityName"@"mysqlHostRestriction' AS 'mysqlProtocolLoginName'
-			stmtSQL = fmt.Sprintf("CREATE AADUSER '%s'@'%s' AS '%s'",
-				aadIdentity["identity"].(string),
-				d.Get("host").(string),
-				d.Get("user").(string))
+			stmtSQL = "CREATE AADUSER ?@? AS ?"
+			args = []interface{}{aadIdentity["identity"].(string), host, user}
 		}
 	} else {
-		stmtSQL = fmt.Sprintf("CREATE USER '%s'@'%s'",
-			d.Get("user").(string),
-			d.Get("host").(string))
+		stmtSQL = "CREATE USER ?@?"
+		args = []interface{}{user, host}
 	}
 
 	var password string
@@ -260,14 +375,22 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 		password = d.Get("password").(string)
 	}
 
-	if auth == "AWSAuthenticationPlugin" && d.Get("host").(string) == "localhost" {
+	if auth == "AWSAuthenticationPlugin" && host == "localhost" {
 		return diag.Errorf("cannot use IAM auth against localhost")
 	}
 
 	if authStm != "" {
 		stmtSQL = stmtSQL + authStm
+		if hashed != "" {
+			args = append(args, hashed)
+		}
+		if password != "" {
+			stmtSQL = stmtSQL + " BY ?"
+			args = append(args, password)
+		}
 	} else if password != "" {
-		stmtSQL = stmtSQL + fmt.Sprintf(" IDENTIFIED BY '%s'", password)
+		stmtSQL = stmtSQL + " IDENTIFIED BY ?"
+		args = append(args, password)
 	}
 
 	requiredVersion, _ := version.NewVersion("5.7.0")
@@ -276,12 +399,31 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 
 	if getVersionFromMeta(ctx, meta).GreaterThan(requiredVersion) && d.Get("tls_option").(string) != "" {
 		if createObj == "AADUSER" {
-			updateStmtSql = fmt.Sprintf("ALTER USER '%s'@'%s' REQUIRE %s",
-				d.Get("user").(string),
-				d.Get("host").(string),
-				d.Get("tls_option").(string))
+			updateStmtSql = "ALTER USER ?@? REQUIRE " + d.Get("tls_option").(string)
 		} else {
 			stmtSQL += fmt.Sprintf(" REQUIRE %s", d.Get("tls_option").(string))
+		}
+	}
+
+	var resourceLimits []string
+	if createObj != "AADUSER" {
+		if maxConn, ok := d.GetOk("max_user_connections"); ok {
+			if err := checkMaxUserConnectionsSupport(ctx, meta); err != nil {
+				return diag.FromErr(err)
+			}
+			resourceLimits = append(resourceLimits, fmt.Sprintf("MAX_USER_CONNECTIONS %d", maxConn.(int)))
+		}
+
+		if maxStmt, ok := d.GetOk("max_statement_time"); ok {
+			if err := checkMaxStatementTimeSupport(ctx, meta); err != nil {
+				return diag.FromErr(err)
+			}
+			resourceLimits = append(resourceLimits, fmt.Sprintf("MAX_STATEMENT_TIME %f", maxStmt.(float64)))
+		}
+
+		createUserWithVersion, _ := version.NewVersion("5.7.6")
+		if len(resourceLimits) > 0 && getVersionFromMeta(ctx, meta).GreaterThanOrEqual(createUserWithVersion) {
+			stmtSQL += " WITH " + strings.Join(resourceLimits, " ")
 		}
 	}
 
@@ -297,18 +439,30 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 		stmtSQL = appendTiDBUserOptionClauses(stmtSQL, buildTiDBUserOptionClauses(d, false))
 	}
 
-	log.Println("[DEBUG] Executing statement:", stmtSQL)
-	_, err = db.ExecContext(ctx, stmtSQL)
+	log.Println("[DEBUG] Executing statement:", stmtSQL, "args:", redactCreateUserArgs(args, password, hashed))
+	_, err = db.ExecContext(ctx, stmtSQL, args...)
 	if err != nil {
 		return diag.Errorf("failed executing SQL: %v", err)
 	}
 
-	user := fmt.Sprintf("%s@%s", d.Get("user").(string), d.Get("host").(string))
-	d.SetId(user)
+	createUserWithVersion, _ := version.NewVersion("5.7.6")
+	if createObj != "AADUSER" && len(resourceLimits) > 0 && getVersionFromMeta(ctx, meta).LessThan(createUserWithVersion) {
+		grantStmtSQL := "GRANT USAGE ON *.* TO ?@? WITH " + strings.Join(resourceLimits, " ")
+
+		log.Println("[DEBUG] Executing statement:", grantStmtSQL, "args:", []interface{}{user, host})
+		_, err = db.ExecContext(ctx, grantStmtSQL, user, host)
+		if err != nil {
+			return diag.Errorf("failed setting user resource limits: %v", err)
+		}
+	}
+
+	userId := fmt.Sprintf("%s@%s", user, host)
+	d.SetId(userId)
 
 	if updateStmtSql != "" {
-		log.Println("[DEBUG] Executing statement:", updateStmtSql)
-		_, err = db.ExecContext(ctx, updateStmtSql)
+		updateArgs := []interface{}{user, host}
+		log.Println("[DEBUG] Executing statement:", updateStmtSql, "args:", updateArgs)
+		_, err = db.ExecContext(ctx, updateStmtSql, updateArgs...)
 		if err != nil {
 			d.Set("tls_option", "")
 			return diag.Errorf("failed executing SQL: %v", err)
@@ -344,20 +498,17 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 	}
 	if len(auth) > 0 {
 		if d.HasChange("tls_option") || d.HasChange("auth_plugin") || d.HasChange("auth_string_hashed") {
-			var stmtSQL string
-
-			authString := ""
+			stmtSQL := "ALTER USER ?@?"
+			args := []interface{}{d.Get("user").(string), d.Get("host").(string)}
+			authStringHashed := d.Get("auth_string_hashed").(string)
 			if d.Get("auth_string_hashed").(string) != "" {
-				authString = fmt.Sprintf("IDENTIFIED WITH %s AS '%s'", d.Get("auth_plugin"), d.Get("auth_string_hashed"))
+				stmtSQL += fmt.Sprintf(" IDENTIFIED WITH %s AS ?", d.Get("auth_plugin"))
+				args = append(args, authStringHashed)
 			}
-			stmtSQL = fmt.Sprintf("ALTER USER '%s'@'%s' %s  REQUIRE %s",
-				d.Get("user").(string),
-				d.Get("host").(string),
-				authString,
-				d.Get("tls_option").(string))
+			stmtSQL += fmt.Sprintf(" REQUIRE %s", d.Get("tls_option").(string))
 
-			log.Println("[DEBUG] Executing query:", stmtSQL)
-			_, err := db.ExecContext(ctx, stmtSQL)
+			log.Println("[DEBUG] Executing query:", stmtSQL, "args:", redactCreateUserArgs(args, authStringHashed))
+			_, err := db.ExecContext(ctx, stmtSQL, args...)
 			if err != nil {
 				return diag.Errorf("failed running query: %v", err)
 			}
@@ -413,6 +564,54 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 		}
 	}
 
+	if d.HasChange("max_user_connections") || d.HasChange("max_statement_time") {
+		var resourceLimits []string
+
+		if maxConn, ok := d.GetOk("max_user_connections"); ok {
+			if err := checkMaxUserConnectionsSupport(ctx, meta); err != nil {
+				return diag.FromErr(err)
+			}
+			resourceLimits = append(resourceLimits, fmt.Sprintf("MAX_USER_CONNECTIONS %d", maxConn.(int)))
+		} else if d.HasChange("max_user_connections") {
+			if err := checkMaxUserConnectionsSupport(ctx, meta); err != nil {
+				return diag.FromErr(err)
+			}
+			resourceLimits = append(resourceLimits, "MAX_USER_CONNECTIONS 0")
+		}
+
+		if maxStmt, ok := d.GetOk("max_statement_time"); ok {
+			if err := checkMaxStatementTimeSupport(ctx, meta); err != nil {
+				return diag.FromErr(err)
+			}
+			resourceLimits = append(resourceLimits, fmt.Sprintf("MAX_STATEMENT_TIME %f", maxStmt.(float64)))
+		} else if d.HasChange("max_statement_time") {
+			isMariaDB, err := serverMariaDB(db)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			if isMariaDB {
+				resourceLimits = append(resourceLimits, "MAX_STATEMENT_TIME 0")
+			}
+		}
+
+		if len(resourceLimits) > 0 {
+			alterUserWithVersion, _ := version.NewVersion("5.7.6")
+			var stmtSQL string
+			if getVersionFromMeta(ctx, meta).LessThan(alterUserWithVersion) {
+				stmtSQL = "GRANT USAGE ON *.* TO ?@? WITH " + strings.Join(resourceLimits, " ")
+			} else {
+				stmtSQL = "ALTER USER ?@? WITH " + strings.Join(resourceLimits, " ")
+			}
+
+			args := []interface{}{d.Get("user").(string), d.Get("host").(string)}
+			log.Println("[DEBUG] Executing query:", stmtSQL, "args:", args)
+			_, err := db.ExecContext(ctx, stmtSQL, args...)
+			if err != nil {
+				return diag.Errorf("failed setting user resource limits: %v", err)
+			}
+		}
+	}
+
 	if tiDBUserOptionsChanged(d) {
 		clauses := buildTiDBUserOptionClauses(d, true)
 		if len(clauses) > 0 {
@@ -430,6 +629,44 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 	}
 
 	return nil
+}
+
+func parseWithClauseSetting(d *schema.ResourceData, withClause, fieldName, settingName string, parseAsFloat bool) {
+	if _, ok := d.GetOk(fieldName); !ok {
+		return
+	}
+
+	pattern := fmt.Sprintf(`%s\s+([\d.]+)`, settingName)
+	re := regexp.MustCompile(pattern)
+	match := re.FindStringSubmatch(withClause)
+	if len(match) <= 1 {
+		return
+	}
+
+	if parseAsFloat {
+		if value, err := strconv.ParseFloat(match[1], 64); err == nil {
+			d.Set(fieldName, value)
+		}
+		return
+	}
+
+	if value, err := strconv.Atoi(match[1]); err == nil {
+		d.Set(fieldName, value)
+	}
+}
+
+func parseMaxUserConnectionsFromCreateUserStatement(createUserStmt string) (int, bool, error) {
+	match := regexp.MustCompile(`(?i)\bMAX_USER_CONNECTIONS\s+([0-9]+)\b`).FindStringSubmatch(createUserStmt)
+	if len(match) != 2 {
+		return 0, false, nil
+	}
+
+	value, err := strconv.Atoi(match[1])
+	if err != nil {
+		return 0, false, err
+	}
+
+	return value, true, nil
 }
 
 func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -500,6 +737,14 @@ func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) dia
 			} else {
 				d.Set("auth_string_hashed", m[4])
 			}
+
+			withRe := regexp.MustCompile(`WITH\s+(.*)$`)
+			if withMatch := withRe.FindStringSubmatch(createUserStmt); len(withMatch) > 1 {
+				withClause := withMatch[1]
+				parseWithClauseSetting(d, withClause, "max_user_connections", "MAX_USER_CONNECTIONS", false)
+				parseWithClauseSetting(d, withClause, "max_statement_time", "MAX_STATEMENT_TIME", true)
+			}
+
 			setTiDBUserOptionsFromCreateStatement(createUserStmt, d)
 			return nil
 		}
@@ -508,6 +753,13 @@ func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) dia
 		re2 := regexp.MustCompile("^CREATE USER")
 		if m := re2.FindStringSubmatch(createUserStmt); m != nil {
 			// Ok, we have at least something - it's probably in MariaDB.
+			withRe := regexp.MustCompile(`WITH\s+(.*)$`)
+			if withMatch := withRe.FindStringSubmatch(createUserStmt); len(withMatch) > 1 {
+				withClause := withMatch[1]
+				parseWithClauseSetting(d, withClause, "max_user_connections", "MAX_USER_CONNECTIONS", false)
+				parseWithClauseSetting(d, withClause, "max_statement_time", "MAX_STATEMENT_TIME", true)
+			}
+
 			return nil
 		}
 		return diag.Errorf("Create user couldn't be parsed - it is %s", createUserStmt)
@@ -594,7 +846,6 @@ func appendTiDBUserOptionClauses(stmtSQL string, clauses []string) string {
 func tiDBUserOptionsChanged(d *schema.ResourceData) bool {
 	for _, key := range []string{
 		"resource_group",
-		"max_user_connections",
 		"account_locked",
 		"comment",
 		"attribute_json",
@@ -614,12 +865,6 @@ func tiDBUserOptionsChanged(d *schema.ResourceData) bool {
 
 func buildTiDBUserOptionClauses(d *schema.ResourceData, includeClears bool) []string {
 	clauses := []string{}
-
-	if value, ok := d.GetOk("max_user_connections"); ok {
-		clauses = append(clauses, fmt.Sprintf("WITH MAX_USER_CONNECTIONS %d", value.(int)))
-	} else if includeClears && d.HasChange("max_user_connections") {
-		clauses = append(clauses, "WITH MAX_USER_CONNECTIONS 0")
-	}
 
 	if value, ok := d.GetOk("password_expire"); ok {
 		clauses = append(clauses, "PASSWORD EXPIRE "+strings.ToUpper(value.(string)))
@@ -679,13 +924,6 @@ func quoteSQLString(value string) string {
 func setTiDBUserOptionsFromCreateStatement(createUserStmt string, d *schema.ResourceData) {
 	if match := regexp.MustCompile(`RESOURCE GROUP [` + "`" + `']?([^` + "`" + `'\s]+)[` + "`" + `']?`).FindStringSubmatch(createUserStmt); len(match) == 2 {
 		d.Set("resource_group", match[1])
-	}
-
-	if match := regexp.MustCompile(`WITH MAX_USER_CONNECTIONS ([0-9]+)`).FindStringSubmatch(createUserStmt); len(match) == 2 {
-		var value int
-		if _, err := fmt.Sscanf(match[1], "%d", &value); err == nil {
-			d.Set("max_user_connections", value)
-		}
 	}
 
 	if strings.Contains(createUserStmt, " ACCOUNT LOCK") {

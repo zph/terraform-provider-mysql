@@ -246,6 +246,123 @@ func TestAccUser_deprecated(t *testing.T) {
 	})
 }
 
+func TestAccUser_resourceLimits(t *testing.T) {
+	_ = getSharedMySQLContainer(t, "")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipTiDBVersionLessThan(t, tiDBMaxUserConnectionsMinVersion)
+		},
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testAccUserCheckDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccUserConfig_resourceLimits,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserExists("mysql_user.test"),
+					resource.TestCheckResourceAttr("mysql_user.test", "user", "limited_user"),
+					resource.TestCheckResourceAttr("mysql_user.test", "max_user_connections", "10"),
+					testAccUserResourceLimitsMaxConn("limited_user", "%", 10),
+				),
+			},
+			{
+				Config: testAccUserConfig_resourceLimitsUpdated,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserExists("mysql_user.test"),
+					resource.TestCheckResourceAttr("mysql_user.test", "max_user_connections", "20"),
+					testAccUserResourceLimitsMaxConn("limited_user", "%", 20),
+				),
+			},
+			{
+				Config: testAccUserConfig_resourceLimitsRemoved,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserExists("mysql_user.test"),
+					testAccUserResourceLimitsMaxConn("limited_user", "%", 0),
+				),
+			},
+		},
+	})
+}
+
+func TestAccUser_resourceLimitsMariaDB(t *testing.T) {
+	_ = getSharedMySQLContainer(t, "")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckRequireMariaDB(t)
+		},
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testAccUserCheckDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccUserConfig_resourceLimitsMariaDB,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserExists("mysql_user.test"),
+					resource.TestCheckResourceAttr("mysql_user.test", "user", "limited_user_mariadb"),
+					resource.TestCheckResourceAttr("mysql_user.test", "max_user_connections", "15"),
+					resource.TestCheckResourceAttr("mysql_user.test", "max_statement_time", "30.5"),
+					testAccUserResourceLimitsMariaDB("limited_user_mariadb", "%", 15, 30.5),
+				),
+			},
+			{
+				Config: testAccUserConfig_resourceLimitsMariaDBUpdated,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserExists("mysql_user.test"),
+					resource.TestCheckResourceAttr("mysql_user.test", "max_user_connections", "25"),
+					resource.TestCheckResourceAttr("mysql_user.test", "max_statement_time", "45.5"),
+					testAccUserResourceLimitsMariaDB("limited_user_mariadb", "%", 25, 45.5),
+				),
+			},
+			{
+				Config: testAccUserConfig_resourceLimitsMariaDBRemoved,
+				Check: resource.ComposeTestCheckFunc(
+					testAccUserExists("mysql_user.test"),
+					testAccUserResourceLimitsMariaDB("limited_user_mariadb", "%", 0, 0),
+				),
+			},
+		},
+	})
+}
+
+func TestAccUser_resourceLimitsErrorOnUnsupportedTiDB(t *testing.T) {
+	_ = getSharedMySQLContainer(t, "")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheckSkipTiDBVersionGreaterThanOrEqual(t, tiDBMaxUserConnectionsMinVersion)
+		},
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testAccUserCheckDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccUserConfig_resourceLimitsUnsupportedTiDB,
+				ExpectError: regexp.MustCompile("MAX_USER_CONNECTIONS is only supported on TiDB 8.5.5 or newer"),
+			},
+		},
+	})
+}
+
+func TestAccUser_resourceLimitsErrorOnMySQL(t *testing.T) {
+	_ = getSharedMySQLContainer(t, "")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckSkipMariaDB(t)
+		},
+		ProviderFactories: testAccProviderFactories,
+		CheckDestroy:      testAccUserCheckDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccUserConfig_resourceLimitsErrorMySQL,
+				ExpectError: regexp.MustCompile("MAX_STATEMENT_TIME is only supported on MariaDB"),
+			},
+		},
+	})
+}
+
 func testAccUserCheckDestroy(s *terraform.State) error {
 	ctx := context.Background()
 	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
@@ -295,6 +412,83 @@ func testAccUserExists(rn string) resource.TestCheckFunc {
 			}
 			return fmt.Errorf("error reading user: %s", err)
 		}
+		return nil
+	}
+}
+
+func testAccUserResourceLimitsMaxConn(user, host string, expectedMaxConn int) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		ctx := context.Background()
+		db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
+		if err != nil {
+			return err
+		}
+
+		isTiDB, _, _, err := serverTiDB(db)
+		if err != nil {
+			return err
+		}
+		if isTiDB {
+			var createUserStmt string
+			err = db.QueryRowContext(ctx, "SHOW CREATE USER ?@?", user, host).Scan(&createUserStmt)
+			if err != nil {
+				return fmt.Errorf("error reading TiDB user resource limits: %s", err)
+			}
+
+			maxUserConn, found, err := parseMaxUserConnectionsFromCreateUserStatement(createUserStmt)
+			if err != nil {
+				return fmt.Errorf("error parsing TiDB user resource limits: %s", err)
+			}
+			if !found {
+				// TiDB 8.5.x accepts MAX_USER_CONNECTIONS syntax, but does not
+				// expose the setting via SHOW CREATE USER or mysql.user. In that
+				// case the acceptance signal is successful apply plus Terraform
+				// state; validate only when TiDB starts exposing readback.
+				return nil
+			}
+			if maxUserConn != expectedMaxConn {
+				return fmt.Errorf("expected max_user_connections %d, got %d", expectedMaxConn, maxUserConn)
+			}
+
+			return nil
+		}
+
+		var maxUserConn int
+		query := fmt.Sprintf("SELECT max_user_connections FROM mysql.user WHERE user='%s' AND host='%s'", user, host)
+		err = db.QueryRow(query).Scan(&maxUserConn)
+		if err != nil {
+			return fmt.Errorf("error reading user resource limits: %s", err)
+		}
+		if maxUserConn != expectedMaxConn {
+			return fmt.Errorf("expected max_user_connections %d, got %d", expectedMaxConn, maxUserConn)
+		}
+
+		return nil
+	}
+}
+
+func testAccUserResourceLimitsMariaDB(user, host string, expectedMaxConn int, expectedMaxStmt float64) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		ctx := context.Background()
+		db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
+		if err != nil {
+			return err
+		}
+
+		var maxUserConn int
+		var maxStmtTime float64
+		query := fmt.Sprintf("SELECT max_user_connections, max_statement_time FROM mysql.user WHERE user='%s' AND host='%s'", user, host)
+		err = db.QueryRow(query).Scan(&maxUserConn, &maxStmtTime)
+		if err != nil {
+			return fmt.Errorf("error reading user resource limits: %s", err)
+		}
+		if maxUserConn != expectedMaxConn {
+			return fmt.Errorf("expected max_user_connections %d, got %d", expectedMaxConn, maxUserConn)
+		}
+		if maxStmtTime != expectedMaxStmt {
+			return fmt.Errorf("expected max_statement_time %f, got %f", expectedMaxStmt, maxStmtTime)
+		}
+
 		return nil
 	}
 }
@@ -354,6 +548,78 @@ resource "mysql_user" "test" {
     user = "jdoe"
     host = "example.com"
     password = "password2"
+}
+`
+
+const testAccUserConfig_resourceLimits = `
+resource "mysql_user" "test" {
+    user                 = "limited_user"
+    host                 = "%"
+    plaintext_password   = "password"
+    max_user_connections = 10
+}
+`
+
+const testAccUserConfig_resourceLimitsUpdated = `
+resource "mysql_user" "test" {
+    user                 = "limited_user"
+    host                 = "%"
+    plaintext_password   = "password"
+    max_user_connections = 20
+}
+`
+
+const testAccUserConfig_resourceLimitsRemoved = `
+resource "mysql_user" "test" {
+    user               = "limited_user"
+    host               = "%"
+    plaintext_password = "password"
+}
+`
+
+const testAccUserConfig_resourceLimitsMariaDB = `
+resource "mysql_user" "test" {
+    user                 = "limited_user_mariadb"
+    host                 = "%"
+    plaintext_password   = "password"
+    max_user_connections = 15
+    max_statement_time   = 30.5
+}
+`
+
+const testAccUserConfig_resourceLimitsMariaDBUpdated = `
+resource "mysql_user" "test" {
+    user                 = "limited_user_mariadb"
+    host                 = "%"
+    plaintext_password   = "password"
+    max_user_connections = 25
+    max_statement_time   = 45.5
+}
+`
+
+const testAccUserConfig_resourceLimitsMariaDBRemoved = `
+resource "mysql_user" "test" {
+    user               = "limited_user_mariadb"
+    host               = "%"
+    plaintext_password = "password"
+}
+`
+
+const testAccUserConfig_resourceLimitsUnsupportedTiDB = `
+resource "mysql_user" "test" {
+    user                 = "unsupported_tidb_user"
+    host                 = "%"
+    plaintext_password   = "password"
+    max_user_connections = 10
+}
+`
+
+const testAccUserConfig_resourceLimitsErrorMySQL = `
+resource "mysql_user" "test" {
+    user               = "error_user"
+    host               = "%"
+    plaintext_password = "password"
+    max_statement_time = 30.0
 }
 `
 

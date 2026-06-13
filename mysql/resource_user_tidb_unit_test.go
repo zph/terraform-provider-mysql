@@ -11,7 +11,6 @@ import (
 func TestBuildTiDBUserOptionClauses(t *testing.T) {
 	d := schema.TestResourceDataRaw(t, resourceUser().Schema, map[string]interface{}{
 		"resource_group":          "rg_app",
-		"max_user_connections":    20,
 		"account_locked":          true,
 		"comment":                 "app user",
 		"attribute_json":          `{"team":"platform"}`,
@@ -23,7 +22,7 @@ func TestBuildTiDBUserOptionClauses(t *testing.T) {
 	})
 
 	got := strings.Join(buildTiDBUserOptionClauses(d, false), " ")
-	want := `WITH MAX_USER_CONNECTIONS 20 PASSWORD EXPIRE INTERVAL 90 DAY PASSWORD HISTORY 5 PASSWORD REUSE INTERVAL 30 DAY FAILED_LOGIN_ATTEMPTS 3 PASSWORD_LOCK_TIME UNBOUNDED ACCOUNT LOCK COMMENT 'app user' ATTRIBUTE '{"team":"platform"}' RESOURCE GROUP ` + "`rg_app`"
+	want := `PASSWORD EXPIRE INTERVAL 90 DAY PASSWORD HISTORY 5 PASSWORD REUSE INTERVAL 30 DAY FAILED_LOGIN_ATTEMPTS 3 PASSWORD_LOCK_TIME UNBOUNDED ACCOUNT LOCK COMMENT 'app user' ATTRIBUTE '{"team":"platform"}' RESOURCE GROUP ` + "`rg_app`"
 	if got != want {
 		t.Fatalf("buildTiDBUserOptionClauses() = %q, want %q", got, want)
 	}

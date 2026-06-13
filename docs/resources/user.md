@@ -84,6 +84,27 @@ resource "mysql_user" "app" {
 
 ~> **Note on Azure Database for MySQL Single Server resource:** If you want to use this for `service_principal` with older Azure Database for MySQL Single Server resource, you need to set param `aad_auth_validate_oids_in_tenant` to `OFF` in provider configuration. For more details see [this issue](https://github.com/petoju/terraform-provider-mysql/issues/79).
 
+## Example Usage with Resource Limits
+
+```hcl
+# MySQL, MariaDB, and TiDB 8.5.5+: set MAX_USER_CONNECTIONS
+resource "mysql_user" "limited" {
+  user                 = "app_user"
+  host                 = "%"
+  plaintext_password   = "password"
+  max_user_connections = 100
+}
+
+# MariaDB only: set MAX_STATEMENT_TIME
+resource "mysql_user" "limited_mariadb" {
+  user                 = "app_user"
+  host                 = "%"
+  plaintext_password   = "password"
+  max_user_connections = 100
+  max_statement_time   = 30.0
+}
+```
+
 ## Argument Reference
 
 The following arguments are supported:
@@ -98,7 +119,8 @@ The following arguments are supported:
 * `retain_old_password` - (Optional) When `true`, the old password is retained when changing the password. Defaults to `false`. This use MySQL Dual Password Support feature and requires MySQL version 8.0.14 or newer. See [MySQL Dual Password documentation](https://dev.mysql.com/doc/refman/8.0/en/password-management.html#dual-passwords) for more.
 * `tls_option` - (Optional) An TLS-Option for the `CREATE USER` or `ALTER USER` statement. The value is suffixed to `REQUIRE`. A value of 'SSL' will generate a `CREATE USER ... REQUIRE SSL` statement. See the [MYSQL `CREATE USER` documentation](https://dev.mysql.com/doc/refman/5.7/en/create-user.html) for more. Ignored if MySQL version is under 5.7.0.
 * `resource_group` - (Optional, Computed, TiDB) Assigns the user to a TiDB resource group using `CREATE/ALTER USER ... RESOURCE GROUP`.
-* `max_user_connections` - (Optional, Computed) Sets `WITH MAX_USER_CONNECTIONS`.
+* `max_user_connections` - (Optional) Maximum number of simultaneous connections for the user. A value of `0` means unlimited. Supported on MySQL, MariaDB, and TiDB 8.5.5 or newer. TiDB support was introduced by [pingcap/tidb#59197](https://github.com/pingcap/tidb/pull/59197) and backported to the TiDB 8.5.5 release branch by [pingcap/tidb#67337](https://github.com/pingcap/tidb/pull/67337), commit [`6c7aaa0`](https://github.com/pingcap/tidb/commit/6c7aaa0c8d548cdfaa2c99e216337752de48009f). When this argument is removed from configuration, the limit is reset to `0`.
+* `max_statement_time` - (Optional) Maximum execution time for statements in seconds. A value of `0` means unlimited. Supports fractional values for subsecond precision, for example `0.01` for 10 milliseconds. Only supported on MariaDB 10.1.1 or newer; MySQL and TiDB do not support this account option.
 * `account_locked` - (Optional, Computed) Sets `ACCOUNT LOCK` or `ACCOUNT UNLOCK`.
 * `comment` - (Optional, Computed, TiDB) Sets the TiDB user `COMMENT` value.
 * `attribute_json` - (Optional, Computed, TiDB) Sets the TiDB user `ATTRIBUTE` JSON value.
