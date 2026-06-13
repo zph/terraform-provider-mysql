@@ -37,6 +37,41 @@ func TestResourceGroupBuildSQLQueryEmptyQueryLimit(t *testing.T) {
 	}
 }
 
+func TestResourceGroupBuildSQLQueryRunawayQueryControls(t *testing.T) {
+	tests := []struct {
+		name       string
+		queryLimit string
+		want       string
+	}{
+		{
+			name:       "dry run elapsed time",
+			queryLimit: "EXEC_ELAPSED='5s', ACTION=DRYRUN",
+			want:       "ALTER RESOURCE GROUP rg_runaway RU_PER_SEC = 5000 PRIORITY = MEDIUM QUERY_LIMIT=(EXEC_ELAPSED='5s', ACTION=DRYRUN) BURSTABLE = false ;",
+		},
+		{
+			name:       "processed keys and ru switch group",
+			queryLimit: "PROCESSED_KEYS=1000000, RU=2000, ACTION=SWITCH_GROUP(rg_quarantine), WATCH=PLAN DURATION='30m'",
+			want:       "ALTER RESOURCE GROUP rg_runaway RU_PER_SEC = 5000 PRIORITY = MEDIUM QUERY_LIMIT=(PROCESSED_KEYS=1000000, RU=2000, ACTION=SWITCH_GROUP(rg_quarantine), WATCH=PLAN DURATION='30m') BURSTABLE = false ;",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rg := ResourceGroup{
+				Name:          "rg_runaway",
+				ResourceUnits: 5000,
+				Priority:      "MEDIUM",
+				Burstable:     false,
+				QueryLimit:    tt.queryLimit,
+			}
+
+			if got := rg.buildSQLQuery(UpdateResourceGroupSQLPrefix); got != tt.want {
+				t.Fatalf("buildSQLQuery() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResourceGroupResourceDataMapping(t *testing.T) {
 	d := schema.TestResourceDataRaw(t, resourceTiResourceGroup().Schema, map[string]interface{}{
 		"name":           "rg100",

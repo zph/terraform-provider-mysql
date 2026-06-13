@@ -63,6 +63,20 @@ resource "mysql_grant" "developer" {
 }
 ```
 
+## Granting TiDB Resource Control Privileges
+
+TiDB resource group operations such as `CREATE RESOURCE GROUP`, `ALTER RESOURCE GROUP`, and `DROP RESOURCE GROUP` require `SUPER` or `RESOURCE_GROUP_ADMIN`. When TiDB resource-control strict mode is enabled, `SET RESOURCE GROUP` requires `SUPER`, `RESOURCE_GROUP_ADMIN`, or `RESOURCE_GROUP_USER`.
+
+```hcl
+resource "mysql_grant" "resource_control" {
+  user       = mysql_user.operator.user
+  host       = mysql_user.operator.host
+  database   = "*"
+  table      = "*"
+  privileges = ["RESOURCE_GROUP_ADMIN", "RESOURCE_GROUP_USER"]
+}
+```
+
 ## Argument Reference
 
 ~> **Note:** MySQL removed the `REQUIRE` option from `GRANT` in version 8. `tls_option` is ignored in MySQL 8 and above.
