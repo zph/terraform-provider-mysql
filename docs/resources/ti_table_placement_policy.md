@@ -50,8 +50,9 @@ The following arguments are supported:
 
 ## Import
 
-Table placement policies can be imported using `<database>.<table>`.
+Table placement policies can be imported using `<database>.<table>`. If a database or table name contains a literal `.`, escape it as `\.`. If it contains a literal `\`, escape it as `\\`.
 
 ```shell
 terraform import mysql_ti_table_placement_policy.orders my_app.orders
+terraform import mysql_ti_table_placement_policy.orders_archive 'my_app.orders\.archive'
 ```

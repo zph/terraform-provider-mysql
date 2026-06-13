@@ -509,11 +509,11 @@ func formatTiDatabasePlacementPolicyID(database string) string {
 }
 
 func formatTiTablePlacementPolicyID(database string, table string) string {
-	return strings.Join([]string{database, table}, ".")
+	return formatTiPlacementPolicyIDParts(database, table)
 }
 
 func formatTiPartitionPlacementPolicyID(database string, table string, partition string) string {
-	return strings.Join([]string{database, table, partition}, ".")
+	return formatTiPlacementPolicyIDParts(database, table, partition)
 }
 
 func parseTiDatabasePlacementPolicyID(id string) (string, error) {
@@ -525,21 +525,79 @@ func parseTiDatabasePlacementPolicyID(id string) (string, error) {
 }
 
 func parseTiTablePlacementPolicyID(id string) (string, string, error) {
-	parts := strings.Split(id, ".")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("expected import ID in the format <database>.<table>")
+	parts, err := parseTiPlacementPolicyIDParts(id, 2, "<database>.<table>")
+	if err != nil {
+		return "", "", err
 	}
 
 	return parts[0], parts[1], nil
 }
 
 func parseTiPartitionPlacementPolicyID(id string) (string, string, string, error) {
-	parts := strings.Split(id, ".")
-	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return "", "", "", fmt.Errorf("expected import ID in the format <database>.<table>.<partition>")
+	parts, err := parseTiPlacementPolicyIDParts(id, 3, "<database>.<table>.<partition>")
+	if err != nil {
+		return "", "", "", err
 	}
 
 	return parts[0], parts[1], parts[2], nil
+}
+
+func formatTiPlacementPolicyIDParts(parts ...string) string {
+	escapedParts := make([]string, len(parts))
+	for i, part := range parts {
+		escapedParts[i] = escapeTiPlacementPolicyIDPart(part)
+	}
+
+	return strings.Join(escapedParts, ".")
+}
+
+func escapeTiPlacementPolicyIDPart(part string) string {
+	return strings.NewReplacer(`\`, `\\`, `.`, `\.`).Replace(part)
+}
+
+func parseTiPlacementPolicyIDParts(id string, expectedParts int, format string) ([]string, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, fmt.Errorf("expected import ID in the format %s", format)
+	}
+
+	parts := []string{}
+	var current strings.Builder
+	escaped := false
+	for _, r := range id {
+		if escaped {
+			if r != '.' && r != '\\' {
+				return nil, fmt.Errorf("invalid escape sequence \\%c in import ID %q; escape only literal dots as \\. and literal backslashes as \\\\", r, id)
+			}
+			current.WriteRune(r)
+			escaped = false
+			continue
+		}
+
+		switch r {
+		case '\\':
+			escaped = true
+		case '.':
+			parts = append(parts, current.String())
+			current.Reset()
+		default:
+			current.WriteRune(r)
+		}
+	}
+	if escaped {
+		return nil, fmt.Errorf("invalid trailing escape in import ID %q", id)
+	}
+
+	parts = append(parts, current.String())
+	if len(parts) != expectedParts {
+		return nil, fmt.Errorf("expected import ID in the format %s", format)
+	}
+	for _, part := range parts {
+		if part == "" {
+			return nil, fmt.Errorf("expected import ID in the format %s", format)
+		}
+	}
+
+	return parts, nil
 }
 
 func requireTiDB(ctx context.Context, db *sql.DB, feature string) error {

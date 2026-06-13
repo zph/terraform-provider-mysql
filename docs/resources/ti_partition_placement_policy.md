@@ -51,8 +51,9 @@ The following arguments are supported:
 
 ## Import
 
-Partition placement policies can be imported using `<database>.<table>.<partition>`.
+Partition placement policies can be imported using `<database>.<table>.<partition>`. If a database, table, or partition name contains a literal `.`, escape it as `\.`. If it contains a literal `\`, escape it as `\\`.
 
 ```shell
 terraform import mysql_ti_partition_placement_policy.orders_p0 my_app.orders.p0
+terraform import mysql_ti_partition_placement_policy.orders_archive_p0 'my_app.orders\.archive.p0'
 ```
