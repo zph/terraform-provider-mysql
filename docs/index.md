@@ -117,6 +117,8 @@ This provider includes resources for managing TiDB-specific features:
 * `mysql_ti_resource_group` - Create and manage TiDB resource groups for workload isolation
 * `mysql_ti_resource_group_user_assignment` - Assign users to TiDB resource groups
 * `mysql_ti_placement_policy` - Create and manage TiDB placement policies for data distribution
+* `mysql_ti_placement_range_policy` - Apply TiDB placement policies to the global or metadata range
+* `mysql_ti_placement_labels` - List TiDB placement labels available in the cluster
 
 These resources use TiDB-specific SQL extensions and are not compatible with standard MySQL.
 

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -20,8 +22,16 @@ type ResourceGroup struct {
 	ResourceUnits int
 	Priority      string
 	Burstable     bool
+	BurstableMode string
 	QueryLimit    string
+	Background    string
 }
+
+const (
+	ResourceGroupBurstableModeOff       = "off"
+	ResourceGroupBurstableModeModerated = "moderated"
+	ResourceGroupBurstableModeUnlimited = "unlimited"
+)
 
 var CreateResourceGroupSQLPrefix = "CREATE RESOURCE GROUP IF NOT EXISTS"
 var UpdateResourceGroupSQLPrefix = "ALTER RESOURCE GROUP"
@@ -39,13 +49,33 @@ func (rg *ResourceGroup) buildSQLQuery(prefix string) string {
 		query = append(query, fmt.Sprintf(`QUERY_LIMIT=(%s)`, rg.QueryLimit))
 	}
 
-	query = append(query, fmt.Sprintf(`BURSTABLE = %t`, rg.Burstable))
+	if rg.Background != "" {
+		query = append(query, rg.backgroundSQLClause())
+	}
+
+	query = append(query, rg.burstableSQLClause())
 	query = append(query, ";")
 
 	ctx := context.TODO()
 	tflog.SetField(ctx, "sql", query)
 	tflog.Debug(ctx, `buildSQLQuery`)
 	return strings.Join(query, " ")
+}
+
+func (rg *ResourceGroup) burstableSQLClause() string {
+	if rg.BurstableMode != "" {
+		return fmt.Sprintf(`BURSTABLE = %s`, strings.ToUpper(rg.BurstableMode))
+	}
+
+	return fmt.Sprintf(`BURSTABLE = %t`, rg.Burstable)
+}
+
+func (rg *ResourceGroup) backgroundSQLClause() string {
+	if strings.EqualFold(strings.TrimSpace(rg.Background), "NULL") {
+		return "BACKGROUND=NULL"
+	}
+
+	return fmt.Sprintf(`BACKGROUND=(%s)`, rg.Background)
 }
 
 var DefaultResourceGroup = ResourceGroup{
@@ -90,6 +120,15 @@ func resourceTiResourceGroup() *schema.Resource {
 				ForceNew: false,
 				Optional: true,
 			},
+			// TiDB v9.0 extends BURSTABLE from a boolean into OFF/MODERATED/UNLIMITED modes.
+			// See https://docs.pingcap.com/tidb/stable/sql-statement-create-resource-group/.
+			"burstable_mode": {
+				Type:         schema.TypeString,
+				ForceNew:     false,
+				Optional:     true,
+				Computed:     true,
+				ValidateFunc: validation.StringInSlice([]string{ResourceGroupBurstableModeOff, ResourceGroupBurstableModeModerated, ResourceGroupBurstableModeUnlimited}, false),
+			},
 			/*
 				QUERY_LIMIT=(EXEC_ELAPSED='60s', ACTION=KILL, WATCH=EXACT DURATION='10m')
 			*/
@@ -98,6 +137,14 @@ func resourceTiResourceGroup() *schema.Resource {
 				Default:  DefaultResourceGroup.QueryLimit,
 				ForceNew: false,
 				Optional: true,
+			},
+			// TiDB exposes BACKGROUND on RESOURCE GROUP for the default group only.
+			// See https://docs.pingcap.com/tidb/stable/tidb-resource-control-background-tasks/.
+			"background": {
+				Type:     schema.TypeString,
+				ForceNew: false,
+				Optional: true,
+				Computed: true,
 			},
 		},
 	}
@@ -209,18 +256,18 @@ func getResourceGroupFromDB(db *sql.DB, name string) (*ResourceGroup, error) {
 	rg := ResourceGroup{Name: name}
 
 	/*
-		Coerce types on SQL side into good types for golang
-		Burstable is a varchar(3) so we coerce to BOOLEAN
-		QUERY_LIMIT is nullable in DB, but we coerce to standard "empty" string type of ""
-		Lowercase priority for less configuration variability
+		TiDB has changed information_schema.resource_groups across resource-control releases:
+		RU_PER_SEC can be numeric or UNLIMITED, BURSTABLE can be YES/NO or a v9 mode,
+		and BACKGROUND only exists on newer versions.
+		See https://docs.pingcap.com/tidb/stable/sql-statement-create-resource-group/.
 	*/
-	query := `SELECT NAME, RU_PER_SEC, LOWER(PRIORITY), BURSTABLE = 'YES' as BURSTABLE, IFNULL(QUERY_LIMIT,"") FROM information_schema.resource_groups WHERE NAME = ?`
+	query := `SELECT * FROM information_schema.resource_groups WHERE NAME = ?`
 
 	ctx := context.Background()
 	tflog.SetField(ctx, "query", query)
 	tflog.Debug(ctx, "getResourceGroupFromDB")
 
-	err := db.QueryRow(query, name).Scan(&rg.Name, &rg.ResourceUnits, &rg.Priority, &rg.Burstable, &rg.QueryLimit)
+	row, err := querySingleRowStringMap(db, query, name)
 	if errors.Is(err, sql.ErrNoRows) {
 		log.Printf("[DEBUG] resource group doesn't exist (%s): %s", name, err)
 		return nil, nil
@@ -228,16 +275,36 @@ func getResourceGroupFromDB(db *sql.DB, name string) (*ResourceGroup, error) {
 		return nil, fmt.Errorf("error during get resource group (%s): %s", name, err)
 	}
 
+	rg.Name = stringMapValue(row, "NAME")
+	rg.Priority = strings.ToLower(stringMapValue(row, "PRIORITY"))
+	rg.QueryLimit = stringMapValue(row, "QUERY_LIMIT")
+	rg.Background = stringMapValue(row, "BACKGROUND")
+
+	resourceUnits, err := parseResourceGroupResourceUnits(stringMapValue(row, "RU_PER_SEC"))
+	if err != nil {
+		return nil, fmt.Errorf("error parsing resource group RU_PER_SEC (%s): %s", name, err)
+	}
+	rg.ResourceUnits = resourceUnits
+
+	rg.Burstable, rg.BurstableMode = parseResourceGroupBurstable(stringMapValue(row, "BURSTABLE"))
+
 	return &rg, nil
 }
 
 func NewResourceGroupFromResourceData(d *schema.ResourceData) ResourceGroup {
+	burstableMode := ""
+	if rawMode, ok := d.GetOk("burstable_mode"); ok {
+		burstableMode = strings.ToLower(rawMode.(string))
+	}
+
 	return ResourceGroup{
 		Name:          d.Get("name").(string),
 		ResourceUnits: d.Get("resource_units").(int),
 		Priority:      strings.ToUpper(d.Get("priority").(string)),
 		Burstable:     d.Get("burstable").(bool),
+		BurstableMode: burstableMode,
 		QueryLimit:    d.Get("query_limit").(string),
+		Background:    d.Get("background").(string),
 	}
 }
 
@@ -246,5 +313,36 @@ func setResourceGroupOnResourceData(rg ResourceGroup, d *schema.ResourceData) {
 	d.Set("resource_units", rg.ResourceUnits)
 	d.Set("priority", rg.Priority)
 	d.Set("burstable", rg.Burstable)
+	d.Set("burstable_mode", rg.BurstableMode)
 	d.Set("query_limit", rg.QueryLimit)
+	d.Set("background", rg.Background)
+}
+
+func parseResourceGroupResourceUnits(raw string) (int, error) {
+	value := strings.TrimSpace(raw)
+	if strings.EqualFold(value, "UNLIMITED") {
+		return math.MaxInt32, nil
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, err
+	}
+
+	return parsed, nil
+}
+
+func parseResourceGroupBurstable(raw string) (bool, string) {
+	switch strings.ToUpper(strings.TrimSpace(raw)) {
+	case "YES", "TRUE", "1":
+		return true, ResourceGroupBurstableModeModerated
+	case "NO", "FALSE", "0", "OFF":
+		return false, ResourceGroupBurstableModeOff
+	case "MODERATED":
+		return true, ResourceGroupBurstableModeModerated
+	case "UNLIMITED":
+		return true, ResourceGroupBurstableModeUnlimited
+	default:
+		return false, ""
+	}
 }

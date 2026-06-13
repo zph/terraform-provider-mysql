@@ -8,7 +8,7 @@ description: |-
 
 # mysql\_ti\_resource\_group\_user\_assignment
 
-The `mysql_ti_resource_group_user_assignment` resource assigns a MySQL/TiDB user to a [TiDB resource group](https://docs.pingcap.com/tidb/stable/tidb-resource-control). This controls which resource group governs the user's query execution.
+The `mysql_ti_resource_group_user_assignment` resource assigns a MySQL/TiDB user to a [TiDB resource group](https://docs.pingcap.com/tidb/stable/tidb-resource-control-ru-groups/). This controls which resource group governs the user's query execution using TiDB's [`ALTER USER ... RESOURCE GROUP`](https://docs.pingcap.com/tidb/stable/sql-statement-alter-user/) syntax.
 
 ~> **Note:** This resource requires TiDB v7.5.0 or later.
 
@@ -34,6 +34,7 @@ resource "mysql_ti_resource_group" "analytics" {
 
 resource "mysql_ti_resource_group_user_assignment" "analytics_user" {
   user           = mysql_user.analytics_user.user
+  host           = mysql_user.analytics_user.host
   resource_group = mysql_ti_resource_group.analytics.name
 }
 ```
@@ -43,6 +44,7 @@ resource "mysql_ti_resource_group_user_assignment" "analytics_user" {
 The following arguments are supported:
 
 * `user` - (Required, ForceNew) The name of the user to assign to the resource group. The user must already exist. Changing this forces a new resource.
+* `host` - (Optional, ForceNew) Host part of the TiDB user account. When omitted, the provider preserves the older username-only behavior.
 * `resource_group` - (Required) The name of the resource group to assign the user to. Can be updated to reassign the user to a different group.
 
 ## Attributes Reference
@@ -54,5 +56,5 @@ The following arguments are supported:
 User resource group assignments can be imported using the username.
 
 ```shell
-terraform import mysql_ti_resource_group_user_assignment.example analytics_user
+terraform import mysql_ti_resource_group_user_assignment.example analytics_user@%
 ```

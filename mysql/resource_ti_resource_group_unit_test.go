@@ -72,6 +72,48 @@ func TestResourceGroupBuildSQLQueryRunawayQueryControls(t *testing.T) {
 	}
 }
 
+func TestResourceGroupBuildSQLQueryTiDB9BurstableModeAndBackground(t *testing.T) {
+	rg := ResourceGroup{
+		Name:          "default",
+		ResourceUnits: 2147483647,
+		Priority:      "MEDIUM",
+		BurstableMode: ResourceGroupBurstableModeUnlimited,
+		Background:    `TASK_TYPES='br,ddl', UTILIZATION_LIMIT=30`,
+	}
+
+	got := rg.buildSQLQuery(UpdateResourceGroupSQLPrefix)
+	want := "ALTER RESOURCE GROUP default RU_PER_SEC = 2147483647 PRIORITY = MEDIUM QUERY_LIMIT=NULL BACKGROUND=(TASK_TYPES='br,ddl', UTILIZATION_LIMIT=30) BURSTABLE = UNLIMITED ;"
+	if got != want {
+		t.Fatalf("buildSQLQuery() = %q, want %q", got, want)
+	}
+}
+
+func TestResourceGroupParsesTiDBResourceGroupReadValues(t *testing.T) {
+	resourceUnits, err := parseResourceGroupResourceUnits("UNLIMITED")
+	if err != nil {
+		t.Fatalf("parseResourceGroupResourceUnits() error = %v", err)
+	}
+	if resourceUnits != 2147483647 {
+		t.Fatalf("resourceUnits = %d, want 2147483647", resourceUnits)
+	}
+
+	burstable, mode := parseResourceGroupBurstable("UNLIMITED")
+	if !burstable {
+		t.Fatal("burstable = false, want true")
+	}
+	if mode != ResourceGroupBurstableModeUnlimited {
+		t.Fatalf("mode = %q, want %q", mode, ResourceGroupBurstableModeUnlimited)
+	}
+
+	burstable, mode = parseResourceGroupBurstable("OFF")
+	if burstable {
+		t.Fatal("burstable = true, want false")
+	}
+	if mode != ResourceGroupBurstableModeOff {
+		t.Fatalf("mode = %q, want %q", mode, ResourceGroupBurstableModeOff)
+	}
+}
+
 func TestResourceGroupResourceDataMapping(t *testing.T) {
 	d := schema.TestResourceDataRaw(t, resourceTiResourceGroup().Schema, map[string]interface{}{
 		"name":           "rg100",

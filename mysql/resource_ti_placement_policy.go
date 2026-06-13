@@ -19,10 +19,17 @@ var UpdatePlacementPolicySQLPrefix = "ALTER PLACEMENT POLICY"
 var BracketsRegex = regexp.MustCompile("^\\[(.+)\\]$")
 
 type PlacementPolicy struct {
-	Name          string
-	PrimaryRegion string
-	Regions       []string
-	Constraints   []string
+	Name                string
+	PrimaryRegion       string
+	Regions             []string
+	Followers           int
+	Schedule            string
+	Learners            int
+	Constraints         []string
+	LeaderConstraints   []string
+	FollowerConstraints []string
+	LearnerConstraints  []string
+	SurvivalPreferences []string
 }
 
 func (pp *PlacementPolicy) buildSQLQuery(prefix string) string {
@@ -46,6 +53,18 @@ func (pp *PlacementPolicy) buildSQLQuery(prefix string) string {
 		query = append(query, regionsClause)
 	}
 
+	if pp.Followers > 0 {
+		query = append(query, fmt.Sprintf(`FOLLOWERS=%d`, pp.Followers))
+	}
+
+	if pp.Schedule != "" {
+		query = append(query, fmt.Sprintf(`SCHEDULE="%s"`, pp.Schedule))
+	}
+
+	if pp.Learners > 0 {
+		query = append(query, fmt.Sprintf(`LEARNERS=%d`, pp.Learners))
+	}
+
 	if len(pp.Constraints) > 0 {
 		constraintsClause := fmt.Sprintf(`CONSTRAINTS="[%s]"`, strings.Join(pp.Constraints, ","))
 		query = append(query, constraintsClause)
@@ -53,6 +72,22 @@ func (pp *PlacementPolicy) buildSQLQuery(prefix string) string {
 		// Allow for empty constraints to be set in order to represent a
 		// placement policy without constraints.
 		query = append(query, `CONSTRAINTS=""`)
+	}
+
+	if len(pp.LeaderConstraints) > 0 {
+		query = append(query, fmt.Sprintf(`LEADER_CONSTRAINTS="[%s]"`, strings.Join(pp.LeaderConstraints, ",")))
+	}
+
+	if len(pp.FollowerConstraints) > 0 {
+		query = append(query, fmt.Sprintf(`FOLLOWER_CONSTRAINTS="[%s]"`, strings.Join(pp.FollowerConstraints, ",")))
+	}
+
+	if len(pp.LearnerConstraints) > 0 {
+		query = append(query, fmt.Sprintf(`LEARNER_CONSTRAINTS="[%s]"`, strings.Join(pp.LearnerConstraints, ",")))
+	}
+
+	if len(pp.SurvivalPreferences) > 0 {
+		query = append(query, fmt.Sprintf(`SURVIVAL_PREFERENCES="[%s]"`, strings.Join(pp.SurvivalPreferences, ",")))
 	}
 
 	query = append(query, ";")
@@ -91,7 +126,54 @@ func resourceTiPlacementPolicy() *schema.Resource {
 				ForceNew: false,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
+			// TiDB placement options follow CREATE/ALTER PLACEMENT POLICY.
+			// See https://docs.pingcap.com/tidb/stable/sql-statement-create-placement-policy/.
+			"followers": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Computed: true,
+				ForceNew: false,
+			},
+			"schedule": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				ForceNew: false,
+			},
+			"learners": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Computed: true,
+				ForceNew: false,
+			},
 			"constraints": {
+				Type:     schema.TypeList,
+				Optional: true,
+				ForceNew: false,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+			},
+			"leader_constraints": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Computed: true,
+				ForceNew: false,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+			},
+			"follower_constraints": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Computed: true,
+				ForceNew: false,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+			},
+			"learner_constraints": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Computed: true,
+				ForceNew: false,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+			},
+			"survival_preferences": {
 				Type:     schema.TypeList,
 				Optional: true,
 				ForceNew: false,
@@ -204,40 +286,31 @@ func DeletePlacementPolicy(ctx context.Context, d *schema.ResourceData, meta int
 }
 
 func NewPlacementPolicyFromResourceData(d *schema.ResourceData) PlacementPolicy {
-	regionsAny := d.Get("regions").([]any)
-	constraintsAny := d.Get("constraints").([]any)
-	regions := []string{}
-	constraints := []string{}
-
-	for _, regionAny := range regionsAny {
-		regions = append(regions, regionAny.(string))
-	}
-
-	for _, constraintAny := range constraintsAny {
-		constraints = append(constraints, constraintAny.(string))
-	}
-
 	return PlacementPolicy{
-		Name:          d.Get("name").(string),
-		PrimaryRegion: d.Get("primary_region").(string),
-		Regions:       regions,
-		Constraints:   constraints,
+		Name:                d.Get("name").(string),
+		PrimaryRegion:       d.Get("primary_region").(string),
+		Regions:             resourceStringList(d, "regions"),
+		Followers:           d.Get("followers").(int),
+		Schedule:            d.Get("schedule").(string),
+		Learners:            d.Get("learners").(int),
+		Constraints:         resourceStringList(d, "constraints"),
+		LeaderConstraints:   resourceStringList(d, "leader_constraints"),
+		FollowerConstraints: resourceStringList(d, "follower_constraints"),
+		LearnerConstraints:  resourceStringList(d, "learner_constraints"),
+		SurvivalPreferences: resourceStringList(d, "survival_preferences"),
 	}
 }
 
 func getPlacementPolicyFromDB(db *sql.DB, name string) (*PlacementPolicy, error) {
 	pp := PlacementPolicy{Name: name}
 
-	query := `SELECT POLICY_NAME, PRIMARY_REGION, REGIONS, CONSTRAINTS FROM information_schema.placement_policies where POLICY_NAME = ?`
+	query := `SELECT * FROM information_schema.placement_policies where POLICY_NAME = ?`
 
 	ctx := context.Background()
 	tflog.SetField(ctx, "query", query)
 	tflog.Debug(ctx, "getPlacementPolicyFromDB")
 
-	var regionsHolder string
-	var constraintsHolder string
-
-	err := db.QueryRow(query, name).Scan(&pp.Name, &pp.PrimaryRegion, &regionsHolder, &constraintsHolder)
+	row, err := querySingleRowStringMap(db, query, name)
 	if errors.Is(err, sql.ErrNoRows) {
 		log.Printf("[DEBUG] placement policy doesn't exist (%s): %s", name, err)
 		return nil, nil
@@ -245,21 +318,72 @@ func getPlacementPolicyFromDB(db *sql.DB, name string) (*PlacementPolicy, error)
 		return nil, fmt.Errorf("error during get placement policy (%s): %s", name, err)
 	}
 
-	if regionsHolder != "" {
-		pp.Regions = strings.Split(regionsHolder, ",")
+	pp.Name = stringMapValue(row, "POLICY_NAME")
+	pp.PrimaryRegion = stringMapValue(row, "PRIMARY_REGION")
+	pp.Regions = splitCommaString(stringMapValue(row, "REGIONS"))
+	pp.Constraints = parsePlacementConstraintList(stringMapValue(row, "CONSTRAINTS"))
+	pp.LeaderConstraints = parsePlacementConstraintList(stringMapValue(row, "LEADER_CONSTRAINTS"))
+	pp.FollowerConstraints = parsePlacementConstraintList(stringMapValue(row, "FOLLOWER_CONSTRAINTS"))
+	pp.LearnerConstraints = parsePlacementConstraintList(stringMapValue(row, "LEARNER_CONSTRAINTS"))
+	pp.Schedule = stringMapValue(row, "SCHEDULE")
+
+	if followers, err := stringMapIntValue(row, "FOLLOWERS"); err == nil {
+		pp.Followers = followers
+	}
+	if learners, err := stringMapIntValue(row, "LEARNERS"); err == nil {
+		pp.Learners = learners
 	}
 
-	constraintMatches := BracketsRegex.FindStringSubmatch(constraintsHolder)
-	if len(constraintMatches) >= 2 {
-		pp.Constraints = strings.Split(constraintMatches[1], ",")
-	}
-
+	// SURVIVAL_PREFERENCES is accepted by CREATE/ALTER PLACEMENT POLICY, but
+	// PingCAP's documented information_schema.placement_policies columns do not expose it.
+	// See https://docs.pingcap.com/tidb/stable/information-schema-placement-policies/.
 	return &pp, nil
+}
+
+func splitCommaString(value string) []string {
+	if value == "" {
+		return nil
+	}
+
+	return strings.Split(value, ",")
+}
+
+func parsePlacementConstraintList(value string) []string {
+	constraintMatches := BracketsRegex.FindStringSubmatch(value)
+	if len(constraintMatches) >= 2 {
+		return strings.Split(constraintMatches[1], ",")
+	}
+
+	if value != "" {
+		return []string{value}
+	}
+
+	return nil
 }
 
 func setPlacementPolicyOnResourceData(pp PlacementPolicy, d *schema.ResourceData) {
 	d.Set("name", pp.Name)
 	d.Set("primary_region", pp.PrimaryRegion)
 	d.Set("regions", pp.Regions)
+	d.Set("followers", pp.Followers)
+	d.Set("schedule", pp.Schedule)
+	d.Set("learners", pp.Learners)
 	d.Set("constraints", pp.Constraints)
+	d.Set("leader_constraints", pp.LeaderConstraints)
+	d.Set("follower_constraints", pp.FollowerConstraints)
+	d.Set("learner_constraints", pp.LearnerConstraints)
+	if len(pp.SurvivalPreferences) > 0 {
+		d.Set("survival_preferences", pp.SurvivalPreferences)
+	}
+}
+
+func resourceStringList(d *schema.ResourceData, key string) []string {
+	valuesAny := d.Get(key).([]any)
+	values := []string{}
+
+	for _, valueAny := range valuesAny {
+		values = append(values, valueAny.(string))
+	}
+
+	return values
 }

@@ -46,6 +46,7 @@ scripts/
 | `mysql_ti_resource_group` | `resource_ti_resource_group.go` | Resource group management (v7.5+) |
 | `mysql_ti_resource_group_user_assignment` | `resource_ti_resource_group_user_assignment.go` | User-to-resource-group binding |
 | `mysql_ti_placement_policy` | `resource_ti_placement_policy.go` | Placement policies for data distribution |
+| `mysql_ti_placement_range_policy` | `resource_ti_placement_range_policy.go` | Global/meta range placement policy assignment |
 
 ### Data Sources
 | Data Source | File | Description |
