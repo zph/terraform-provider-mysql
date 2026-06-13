@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
-func TestParseTiDBResourceUnits(t *testing.T) {
+func TestParseResourceGroupResourceUnits(t *testing.T) {
 	tests := []struct {
 		name    string
 		raw     string
@@ -45,7 +45,7 @@ func TestParseTiDBResourceUnits(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseTiDBResourceUnits(tt.raw)
+			got, err := parseResourceGroupResourceUnits(tt.raw)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error")

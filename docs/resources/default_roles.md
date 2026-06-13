@@ -46,7 +46,7 @@ The following arguments are supported:
 * `host` - (Optional) The source host of the user. Defaults to "localhost".
 * `roles` - (Optional) A list of default roles to assign to the user. By default no roles are assigned.
 
-~> **Note:** Creating a new default roles resource on an existing user will **overwrite** the user's existing default roles. Likewise, destryoing a default roles resource will **remove** the user's default roles, equivalent to running `ALTER USER ... DEFAULT ROLE NONE`.
+~> **Note:** Creating a new default roles resource on an existing user will **overwrite** the user's existing default roles. Likewise, destroying a default roles resource will **remove** the user's default roles, equivalent to running `ALTER USER ... DEFAULT ROLE NONE`.
 
 ## Attributes Reference
 

@@ -177,6 +177,87 @@ func testAccPreCheckSkipMariaDB(t *testing.T) {
 	}
 }
 
+func testAccPreCheckRequireMariaDB(t *testing.T) {
+	testAccPreCheck(t)
+
+	ctx := context.Background()
+	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
+	if err != nil {
+		t.Fatalf("Cannot connect to DB (RequireMariaDB): %v", err)
+		return
+	}
+
+	currentVersionString, err := serverVersionString(db)
+	if err != nil {
+		t.Fatalf("Cannot get DB version string (RequireMariaDB): %v", err)
+		return
+	}
+
+	if !strings.Contains(currentVersionString, "MariaDB") {
+		t.Skip("Test requires MariaDB")
+	}
+}
+
+func testAccPreCheckSkipTiDBVersionLessThan(t *testing.T, minVersion string) {
+	testAccPreCheck(t)
+
+	ctx := context.Background()
+	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
+	if err != nil {
+		t.Fatalf("Cannot connect to DB (SkipTiDBVersionLessThan): %v", err)
+		return
+	}
+
+	isTiDB, tidbVersion, _, err := serverTiDB(db)
+	if err != nil {
+		t.Fatalf("Cannot get DB version string (SkipTiDBVersionLessThan): %v", err)
+		return
+	}
+	if !isTiDB {
+		return
+	}
+
+	versionMin, _ := version.NewVersion(minVersion)
+	tidbSemVer, err := version.NewVersion(tidbVersion)
+	if err != nil {
+		t.Fatalf("Cannot parse TiDB version %s (SkipTiDBVersionLessThan): %v", tidbVersion, err)
+		return
+	}
+	if tidbSemVer.LessThan(versionMin) {
+		t.Skipf("Skip on TiDB %s (requires TiDB %s+)", tidbVersion, minVersion)
+	}
+}
+
+func testAccPreCheckSkipTiDBVersionGreaterThanOrEqual(t *testing.T, minVersion string) {
+	testAccPreCheckSkipNotTiDB(t)
+
+	ctx := context.Background()
+	db, err := connectToMySQL(ctx, testAccProvider.Meta().(*MySQLConfiguration))
+	if err != nil {
+		t.Fatalf("Cannot connect to DB (SkipTiDBVersionGreaterThanOrEqual): %v", err)
+		return
+	}
+
+	isTiDB, tidbVersion, _, err := serverTiDB(db)
+	if err != nil {
+		t.Fatalf("Cannot get DB version string (SkipTiDBVersionGreaterThanOrEqual): %v", err)
+		return
+	}
+	if !isTiDB {
+		t.Skip("Skip on non-TiDB")
+	}
+
+	versionMin, _ := version.NewVersion(minVersion)
+	tidbSemVer, err := version.NewVersion(tidbVersion)
+	if err != nil {
+		t.Fatalf("Cannot parse TiDB version %s (SkipTiDBVersionGreaterThanOrEqual): %v", tidbVersion, err)
+		return
+	}
+	if tidbSemVer.GreaterThanOrEqual(versionMin) {
+		t.Skipf("Skip on TiDB %s (requires TiDB older than %s)", tidbVersion, minVersion)
+	}
+}
+
 func testAccPreCheckSkipNotMySQL8(t *testing.T) {
 	testAccPreCheckSkipNotMySQLVersionMin(t, "8.0.0")
 }

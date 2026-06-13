@@ -27,7 +27,7 @@ resource "mysql_rds_config" "this" {
 The following arguments are supported:
 
 * `binlog_retention_hours` - (Optional) binlog retention period in hours
-* `replication_target_delay` - (Optional) replicaation target delay in seconds
+* `replication_target_delay` - (Optional) replication target delay in seconds
 
 [Amazon RDS MySQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/mysql_rds_set_configuration.html)
 

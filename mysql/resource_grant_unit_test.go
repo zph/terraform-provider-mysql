@@ -1,0 +1,322 @@
+package mysql
+
+import (
+	"reflect"
+	"sort"
+	"testing"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+)
+
+func TestNormalizePerms(t *testing.T) {
+	got := normalizePerms([]string{
+		"`select (b, a)`",
+		"USAGE",
+		"allprivileges",
+		"INSERT(c3, c1)",
+	})
+	want := []string{
+		"ALL PRIVILEGES",
+		"INSERT(c1, c3)",
+		"select(a, b)",
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("normalizePerms() = %#v, want %#v", got, want)
+	}
+}
+
+func TestArePrivilegesSetsEqualIgnoresCase(t *testing.T) {
+	a := []string{"SELECT (`id`, `key`, `order`)", "UPDATE(C2, C1)"}
+	b := []string{"select (`ID`, `KEY`, `ORDER`)", "update(c1, c2)"}
+
+	if !arePrivilegesSetsEqual(a, b) {
+		t.Fatalf("arePrivilegesSetsEqual(%#v, %#v) = false, want true", a, b)
+	}
+}
+
+func TestTablePrivilegeGrantPartialRevokePreservesGrantOption(t *testing.T) {
+	grant := &TablePrivilegeGrant{
+		Database:   "app_db",
+		Table:      "accounts",
+		Privileges: []string{"SELECT", "INSERT"},
+		Grant:      true,
+		UserOrRole: UserOrRole{Name: "app", Host: "%"},
+	}
+
+	got := grant.SQLPartialRevokePrivilegesStatement([]string{"INSERT"}, false)
+	want := "REVOKE INSERT ON `app_db`.`accounts` FROM 'app'@'%'"
+	if got != want {
+		t.Fatalf("SQLPartialRevokePrivilegesStatement() = %q, want %q", got, want)
+	}
+
+	got = grant.SQLPartialRevokePrivilegesStatement([]string{"INSERT"}, true)
+	want = "REVOKE INSERT, GRANT OPTION ON `app_db`.`accounts` FROM 'app'@'%'"
+	if got != want {
+		t.Fatalf("SQLPartialRevokePrivilegesStatement() = %q, want %q", got, want)
+	}
+}
+
+func TestProcedurePrivilegeGrantPartialRevokePreservesGrantOption(t *testing.T) {
+	grant := &ProcedurePrivilegeGrant{
+		Database:     "app_db",
+		ObjectT:      kProcedure,
+		CallableName: "rotate_keys",
+		Privileges:   []string{"EXECUTE"},
+		Grant:        true,
+		UserOrRole:   UserOrRole{Name: "app", Host: "localhost"},
+	}
+
+	got := grant.SQLPartialRevokePrivilegesStatement([]string{"EXECUTE"}, false)
+	want := "REVOKE EXECUTE ON PROCEDURE `app_db`.`rotate_keys` FROM 'app'@'localhost'"
+	if got != want {
+		t.Fatalf("SQLPartialRevokePrivilegesStatement() = %q, want %q", got, want)
+	}
+
+	got = grant.SQLPartialRevokePrivilegesStatement([]string{"EXECUTE"}, true)
+	want = "REVOKE EXECUTE, GRANT OPTION ON PROCEDURE `app_db`.`rotate_keys` FROM 'app'@'localhost'"
+	if got != want {
+		t.Fatalf("SQLPartialRevokePrivilegesStatement() = %q, want %q", got, want)
+	}
+}
+
+func TestParseGrantFromRowTableGrant(t *testing.T) {
+	grant, err := parseGrantFromRow("GRANT SELECT, INSERT(c2, c1) ON `app_db`.`accounts` TO 'app'@'%' REQUIRE SSL WITH GRANT OPTION")
+	if err != nil {
+		t.Fatalf("parseGrantFromRow returned error: %s", err)
+	}
+
+	tableGrant, ok := grant.(*TablePrivilegeGrant)
+	if !ok {
+		t.Fatalf("parseGrantFromRow returned %T, want *TablePrivilegeGrant", grant)
+	}
+
+	if tableGrant.Database != "app_db" {
+		t.Fatalf("Database = %q, want %q", tableGrant.Database, "app_db")
+	}
+	if tableGrant.Table != "accounts" {
+		t.Fatalf("Table = %q, want %q", tableGrant.Table, "accounts")
+	}
+	if !reflect.DeepEqual(tableGrant.Privileges, []string{"INSERT(c1, c2)", "SELECT"}) {
+		t.Fatalf("Privileges = %#v", tableGrant.Privileges)
+	}
+	if !tableGrant.Grant {
+		t.Fatal("Grant = false, want true")
+	}
+	if tableGrant.TLSOption != "SSL" {
+		t.Fatalf("TLSOption = %q", tableGrant.TLSOption)
+	}
+	if !tableGrant.UserOrRole.Equals(UserOrRole{Name: "app", Host: "%"}) {
+		t.Fatalf("UserOrRole = %#v", tableGrant.UserOrRole)
+	}
+}
+
+func TestParseGrantFromRowTiDBResourceControlPrivileges(t *testing.T) {
+	grant, err := parseGrantFromRow("GRANT RESOURCE_GROUP_ADMIN, RESOURCE_GROUP_USER ON *.* TO 'ops'@'%'")
+	if err != nil {
+		t.Fatalf("parseGrantFromRow returned error: %s", err)
+	}
+
+	tableGrant, ok := grant.(*TablePrivilegeGrant)
+	if !ok {
+		t.Fatalf("parseGrantFromRow returned %T, want *TablePrivilegeGrant", grant)
+	}
+	if tableGrant.Database != "*" {
+		t.Fatalf("Database = %q, want *", tableGrant.Database)
+	}
+	if tableGrant.Table != "*" {
+		t.Fatalf("Table = %q, want *", tableGrant.Table)
+	}
+	wantPrivileges := []string{"RESOURCE_GROUP_ADMIN", "RESOURCE_GROUP_USER"}
+	if !reflect.DeepEqual(tableGrant.Privileges, wantPrivileges) {
+		t.Fatalf("Privileges = %#v, want %#v", tableGrant.Privileges, wantPrivileges)
+	}
+	if !tableGrant.UserOrRole.Equals(UserOrRole{Name: "ops", Host: "%"}) {
+		t.Fatalf("UserOrRole = %#v", tableGrant.UserOrRole)
+	}
+}
+
+func TestParseGrantFromRowProcedureGrant(t *testing.T) {
+	grant, err := parseGrantFromRow("GRANT EXECUTE ON PROCEDURE `app_db`.`rotate_keys` TO 'app'@'localhost'")
+	if err != nil {
+		t.Fatalf("parseGrantFromRow returned error: %s", err)
+	}
+
+	procedureGrant, ok := grant.(*ProcedurePrivilegeGrant)
+	if !ok {
+		t.Fatalf("parseGrantFromRow returned %T, want *ProcedurePrivilegeGrant", grant)
+	}
+
+	if procedureGrant.ObjectT != kProcedure {
+		t.Fatalf("ObjectT = %q, want %q", procedureGrant.ObjectT, kProcedure)
+	}
+	if procedureGrant.Database != "app_db" {
+		t.Fatalf("Database = %q, want %q", procedureGrant.Database, "app_db")
+	}
+	if procedureGrant.CallableName != "rotate_keys" {
+		t.Fatalf("CallableName = %q, want %q", procedureGrant.CallableName, "rotate_keys")
+	}
+	if !reflect.DeepEqual(procedureGrant.Privileges, []string{"EXECUTE"}) {
+		t.Fatalf("Privileges = %#v", procedureGrant.Privileges)
+	}
+}
+
+func TestParseGrantFromRowRoleGrant(t *testing.T) {
+	grant, err := parseGrantFromRow("GRANT `writer`, `reader` TO 'app'@'localhost' WITH ADMIN OPTION")
+	if err != nil {
+		t.Fatalf("parseGrantFromRow returned error: %s", err)
+	}
+
+	roleGrant, ok := grant.(*RoleGrant)
+	if !ok {
+		t.Fatalf("parseGrantFromRow returned %T, want *RoleGrant", grant)
+	}
+
+	if !reflect.DeepEqual(roleGrant.Roles, []string{"writer", "reader"}) {
+		t.Fatalf("Roles = %#v", roleGrant.Roles)
+	}
+	if !roleGrant.Grant {
+		t.Fatal("Grant = false, want true")
+	}
+	if !roleGrant.UserOrRole.Equals(UserOrRole{Name: "app", Host: "localhost"}) {
+		t.Fatalf("UserOrRole = %#v", roleGrant.UserOrRole)
+	}
+}
+
+func TestParseGrantFromRowSkipsPartialRevoke(t *testing.T) {
+	grant, err := parseGrantFromRow("REVOKE INSERT ON `app_db`.`accounts` FROM 'app'@'%'")
+	if err != nil {
+		t.Fatalf("parseGrantFromRow returned error: %s", err)
+	}
+	if grant != nil {
+		t.Fatalf("grant = %#v, want nil", grant)
+	}
+}
+
+func TestTablePrivilegeGrantSQLStatements(t *testing.T) {
+	grant := &TablePrivilegeGrant{
+		Database:   "app_db",
+		Table:      "accounts",
+		Privileges: []string{"SELECT", "UPDATE(c1, c2)"},
+		Grant:      true,
+		UserOrRole: UserOrRole{Name: "app", Host: "%"},
+		TLSOption:  "SSL",
+	}
+
+	wantGrant := "GRANT SELECT, UPDATE(c1, c2) ON `app_db`.`accounts` TO 'app'@'%' REQUIRE SSL WITH GRANT OPTION"
+	if got := grant.SQLGrantStatement(); got != wantGrant {
+		t.Fatalf("SQLGrantStatement() = %q, want %q", got, wantGrant)
+	}
+
+	wantRevoke := "REVOKE SELECT, UPDATE(c1, c2), GRANT OPTION ON `app_db`.`accounts` FROM 'app'@'%'"
+	if got := grant.SQLRevokeStatement(); got != wantRevoke {
+		t.Fatalf("SQLRevokeStatement() = %q, want %q", got, wantRevoke)
+	}
+}
+
+func TestParseResourceFromDataTableGrant(t *testing.T) {
+	d := schema.TestResourceDataRaw(t, resourceGrant().Schema, map[string]interface{}{
+		"user":       "app",
+		"host":       "%",
+		"database":   "app_db",
+		"table":      "accounts",
+		"privileges": []interface{}{"update(c2, c1)", "select"},
+		"grant":      true,
+		"tls_option": "SSL",
+	})
+
+	grant, diagErr := parseResourceFromData(d)
+	if diagErr.HasError() {
+		t.Fatalf("parseResourceFromData returned diagnostics: %s", diagErr[0].Summary)
+	}
+
+	tableGrant, ok := grant.(*TablePrivilegeGrant)
+	if !ok {
+		t.Fatalf("parseResourceFromData returned %T, want *TablePrivilegeGrant", grant)
+	}
+	if !reflect.DeepEqual(tableGrant.Privileges, []string{"select", "update(c1, c2)"}) {
+		t.Fatalf("Privileges = %#v", tableGrant.Privileges)
+	}
+	if got := tableGrant.SQLGrantStatement(); got != "GRANT select, update(c1, c2) ON `app_db`.`accounts` TO 'app'@'%' REQUIRE SSL WITH GRANT OPTION" {
+		t.Fatalf("SQLGrantStatement() = %q", got)
+	}
+}
+
+func TestParseResourceFromDataTableGrantDefaultsDatabase(t *testing.T) {
+	d := schema.TestResourceDataRaw(t, resourceGrant().Schema, map[string]interface{}{
+		"user":       "app",
+		"host":       "%",
+		"privileges": []interface{}{"select"},
+	})
+
+	grant, diagErr := parseResourceFromData(d)
+	if diagErr.HasError() {
+		t.Fatalf("parseResourceFromData returned diagnostics: %s", diagErr[0].Summary)
+	}
+
+	tableGrant, ok := grant.(*TablePrivilegeGrant)
+	if !ok {
+		t.Fatalf("parseResourceFromData returned %T, want *TablePrivilegeGrant", grant)
+	}
+	if tableGrant.Database != "*" {
+		t.Fatalf("Database = %q, want *", tableGrant.Database)
+	}
+	if tableGrant.Table != "*" {
+		t.Fatalf("Table = %q, want *", tableGrant.Table)
+	}
+	if got := tableGrant.SQLGrantStatement(); got != "GRANT select ON *.* TO 'app'@'%'" {
+		t.Fatalf("SQLGrantStatement() = %q", got)
+	}
+}
+
+func TestParseResourceFromDataTiDBResourceControlPrivileges(t *testing.T) {
+	d := schema.TestResourceDataRaw(t, resourceGrant().Schema, map[string]interface{}{
+		"user":       "ops",
+		"host":       "%",
+		"database":   "*",
+		"table":      "*",
+		"privileges": []interface{}{"resource_group_user", "resource_group_admin"},
+	})
+
+	grant, diagErr := parseResourceFromData(d)
+	if diagErr.HasError() {
+		t.Fatalf("parseResourceFromData returned diagnostics: %s", diagErr[0].Summary)
+	}
+
+	tableGrant, ok := grant.(*TablePrivilegeGrant)
+	if !ok {
+		t.Fatalf("parseResourceFromData returned %T, want *TablePrivilegeGrant", grant)
+	}
+	wantPrivileges := []string{"RESOURCE_GROUP_ADMIN", "RESOURCE_GROUP_USER"}
+	if !reflect.DeepEqual(tableGrant.Privileges, wantPrivileges) {
+		t.Fatalf("Privileges = %#v, want %#v", tableGrant.Privileges, wantPrivileges)
+	}
+	if got := tableGrant.SQLGrantStatement(); got != "GRANT RESOURCE_GROUP_ADMIN, RESOURCE_GROUP_USER ON *.* TO 'ops'@'%'" {
+		t.Fatalf("SQLGrantStatement() = %q", got)
+	}
+}
+
+func TestParseResourceFromDataRoleGrant(t *testing.T) {
+	d := schema.TestResourceDataRaw(t, resourceGrant().Schema, map[string]interface{}{
+		"role":       "app_role",
+		"database":   "*",
+		"roles":      []interface{}{"writer", "reader"},
+		"grant":      true,
+		"tls_option": "NONE",
+	})
+
+	grant, diagErr := parseResourceFromData(d)
+	if diagErr.HasError() {
+		t.Fatalf("parseResourceFromData returned diagnostics: %s", diagErr[0].Summary)
+	}
+
+	roleGrant, ok := grant.(*RoleGrant)
+	if !ok {
+		t.Fatalf("parseResourceFromData returned %T, want *RoleGrant", grant)
+	}
+	roles := append([]string(nil), roleGrant.Roles...)
+	sort.Strings(roles)
+	if !reflect.DeepEqual(roles, []string{"reader", "writer"}) {
+		t.Fatalf("Roles = %#v", roleGrant.Roles)
+	}
+}

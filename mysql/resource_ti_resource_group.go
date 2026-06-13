@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"strconv"
 	"strings"
 
@@ -22,6 +23,7 @@ type ResourceGroup struct {
 	Priority      string
 	Burstable     bool
 	QueryLimit    string
+	Background    string
 }
 
 var CreateResourceGroupSQLPrefix = "CREATE RESOURCE GROUP IF NOT EXISTS"
@@ -40,13 +42,29 @@ func (rg *ResourceGroup) buildSQLQuery(prefix string) string {
 		query = append(query, fmt.Sprintf(`QUERY_LIMIT=(%s)`, rg.QueryLimit))
 	}
 
-	query = append(query, fmt.Sprintf(`BURSTABLE = %t`, rg.Burstable))
+	if rg.Background != "" {
+		query = append(query, rg.backgroundSQLClause())
+	}
+
+	query = append(query, rg.burstableSQLClause())
 	query = append(query, ";")
 
 	ctx := context.TODO()
 	tflog.SetField(ctx, "sql", query)
 	tflog.Debug(ctx, `buildSQLQuery`)
 	return strings.Join(query, " ")
+}
+
+func (rg *ResourceGroup) burstableSQLClause() string {
+	return fmt.Sprintf(`BURSTABLE = %t`, rg.Burstable)
+}
+
+func (rg *ResourceGroup) backgroundSQLClause() string {
+	if strings.EqualFold(strings.TrimSpace(rg.Background), "NULL") {
+		return "BACKGROUND=NULL"
+	}
+
+	return fmt.Sprintf(`BACKGROUND=(%s)`, rg.Background)
 }
 
 var DefaultResourceGroup = ResourceGroup{
@@ -101,6 +119,14 @@ func resourceTiResourceGroup() *schema.Resource {
 				Default:  DefaultResourceGroup.QueryLimit,
 				ForceNew: false,
 				Optional: true,
+			},
+			// TiDB exposes BACKGROUND on RESOURCE GROUP for the default group only.
+			// See https://docs.pingcap.com/tidb/stable/tidb-resource-control-background-tasks/.
+			"background": {
+				Type:     schema.TypeString,
+				ForceNew: false,
+				Optional: true,
+				Computed: true,
 			},
 		},
 	}
@@ -210,21 +236,19 @@ func DeleteResourceGroup(ctx context.Context, d *schema.ResourceData, meta inter
 
 func getResourceGroupFromDB(db *sql.DB, name string) (*ResourceGroup, error) {
 	rg := ResourceGroup{Name: name}
-	var rawResourceUnits string
 
 	/*
-		Coerce types on SQL side into good types for golang
-		Burstable is a varchar(3) so we coerce to BOOLEAN
-		QUERY_LIMIT is nullable in DB, but we coerce to standard "empty" string type of ""
-		Lowercase priority for less configuration variability
+		TiDB has changed information_schema.resource_groups across resource-control releases:
+		RU_PER_SEC can be numeric or UNLIMITED, and BACKGROUND only exists on newer versions.
+		See https://docs.pingcap.com/tidb/stable/sql-statement-create-resource-group/.
 	*/
-	query := `SELECT NAME, RU_PER_SEC, LOWER(PRIORITY), BURSTABLE = 'YES' as BURSTABLE, IFNULL(QUERY_LIMIT,"") FROM information_schema.resource_groups WHERE NAME = ?`
+	query := `SELECT * FROM information_schema.resource_groups WHERE NAME = ?`
 
 	ctx := context.Background()
 	tflog.SetField(ctx, "query", query)
 	tflog.Debug(ctx, "getResourceGroupFromDB")
 
-	err := db.QueryRow(query, name).Scan(&rg.Name, &rawResourceUnits, &rg.Priority, &rg.Burstable, &rg.QueryLimit)
+	row, err := querySingleRowStringMap(db, query, name)
 	if errors.Is(err, sql.ErrNoRows) {
 		log.Printf("[DEBUG] resource group doesn't exist (%s): %s", name, err)
 		return nil, nil
@@ -232,21 +256,20 @@ func getResourceGroupFromDB(db *sql.DB, name string) (*ResourceGroup, error) {
 		return nil, fmt.Errorf("error during get resource group (%s): %s", name, err)
 	}
 
-	rg.ResourceUnits, err = parseTiDBResourceUnits(rawResourceUnits)
+	rg.Name = stringMapValue(row, "NAME")
+	rg.Priority = strings.ToLower(stringMapValue(row, "PRIORITY"))
+	rg.QueryLimit = stringMapValue(row, "QUERY_LIMIT")
+	rg.Background = stringMapValue(row, "BACKGROUND")
+
+	resourceUnits, err := parseResourceGroupResourceUnits(stringMapValue(row, "RU_PER_SEC"))
 	if err != nil {
-		return nil, fmt.Errorf("error parsing resource group (%s) RU_PER_SEC %q: %w", name, rawResourceUnits, err)
+		return nil, fmt.Errorf("error parsing resource group RU_PER_SEC (%s): %s", name, err)
 	}
+	rg.ResourceUnits = resourceUnits
+
+	rg.Burstable = parseResourceGroupBurstable(stringMapValue(row, "BURSTABLE"))
 
 	return &rg, nil
-}
-
-func parseTiDBResourceUnits(raw string) (int, error) {
-	raw = strings.TrimSpace(raw)
-	if strings.EqualFold(raw, "UNLIMITED") {
-		return tiDBUnlimitedResourceUnits, nil
-	}
-
-	return strconv.Atoi(raw)
 }
 
 func NewResourceGroupFromResourceData(d *schema.ResourceData) ResourceGroup {
@@ -256,6 +279,7 @@ func NewResourceGroupFromResourceData(d *schema.ResourceData) ResourceGroup {
 		Priority:      strings.ToUpper(d.Get("priority").(string)),
 		Burstable:     d.Get("burstable").(bool),
 		QueryLimit:    d.Get("query_limit").(string),
+		Background:    d.Get("background").(string),
 	}
 }
 
@@ -265,4 +289,30 @@ func setResourceGroupOnResourceData(rg ResourceGroup, d *schema.ResourceData) {
 	d.Set("priority", rg.Priority)
 	d.Set("burstable", rg.Burstable)
 	d.Set("query_limit", rg.QueryLimit)
+	d.Set("background", rg.Background)
+}
+
+func parseResourceGroupResourceUnits(raw string) (int, error) {
+	value := strings.TrimSpace(raw)
+	if strings.EqualFold(value, "UNLIMITED") {
+		return math.MaxInt32, nil
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, err
+	}
+
+	return parsed, nil
+}
+
+func parseResourceGroupBurstable(raw string) bool {
+	switch strings.ToUpper(strings.TrimSpace(raw)) {
+	case "YES", "TRUE", "1":
+		return true
+	case "NO", "FALSE", "0":
+		return false
+	default:
+		return false
+	}
 }

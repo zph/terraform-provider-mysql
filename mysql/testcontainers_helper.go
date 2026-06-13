@@ -66,6 +66,10 @@ type MySQLTestContainer struct {
 	Password  string
 }
 
+func testcontainerImagePlatform() string {
+	return os.Getenv("DOCKER_PLATFORM")
+}
+
 // startMySQLContainer starts a MySQL/Percona/MariaDB container for testing
 // Supports MySQL, Percona, and MariaDB images
 // image must not be empty - function will panic if empty
@@ -83,8 +87,9 @@ func startMySQLContainer(ctx context.Context, t *testing.T, image string) *MySQL
 	// Use GenericContainer for compatibility with Go 1.21
 	// Configure MySQL with environment variables
 	req := testcontainers.ContainerRequest{
-		Image:        image,
-		ExposedPorts: []string{"3306/tcp"},
+		Image:         image,
+		ImagePlatform: testcontainerImagePlatform(),
+		ExposedPorts:  []string{"3306/tcp"},
 		Env: map[string]string{
 			"MYSQL_ROOT_PASSWORD":        "",
 			"MYSQL_ALLOW_EMPTY_PASSWORD": "1",
@@ -177,7 +182,7 @@ func getSharedMySQLContainer(t *testing.T, image string) *MySQLTestContainer {
 		t.Fatalf("ERROR: DOCKER_IMAGE environment variable is not set.\n" +
 			"Please set DOCKER_IMAGE to the appropriate Docker image:\n" +
 			"  - MySQL/Percona/MariaDB: mysql:5.6, percona:8.0, mariadb:10.10\n" +
-			"  - TiDB: tidb:6.1.7, tidb:8.5.3\n" +
+			"  - TiDB: tidb:6.1.7, tidb:8.5.5\n" +
 			"The 'image' parameter to getSharedMySQLContainer is ignored - use DOCKER_IMAGE env var instead.")
 	}
 
@@ -245,8 +250,9 @@ func startSharedMySQLContainer(image string) (*MySQLTestContainer, error) {
 	}
 
 	req := testcontainers.ContainerRequest{
-		Image:        image,
-		ExposedPorts: []string{"3306/tcp"},
+		Image:         image,
+		ImagePlatform: testcontainerImagePlatform(),
+		ExposedPorts:  []string{"3306/tcp"},
 		Env: map[string]string{
 			"MYSQL_ROOT_PASSWORD":        "",
 			"MYSQL_ALLOW_EMPTY_PASSWORD": "1",
@@ -434,8 +440,8 @@ func startTiDBCluster(ctx context.Context, t *testing.T, version string) *TiDBTe
 					},
 				}
 			},
-			WaitingFor: wait.ForLog("succeed to update max timestamp").
-				WithOccurrence(3). // Wait for at least 3 region updates - indicates TiKV is ready
+			WaitingFor: wait.ForLog("TiKV is ready to serve").
+				WithOccurrence(1).
 				WithStartupTimeout(180 * time.Second),
 		},
 		Started: true,
@@ -759,8 +765,8 @@ func startSharedTiDBClusterLegacy(version string) (*TiDBTestCluster, error) {
 					},
 				}
 			},
-			WaitingFor: wait.ForLog("succeed to update max timestamp").
-				WithOccurrence(3). // Wait for at least 3 region updates - indicates TiKV is ready
+			WaitingFor: wait.ForLog("TiKV is ready to serve").
+				WithOccurrence(1).
 				WithStartupTimeout(180 * time.Second),
 		},
 		Started: true,

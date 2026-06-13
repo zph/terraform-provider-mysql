@@ -2,54 +2,59 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/olekukonko/tablewriter"
+	"github.com/zph/terraform-provider-mysql/v3/internal/testmatrix"
 )
 
-var (
-	// MySQL versions to test
-	mysqlVersions = []string{
-		"mysql:5.6",
-		"mysql:5.7",
-		"mysql:8.0",
-	}
+type databaseType = testmatrix.Database
 
-	// Percona versions to test
-	perconaVersions = []string{
-		"percona:5.7",
-		"percona:8.0",
-	}
+const (
+	dbMySQL   = testmatrix.MySQL
+	dbPercona = testmatrix.Percona
+	dbMariaDB = testmatrix.MariaDB
+	dbTiDB    = testmatrix.TiDB
+)
 
-	// MariaDB versions to test
-	mariadbVersions = []string{
-		"mariadb:10.3",
-		"mariadb:10.8",
-		"mariadb:10.10",
-	}
+const (
+	cliDBMySQL   = "mysql"
+	cliDBPercona = "percona"
+	cliDBMariaDB = "mariadb"
+	cliDBTiDB    = "tidb"
+)
 
-	// TiDB versions to test (version numbers only, not full image names)
-	tidbVersions = []string{
-		"6.1.7",
-		"6.5.12",
-		"7.1.6",
-		"7.5.7",
-		"8.1.2",
-		"8.5.3",
-	}
+const (
+	defaultTestPackage = "./mysql/..."
+	defaultTestTimeout = "30m"
+	defaultTestPattern = runAllTestPattern
+	runAllTestPattern  = "."
+)
+
+const (
+	envDockerDefaultPlatform = "DOCKER_DEFAULT_PLATFORM"
+	envDockerHost            = "DOCKER_HOST"
+	envDockerImage           = "DOCKER_IMAGE"
+	envDockerPlatform        = "DOCKER_PLATFORM"
+	envTestcontainersRyuk    = "TESTCONTAINERS_RYUK_DISABLED"
+	envTerraformAcceptance   = "TF_ACC"
+	envVerbose               = "VERBOSE"
+
+	linuxAMD64Platform         = "linux/amd64"
+	podmanSocketName           = "podman.sock"
+	skipPodmanPercona57Message = "Podman amd64 emulation segfaults"
 )
 
 type testResult struct {
 	image       string
-	dbType      string
+	dbType      databaseType
 	passed      bool
 	skipped     bool
 	skipReason  string
@@ -62,9 +67,23 @@ type testResult struct {
 
 type testJob struct {
 	image       string
-	dbType      string
+	dockerImage string
+	dbType      databaseType
 	testPattern string
+	testPackage string
+	timeout     string
+	verbose     bool
 	testNum     int
+}
+
+type testRunnerConfig struct {
+	testPattern string
+	testPackage string
+	timeout     string
+	image       string
+	dbType      string
+	version     string
+	verbose     bool
 }
 
 type progressTracker struct {
@@ -74,7 +93,7 @@ type progressTracker struct {
 }
 
 type versionProgress struct {
-	dbType        string
+	dbType        databaseType
 	image         string
 	totalTests    int
 	passedTests   int
@@ -94,12 +113,12 @@ var (
 	isParallel     bool
 )
 
+type incrementalResultTable struct {
+	printedHeader bool
+}
+
 func main() {
-	// Get test pattern from command line args, default to "WithTestcontainers"
-	testPattern := "WithTestcontainers"
-	if len(os.Args) > 1 {
-		testPattern = os.Args[1]
-	}
+	cfg := withDefaultPattern(parseConfig())
 
 	// Get parallelism from environment variable
 	parallel := getParallelism()
@@ -108,99 +127,43 @@ func main() {
 	isARM := isARMPlatform()
 
 	fmt.Printf("Testcontainers Matrix Test Suite\n")
-	fmt.Printf("Test pattern: %s | Parallelism: %d", testPattern, parallel)
+	fmt.Printf("Test pattern: %s | Parallelism: %d", cfg.testPattern, parallel)
+	if cfg.verbose {
+		fmt.Printf(" | Verbose")
+	}
 	if isARM {
 		fmt.Printf(" | Platform: ARM (Apple Silicon)")
 	}
 	fmt.Printf("\n\n")
 
-	// Build all test jobs and track skipped ones
-	var jobs []testJob
-	var skippedResults []testResult
-	testNum := 0
-
-	// MySQL tests
-	for _, version := range mysqlVersions {
-		testNum++
-		// Skip MySQL 5.6 and 5.7 on ARM (no ARM64 builds available)
-		if isARM && (version == "mysql:5.6" || version == "mysql:5.7") {
-			skippedResults = append(skippedResults, testResult{
-				image:      version,
-				dbType:     "MySQL",
-				passed:     true, // Skipped tests don't fail the suite
-				skipped:    true,
-				skipReason: "No ARM64 builds available",
-				duration:   0,
-			})
-			continue
-		}
-		jobs = append(jobs, testJob{
-			image:       version,
-			dbType:      "MySQL",
-			testPattern: testPattern,
-			testNum:     testNum,
-		})
+	jobs, skippedResults, err := buildJobs(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
 	}
 
-	// Percona tests
-	for _, version := range perconaVersions {
-		testNum++
-		// Skip Percona 5.7 and 8.0 on ARM (no ARM64 builds available)
-		if isARM && (version == "percona:5.7" || version == "percona:8.0") {
-			skippedResults = append(skippedResults, testResult{
-				image:      version,
-				dbType:     "Percona",
-				passed:     true, // Skipped tests don't fail the suite
-				skipped:    true,
-				skipReason: "No ARM64 builds available",
-				duration:   0,
-			})
-			continue
-		}
-		jobs = append(jobs, testJob{
-			image:       version,
-			dbType:      "Percona",
-			testPattern: testPattern,
-			testNum:     testNum,
-		})
-	}
+	totalJobsCount = len(jobs) + len(skippedResults)
 
-	// MariaDB tests
-	for _, version := range mariadbVersions {
-		testNum++
-		jobs = append(jobs, testJob{
-			image:       version,
-			dbType:      "MariaDB",
-			testPattern: testPattern,
-			testNum:     testNum,
-		})
+	resultTable := &incrementalResultTable{}
+	resultTable.printHeader()
+	for _, result := range skippedResults {
+		resultTable.append(result)
 	}
-
-	// TiDB tests
-	for _, version := range tidbVersions {
-		testNum++
-		jobs = append(jobs, testJob{
-			image:       version,
-			dbType:      "TiDB",
-			testPattern: testPattern,
-			testNum:     testNum,
-		})
-	}
-
-	totalJobsCount = len(jobs)
 
 	// Run tests (sequentially or in parallel)
 	var results []testResult
 	if parallel > 1 {
 		isParallel = true
-		results = runTestsParallel(jobs, parallel)
+		results = runTestsParallel(jobs, parallel, resultTable)
 	} else {
 		isParallel = false
-		results = runTestsSequential(jobs)
+		results = runTestsSequential(jobs, resultTable)
 	}
 
 	// Add skipped results to the results list
 	results = append(results, skippedResults...)
+
+	resultTable.close()
 
 	// Print summary
 	printSummary(results)
@@ -213,11 +176,169 @@ func main() {
 	}
 }
 
+func parseConfig() testRunnerConfig {
+	cfg := testRunnerConfig{}
+	flag.StringVar(&cfg.testPattern, "pattern", "", "Go test -run pattern")
+	flag.StringVar(&cfg.testPattern, "run", "", "Alias for --pattern")
+	flag.StringVar(&cfg.testPackage, "package", defaultTestPackage, "Go package pattern to test")
+	flag.StringVar(&cfg.timeout, "timeout", defaultTestTimeout, "Go test timeout")
+	flag.StringVar(&cfg.image, "image", "", "Run one database image, e.g. mysql:8.0 or tidb:8.5.5")
+	flag.StringVar(&cfg.dbType, "db", "", "Run one database type: mysql, percona, mariadb, tidb")
+	flag.StringVar(&cfg.version, "version", "", "Database version for --db")
+	flag.BoolVar(&cfg.verbose, "verbose", truthyEnv(envVerbose), "Stream underlying go test output")
+	flag.Parse()
+
+	if cfg.testPattern == "" && flag.NArg() > 0 {
+		cfg.testPattern = flag.Arg(0)
+	}
+	return cfg
+}
+
+func buildJobs(cfg testRunnerConfig) ([]testJob, []testResult, error) {
+	cfg = withDefaultPattern(cfg)
+
+	if cfg.image != "" {
+		job, err := jobFromImage(cfg.image, cfg, 1)
+		if err != nil {
+			return nil, nil, err
+		}
+		return jobsOrSkip(job)
+	}
+
+	if cfg.dbType != "" || cfg.version != "" {
+		if cfg.dbType == "" || cfg.version == "" {
+			return nil, nil, fmt.Errorf("--db and --version must be provided together")
+		}
+		image, err := imageForDBVersion(cfg.dbType, cfg.version)
+		if err != nil {
+			return nil, nil, err
+		}
+		job, err := jobFromImage(image, cfg, 1)
+		if err != nil {
+			return nil, nil, err
+		}
+		return jobsOrSkip(job)
+	}
+
+	jobs, skippedResults := matrixJobs(cfg)
+	return jobs, skippedResults, nil
+}
+
+func withDefaultPattern(cfg testRunnerConfig) testRunnerConfig {
+	if cfg.testPattern != "" {
+		return cfg
+	}
+	if cfg.image == "" && cfg.dbType == "" && cfg.version == "" {
+		cfg.testPattern = defaultTestPattern
+	} else {
+		cfg.testPattern = runAllTestPattern
+	}
+	return cfg
+}
+
+func matrixJobs(cfg testRunnerConfig) ([]testJob, []testResult) {
+	var jobs []testJob
+	var skippedResults []testResult
+	testNum := 0
+
+	for _, entry := range testmatrix.All() {
+		testNum++
+		job := newTestJob(entry.Database, entry.DisplayImage(), entry.DockerImage(), cfg, testNum)
+		if skipped, ok := skipResult(job); ok {
+			skippedResults = append(skippedResults, *skipped)
+			continue
+		}
+		jobs = append(jobs, job)
+	}
+
+	return jobs, skippedResults
+}
+
+func jobsOrSkip(job testJob) ([]testJob, []testResult, error) {
+	if skipped, ok := skipResult(job); ok {
+		return nil, []testResult{*skipped}, nil
+	}
+	return []testJob{job}, nil, nil
+}
+
+func skipResult(job testJob) (*testResult, bool) {
+	if shouldSkipForPodmanPercona57Emulation(job.dbType, job.dockerImage) {
+		return &testResult{
+			image:      job.image,
+			dbType:     job.dbType,
+			passed:     true,
+			skipped:    true,
+			skipReason: skipPodmanPercona57Message,
+			duration:   0,
+		}, true
+	}
+	return nil, false
+}
+
+func imageForDBVersion(dbType, version string) (string, error) {
+	return testmatrix.ImageForDBVersion(dbType, version)
+}
+
+func jobFromImage(rawImage string, cfg testRunnerConfig, testNum int) (testJob, error) {
+	image := normalizeImageAlias(rawImage)
+	dbType, displayImage, err := inferDBTypeAndDisplayImage(image)
+	if err != nil {
+		return testJob{}, err
+	}
+	return newTestJob(dbType, displayImage, image, cfg, testNum), nil
+}
+
+func normalizeImageAlias(image string) string {
+	return testmatrix.NormalizeImageAlias(image)
+}
+
+func inferDBTypeAndDisplayImage(image string) (databaseType, string, error) {
+	return testmatrix.InferDatabaseAndDisplayImage(image)
+}
+
+func newTestJob(dbType databaseType, image, dockerImage string, cfg testRunnerConfig, testNum int) testJob {
+	return testJob{
+		image:       image,
+		dockerImage: dockerImage,
+		dbType:      dbType,
+		testPattern: cfg.testPattern,
+		testPackage: cfg.testPackage,
+		timeout:     cfg.timeout,
+		verbose:     cfg.verbose,
+		testNum:     testNum,
+	}
+}
+
 // isARMPlatform detects if we're running on ARM architecture (including Apple Silicon)
 func isARMPlatform() bool {
 	arch := runtime.GOARCH
 	// Check for ARM architectures
 	return arch == "arm64" || arch == "arm"
+}
+
+func needsAMD64Platform(dbType databaseType, image string) bool {
+	return (dbType == dbMySQL && testmatrix.ImageIsInSeries(image, testmatrix.ImageMySQLPrefix, testmatrix.VersionMySQL57)) ||
+		(dbType == dbPercona && testmatrix.ImageIsInSeries(image, testmatrix.ImagePerconaPrefix, testmatrix.VersionPercona57))
+}
+
+func shouldDisableRyukForPodman() bool {
+	return os.Getenv(envTestcontainersRyuk) == "" && strings.Contains(os.Getenv(envDockerHost), podmanSocketName)
+}
+
+func shouldSkipForPodmanPercona57Emulation(dbType databaseType, image string) bool {
+	return isARMPlatform() &&
+		strings.Contains(os.Getenv(envDockerHost), podmanSocketName) &&
+		dbType == dbPercona &&
+		testmatrix.ImageIsInSeries(image, testmatrix.ImagePerconaPrefix, testmatrix.VersionPercona57)
+}
+
+func truthyEnv(key string) bool {
+	switch strings.ToLower(os.Getenv(key)) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func getParallelism() int {
@@ -242,18 +363,19 @@ func getParallelism() int {
 	return parallel
 }
 
-func runTestsSequential(jobs []testJob) []testResult {
+func runTestsSequential(jobs []testJob, resultTable *incrementalResultTable) []testResult {
 	var results []testResult
 
 	for _, job := range jobs {
 		result := runTest(job)
 		results = append(results, result)
+		resultTable.append(result)
 	}
 
 	return results
 }
 
-func runTestsParallel(jobs []testJob, parallel int) []testResult {
+func runTestsParallel(jobs []testJob, parallel int, resultTable *incrementalResultTable) []testResult {
 	// Create job channel
 	jobChan := make(chan testJob, len(jobs))
 	resultChan := make(chan testResult, len(jobs))
@@ -287,6 +409,7 @@ func runTestsParallel(jobs []testJob, parallel int) []testResult {
 	var results []testResult
 	for result := range resultChan {
 		results = append(results, result)
+		resultTable.append(result)
 	}
 
 	return results
@@ -294,30 +417,6 @@ func runTestsParallel(jobs []testJob, parallel int) []testResult {
 
 func runTest(job testJob) testResult {
 	key := fmt.Sprintf("%s-%s", job.dbType, job.image)
-
-	// Check if this test should be skipped on ARM
-	isARM := isARMPlatform()
-	shouldSkip := false
-	skipReason := ""
-	if isARM {
-		if (job.dbType == "MySQL" && (job.image == "mysql:5.6" || job.image == "mysql:5.7")) ||
-			(job.dbType == "Percona" && (job.image == "percona:5.7" || job.image == "percona:8.0")) {
-			shouldSkip = true
-			skipReason = "No ARM64 builds available"
-		}
-	}
-
-	if shouldSkip {
-		// Return skipped result immediately
-		return testResult{
-			image:      job.image,
-			dbType:     job.dbType,
-			passed:     true, // Skipped tests don't fail the suite
-			skipped:    true,
-			skipReason: skipReason,
-			duration:   0,
-		}
-	}
 
 	// Initialize progress tracker
 	progress.mu.Lock()
@@ -336,13 +435,15 @@ func runTest(job testJob) testResult {
 
 	// Synchronize output to prevent interleaving
 	outputMutex.Lock()
-	if !isParallel {
+	if !isParallel && !job.verbose {
 		// In sequential mode, show counter and start progress bar
-		fmt.Printf("\n[%d/%d] ", job.testNum, getTotalJobs())
+		fmt.Fprintf(os.Stderr, "\n[%d/%d] ", job.testNum, getTotalJobs())
 		progress.mu.Lock()
 		tracker := progress.trackers[key]
 		progress.mu.Unlock()
 		renderProgress(tracker)
+	} else if job.verbose {
+		fmt.Printf("\n[%d/%d] %s %s\n", job.testNum, getTotalJobs(), job.dbType, extractVersion(job.image))
 	}
 	outputMutex.Unlock()
 
@@ -355,30 +456,26 @@ func runTest(job testJob) testResult {
 	cmd := exec.Command("go", "test",
 		"-tags=testcontainers",
 		"-json",
-		"./mysql/...",
+		job.testPackage,
 		"-run", job.testPattern,
-		"-timeout", "15m",
+		"-count", "1",
+		"-timeout", job.timeout,
 	)
 
 	// Set environment variables
 	envVars := os.Environ()
-	// All database types use DOCKER_IMAGE
-	// For TiDB, format is tidb:VERSION (e.g., tidb:6.1.7)
-	// For MySQL/Percona/MariaDB, format is already full image name (e.g., mysql:8.0)
-	dockerImage := job.image
-	if job.dbType == "TiDB" {
-		// TiDB image is just version number, prepend "tidb:" prefix
-		dockerImage = "tidb:" + job.image
+	envVars = append(envVars, envDockerImage+"="+job.dockerImage)
+	envVars = append(envVars, envTerraformAcceptance+"=1")
+	if shouldDisableRyukForPodman() {
+		envVars = append(envVars, envTestcontainersRyuk+"=true")
 	}
-	envVars = append(envVars, "DOCKER_IMAGE="+dockerImage)
-	envVars = append(envVars, "TF_ACC=1")
 
 	// Handle platform-specific issues for older MySQL/Percona versions on ARM64
-	// MySQL 5.6, 5.7 and Percona 5.7, 8.0 don't have ARM64 builds
+	// MySQL 5.7 and Percona 5.7 don't have ARM64 builds.
 	// Docker Desktop on Apple Silicon needs explicit platform specification
-	if (job.dbType == "MySQL" && (job.image == "5.6" || job.image == "5.7")) ||
-		(job.dbType == "Percona" && (job.image == "5.7" || job.image == "8.0")) {
-		envVars = append(envVars, "DOCKER_DEFAULT_PLATFORM=linux/amd64")
+	if needsAMD64Platform(job.dbType, job.dockerImage) {
+		envVars = append(envVars, envDockerDefaultPlatform+"="+linuxAMD64Platform)
+		envVars = append(envVars, envDockerPlatform+"="+linuxAMD64Platform)
 	}
 
 	cmd.Env = envVars
@@ -438,14 +535,14 @@ func runTest(job testJob) testResult {
 					lineBuffer.WriteString(lines[len(lines)-1])
 					// Process complete lines
 					for i := 0; i < len(lines)-1; i++ {
-						parseTestOutput(lines[i], key)
+						parseTestOutput(lines[i], key, job.verbose)
 					}
 				}
 			}
 			if readErr != nil {
 				// Process any remaining line in buffer
 				if lineBuffer.Len() > 0 {
-					parseTestOutput(lineBuffer.String(), key)
+					parseTestOutput(lineBuffer.String(), key, job.verbose)
 				}
 				break
 			}
@@ -474,13 +571,12 @@ func runTest(job testJob) testResult {
 		failedTests = tracker.failedTests
 		failedOutput = tracker.failedOutput
 
-		// Render final progress state
-		if tracker.totalTests > 0 {
+		// Render final progress state in sequential mode. Parallel mode reports
+		// completed suites through the incremental results table.
+		if tracker.totalTests > 0 && !isParallel && !job.verbose {
 			outputMutex.Lock()
-			if !isParallel {
-				// Clear the in-progress line
-				fmt.Fprintf(os.Stderr, "\r\033[K")
-			}
+			// Clear the in-progress line
+			fmt.Fprintf(os.Stderr, "\r\033[K")
 			renderProgress(tracker)
 			fmt.Fprintf(os.Stderr, "\n")
 			outputMutex.Unlock()
@@ -529,7 +625,7 @@ type testEvent struct {
 	Output  string    `json:"Output"`
 }
 
-func parseTestOutput(line string, key string) {
+func parseTestOutput(line string, key string, verbose bool) {
 	line = strings.TrimSpace(line)
 	if line == "" {
 		return
@@ -539,6 +635,12 @@ func parseTestOutput(line string, key string) {
 	if err := json.Unmarshal([]byte(line), &event); err != nil {
 		// Not valid JSON, skip
 		return
+	}
+
+	if verbose && event.Output != "" {
+		outputMutex.Lock()
+		fmt.Print(event.Output)
+		outputMutex.Unlock()
 	}
 
 	progress.mu.Lock()
@@ -593,7 +695,7 @@ func parseTestOutput(line string, key string) {
 	progress.mu.Unlock()
 
 	// Update progress display when we have tests running
-	if tracker.totalTests > 0 && (tracker.passedTests > 0 || tracker.failedTests > 0) {
+	if !verbose && tracker.totalTests > 0 && (tracker.passedTests > 0 || tracker.failedTests > 0) {
 		outputMutex.Lock()
 		if !isParallel {
 			// In sequential mode, update progress on same line
@@ -674,67 +776,126 @@ func sanitizeImageName(image string) string {
 	return result
 }
 
+var resultTableColumns = []struct {
+	name  string
+	width int
+}{
+	{name: "Database", width: 10},
+	{name: "Version", width: 10},
+	{name: "Status", width: 44},
+	{name: "Duration", width: 10},
+}
+
+func (t *incrementalResultTable) printHeader() {
+	outputMutex.Lock()
+	defer outputMutex.Unlock()
+
+	t.printHeaderLocked()
+}
+
+func (t *incrementalResultTable) printHeaderLocked() {
+	if t.printedHeader {
+		return
+	}
+
+	fmt.Println("Results:")
+	printResultTableBorder()
+	printResultTableRow([]string{"Database", "Version", "Status", "Duration"})
+	printResultTableBorder()
+	t.printedHeader = true
+}
+
+func (t *incrementalResultTable) append(result testResult) {
+	outputMutex.Lock()
+	defer outputMutex.Unlock()
+
+	t.printHeaderLocked()
+	printResultTableRow([]string{
+		result.dbType.Label(),
+		extractVersion(result.image),
+		resultStatus(result),
+		formatDuration(result.duration),
+	})
+}
+
+func (t *incrementalResultTable) close() {
+	outputMutex.Lock()
+	defer outputMutex.Unlock()
+
+	if t.printedHeader {
+		printResultTableBorder()
+	}
+}
+
+func printResultTableBorder() {
+	fmt.Print("+")
+	for _, col := range resultTableColumns {
+		fmt.Print(strings.Repeat("-", col.width+2))
+		fmt.Print("+")
+	}
+	fmt.Println()
+}
+
+func printResultTableRow(values []string) {
+	fmt.Print("|")
+	for i, col := range resultTableColumns {
+		value := ""
+		if i < len(values) {
+			value = values[i]
+		}
+		value = fitTableValue(value, col.width)
+		fmt.Printf(" %-*s |", col.width, value)
+	}
+	fmt.Println()
+}
+
+func fitTableValue(value string, width int) string {
+	if len(value) <= width {
+		return value
+	}
+	if width <= 3 {
+		return value[:width]
+	}
+	return value[:width-3] + "..."
+}
+
+func resultStatus(result testResult) string {
+	if result.skipped {
+		return fmt.Sprintf("SKIP (%s)", result.skipReason)
+	}
+
+	status := "PASS"
+	if !result.passed {
+		status = "FAIL"
+	}
+
+	if result.totalTests == 0 {
+		return status
+	}
+
+	if result.failedTests > 0 {
+		return fmt.Sprintf("%s (%d/%d, %d failed)", status, result.passedTests, result.totalTests, result.failedTests)
+	}
+
+	return fmt.Sprintf("%s (%d/%d)", status, result.passedTests, result.totalTests)
+}
+
 func printSummary(results []testResult) {
 	fmt.Println()
 
-	total := len(results)
 	passed := 0
 	failed := 0
-
-	// Sort results by database type and version for better readability
-	sortedResults := make([]testResult, len(results))
-	copy(sortedResults, results)
-	sort.Slice(sortedResults, func(i, j int) bool {
-		if sortedResults[i].dbType != sortedResults[j].dbType {
-			return sortedResults[i].dbType < sortedResults[j].dbType
-		}
-		return sortedResults[i].image < sortedResults[j].image
-	})
-
-	// Create table
-	table := tablewriter.NewWriter(os.Stdout)
-	table.Options(
-		tablewriter.WithHeader([]string{"Database", "Version", "Status", "Duration"}),
-	)
-
-	// Add rows
 	skippedCount := 0
-	for _, result := range sortedResults {
-		var status string
+
+	for _, result := range results {
 		if result.skipped {
-			status = fmt.Sprintf("SKIP (%s)", result.skipReason)
 			skippedCount++
 		} else if !result.passed {
-			status = "FAIL"
 			failed++
 		} else {
-			status = "PASS"
 			passed++
 		}
-
-		// Extract version from image (e.g., "mysql:8.0" -> "8.0")
-		version := extractVersion(result.image)
-		duration := formatDuration(result.duration)
-
-		// Add test counts to status (only for non-skipped tests)
-		if !result.skipped && result.totalTests > 0 {
-			if result.failedTests > 0 {
-				status = fmt.Sprintf("%s (%d/%d, %d failed)", status, result.passedTests, result.totalTests, result.failedTests)
-			} else {
-				status = fmt.Sprintf("%s (%d/%d)", status, result.passedTests, result.totalTests)
-			}
-		}
-
-		row := []string{
-			result.dbType,
-			version,
-			status,
-			duration,
-		}
-		table.Append(row)
 	}
-
-	table.Render()
 
 	totalRun := passed + failed
 	fmt.Printf("\nSummary: %d/%d passed", passed, totalRun)
@@ -745,7 +906,7 @@ func printSummary(results []testResult) {
 		fmt.Printf(", %d failed", failed)
 	}
 	if skippedCount > 0 {
-		fmt.Printf(" (%d total test suites)", total)
+		fmt.Printf(" (%d total test suites)", len(results))
 	}
 	fmt.Println()
 

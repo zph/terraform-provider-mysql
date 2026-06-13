@@ -54,6 +54,8 @@ func CreateOrUpdateGlobalVariable(ctx context.Context, d *schema.ResourceData, m
 	name := d.Get("name").(string)
 	value := d.Get("value").(string)
 
+	// TiDB uses SET GLOBAL for persistent cluster variables too.
+	// See https://docs.pingcap.com/tidb/stable/sql-statement-set-variable/.
 	sqlBaseQuery := fmt.Sprintf("SET GLOBAL %s = ", quoteIdentifier(name))
 
 	// Detect number or string

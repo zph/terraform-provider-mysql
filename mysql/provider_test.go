@@ -17,6 +17,8 @@ func TestMain(m *testing.M) {
 	os.Stderr.WriteString("TestMain: ENTRY POINT REACHED\n")
 	os.Stderr.Sync()
 
+	configureTestcontainersRuntime()
+
 	// Require DOCKER_IMAGE to be set - fail early if missing
 	dockerImage := os.Getenv("DOCKER_IMAGE")
 	os.Stderr.WriteString(fmt.Sprintf("TestMain: DOCKER_IMAGE='%s'\n", dockerImage))
@@ -26,7 +28,7 @@ func TestMain(m *testing.M) {
 		os.Stderr.WriteString("ERROR: DOCKER_IMAGE environment variable is not set.\n")
 		os.Stderr.WriteString("Please set DOCKER_IMAGE to the appropriate Docker image:\n")
 		os.Stderr.WriteString("  - MySQL/Percona/MariaDB: mysql:5.6, percona:8.0, mariadb:10.10\n")
-		os.Stderr.WriteString("  - TiDB: tidb:6.1.7, tidb:8.5.3\n")
+		os.Stderr.WriteString("  - TiDB: tidb:6.1.7, tidb:8.5.5\n")
 		os.Exit(1)
 	}
 
@@ -106,4 +108,16 @@ func TestMain(m *testing.M) {
 
 	// Exit with test result code
 	os.Exit(code)
+}
+
+func configureTestcontainersRuntime() {
+	if os.Getenv("TESTCONTAINERS_RYUK_DISABLED") != "" {
+		return
+	}
+
+	if strings.Contains(os.Getenv("DOCKER_HOST"), "podman.sock") {
+		os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+		os.Stderr.WriteString("TestMain: detected Podman socket; setting TESTCONTAINERS_RYUK_DISABLED=true\n")
+		os.Stderr.Sync()
+	}
 }

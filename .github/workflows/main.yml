@@ -7,11 +7,6 @@ on:
   pull_request:
     branches: [ "*" ]
 
-# TiDB versions used in tests - single source of truth
-# Latest version of each minor series: 6.1.x, 6.5.x, 7.1.x, 7.5.x, 8.1.x, 8.5.x
-env:
-  TIDB_VERSIONS: "6.1.7 6.5.12 7.1.6 7.5.7 8.1.2 8.5.3"
-
 jobs:
   lint:
     runs-on: ubuntu-22.04
@@ -30,41 +25,23 @@ jobs:
   prepare-dependencies:
     name: Prepare Dependencies
     runs-on: ubuntu-22.04
+    outputs:
+      test_matrix: ${{ steps.test-matrix.outputs.test_matrix }}
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Validate TiDB versions sync
-        run: |
-          # Extract TiDB versions from test matrix and compare with env.TIDB_VERSIONS
-          EXPECTED_VERSIONS="${{ env.TIDB_VERSIONS }}"
-          MATRIX_VERSIONS=$(grep -A 20 "db_type: tidb" .github/workflows/main.yml | grep "db_version:" | sed 's/.*db_version: "\([0-9.]*\)".*/\1/' | tr '\n' ' ' | xargs)
-
-          echo "Expected versions (from env): $EXPECTED_VERSIONS"
-          echo "Matrix versions (from workflow): $MATRIX_VERSIONS"
-
-          # Check if versions match (simple check - both should contain same versions)
-          MISSING=""
-          for version in $EXPECTED_VERSIONS; do
-            if ! echo "$MATRIX_VERSIONS" | grep -q "$version"; then
-              MISSING="$MISSING $version"
-            fi
-          done
-
-          if [ -n "$MISSING" ]; then
-            echo "ERROR: TiDB versions in env.TIDB_VERSIONS not found in test matrix: $MISSING"
-            echo "Please ensure test matrix includes tidb entries for all versions in env.TIDB_VERSIONS"
-            exit 1
-          fi
-
-          echo "✓ TiDB versions are in sync"
-
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version-file: go.mod
+
+      - name: Generate test matrix
+        id: test-matrix
+        run: |
+          printf 'test_matrix=%s\n' "$(go run scripts/test-matrix.go --github-actions)" >> "$GITHUB_OUTPUT"
 
       - name: Download Terraform
         run: |
@@ -121,59 +98,125 @@ jobs:
           retention-days: 1
           compression-level: 6
 
-  tests:
+  unit-tests:
+    name: Unit Tests
     runs-on: ubuntu-22.04
-    needs: [prepare-dependencies]
+    steps:
+      - name: Checkout Git repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
+      - name: Run unit tests via Makefile
+        run: make test-unit
+
+  matrix-version-policy:
+    name: Matrix Version Policy
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout Git repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
+      - name: Check matrix versions
+        id: matrix-policy
+        env:
+          MATRIX_POLICY_SUMMARY_FILE: ${{ runner.temp }}/matrix-version-policy.md
+        run: |
+          set +e
+          rm -f "$MATRIX_POLICY_SUMMARY_FILE"
+          make eol-versions-ci
+          status=$?
+          printf 'exit_code=%s\n' "$status" >> "$GITHUB_OUTPUT"
+          printf 'summary_file=%s\n' "$MATRIX_POLICY_SUMMARY_FILE" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Update matrix policy PR comment
+        id: matrix-policy-comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        continue-on-error: true
+        env:
+          MATRIX_POLICY_SUMMARY_FILE: ${{ steps.matrix-policy.outputs.summary_file }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- terraform-provider-mysql:matrix-version-policy -->';
+            const summaryFile = process.env.MATRIX_POLICY_SUMMARY_FILE;
+
+            if (!summaryFile || !fs.existsSync(summaryFile)) {
+              core.warning('Matrix policy summary file was not written; skipping PR comment.');
+              return;
+            }
+
+            const summary = fs.readFileSync(summaryFile, 'utf8').trim();
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const previous = comments.find((comment) =>
+              comment.user.type === 'Bot' && comment.body.includes(marker)
+            );
+
+            if (summary.includes('All matrix versions are current and supported.')) {
+              if (previous) {
+                await github.rest.issues.deleteComment({ owner, repo, comment_id: previous.id });
+              }
+              return;
+            }
+
+            const body = `${marker}\n${summary}\n\n_This comment is updated automatically by the Matrix Version Policy workflow._`;
+            if (previous) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Fail matrix version policy
+        if: steps.matrix-policy.outputs.exit_code != '0'
+        uses: actions/github-script@v7
+        env:
+          MATRIX_POLICY_EXIT_CODE: ${{ steps.matrix-policy.outputs.exit_code }}
+          MATRIX_POLICY_COMMENT_OUTCOME: ${{ steps.matrix-policy-comment.outcome }}
+        with:
+          script: |
+            const exitCode = Number(process.env.MATRIX_POLICY_EXIT_CODE || '1') || 1;
+            const commentOutcome = process.env.MATRIX_POLICY_COMMENT_OUTCOME || 'skipped';
+            const destination = context.eventName === 'pull_request' && commentOutcome === 'success'
+              ? 'See the sticky Matrix Version Policy PR comment and this job summary for the full table.'
+              : 'See this job summary for the full table.';
+            const commentNote = context.eventName === 'pull_request' && commentOutcome !== 'success'
+              ? ` PR comment was not written; comment step outcome: ${commentOutcome}.`
+              : '';
+            core.setFailed(`Matrix version policy failed because the version table contains red rows. ${destination}${commentNote}`);
+            process.exitCode = exitCode;
+
+  tests:
+    name: Acceptance Matrix
+    runs-on: ubuntu-22.04
+    needs: [prepare-dependencies, unit-tests]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-        # MySQL versions
-        - db_type: mysql
-          db_version: "5.6"
-          make_target: "test-mysql-5.6"
-        - db_type: mysql
-          db_version: "5.7"
-          make_target: "test-mysql-5.7"
-        - db_type: mysql
-          db_version: "8.0"
-          make_target: "test-mysql-8.0"
-        # Percona versions
-        - db_type: percona
-          db_version: "5.7"
-          make_target: "test-percona-5.7"
-        - db_type: percona
-          db_version: "8.0"
-          make_target: "test-percona-8.0"
-        # MariaDB versions
-        - db_type: mariadb
-          db_version: "10.3"
-          make_target: "test-mariadb-10.3"
-        - db_type: mariadb
-          db_version: "10.8"
-          make_target: "test-mariadb-10.8"
-        - db_type: mariadb
-          db_version: "10.10"
-          make_target: "test-mariadb-10.10"
-        # TiDB versions - must match env.TIDB_VERSIONS: 6.1.7 6.5.12 7.1.6 7.5.7 8.1.2 8.5.3
-        - db_type: tidb
-          db_version: "6.1.7"
-          make_target: "test-tidb-6.1.7"
-        - db_type: tidb
-          db_version: "6.5.12"
-          make_target: "test-tidb-6.5.12"
-        - db_type: tidb
-          db_version: "7.1.6"
-          make_target: "test-tidb-7.1.6"
-        - db_type: tidb
-          db_version: "7.5.7"
-          make_target: "test-tidb-7.5.7"
-        - db_type: tidb
-          db_version: "8.1.2"
-          make_target: "test-tidb-8.1.2"
-        - db_type: tidb
-          db_version: "8.5.3"
-          make_target: "test-tidb-8.5.3"
+      matrix: ${{ fromJSON(needs.prepare-dependencies.outputs.test_matrix) }}
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v4
@@ -226,12 +269,12 @@ jobs:
           TF_ACC: 1
         run: |
           export PATH="${{ github.workspace }}/bin:$PATH"
-          echo "Running ${{ matrix.db_type }} ${{ matrix.db_version }} tests using Makefile target: ${{ matrix.make_target }}"
-          make ${{ matrix.make_target }}
+          echo "Running ${{ matrix.db_type }} ${{ matrix.db_version }} tests"
+          make testcontainers-db DB="${{ matrix.db_type }}" VERSION="${{ matrix.db_version }}"
 
   release:
     name: 'Terraform Provider Release'
-    needs: [tests]
+    needs: [tests, matrix-version-policy]
     if: startsWith(github.ref, 'refs/tags/v')
     uses: hashicorp/ghaction-terraform-provider-release/.github/workflows/community.yml@v5
     secrets:

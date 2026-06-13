@@ -13,7 +13,7 @@ server.
 
 ~> **Note on MySQL:** MySQL global variables are [not persistent](https://dev.mysql.com/doc/refman/5.7/en/set-variable.html)
 
-~> **Note on TiDB:** TiDB global variables are [persistent](https://docs.pingcap.com/tidb/v5.4/sql-statement-set-variable#mysql-compatibility)
+~> **Note on TiDB:** TiDB global variables are [persistent](https://docs.pingcap.com/tidb/stable/sql-statement-set-variable/#mysql-compatibility). Use this resource for TiDB `SET GLOBAL` settings such as resource-control feature flags; do not use it for session-only statements such as `SET RESOURCE GROUP`.
 
 ~> **Note about `destroy`:** `destroy` will try assign `DEFAULT` value for global variable.
   Unfortunately not every variable support this.
@@ -24,6 +24,15 @@ server.
 resource "mysql_global_variable" "max_connections" {
   name = "max_connections"
   value = "100"
+}
+```
+
+### TiDB resource control variable
+
+```hcl
+resource "mysql_global_variable" "tidb_enable_resource_control" {
+  name  = "tidb_enable_resource_control"
+  value = "ON"
 }
 ```
 

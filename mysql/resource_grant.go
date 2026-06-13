@@ -87,7 +87,7 @@ func grantsConflict(grantA MySQLGrant, grantB MySQLGrant) bool {
 }
 
 type PrivilegesPartiallyRevocable interface {
-	SQLPartialRevokePrivilegesStatement(privilegesToRevoke []string) string
+	SQLPartialRevokePrivilegesStatement(privilegesToRevoke []string, revokeGrantOption bool) string
 }
 
 type UserOrRole struct {
@@ -182,7 +182,7 @@ func (t *TablePrivilegeGrant) SQLGrantStatement() string {
 // See: https://github.com/petoju/terraform-provider-mysql/issues/120
 func containsAllPrivilege(privileges []string) bool {
 	for _, p := range privileges {
-		if kReAllPrivileges.MatchString(p) {
+		if kReAllPrivileges.MatchString(strings.ToUpper(p)) {
 			return true
 		}
 	}
@@ -197,8 +197,8 @@ func (t *TablePrivilegeGrant) SQLRevokeStatement() string {
 	return fmt.Sprintf("REVOKE %s ON %s.%s FROM %s", strings.Join(privs, ", "), t.GetDatabase(), t.GetTable(), t.UserOrRole.SQLString())
 }
 
-func (t *TablePrivilegeGrant) SQLPartialRevokePrivilegesStatement(privilegesToRevoke []string) string {
-	if t.Grant && !containsAllPrivilege(privilegesToRevoke) {
+func (t *TablePrivilegeGrant) SQLPartialRevokePrivilegesStatement(privilegesToRevoke []string, revokeGrantOption bool) string {
+	if revokeGrantOption && !containsAllPrivilege(privilegesToRevoke) {
 		privilegesToRevoke = append(privilegesToRevoke, "GRANT OPTION")
 	}
 	return fmt.Sprintf("REVOKE %s ON %s.%s FROM %s", strings.Join(privilegesToRevoke, ", "), t.GetDatabase(), t.GetTable(), t.UserOrRole.SQLString())
@@ -265,9 +265,9 @@ func (t *ProcedurePrivilegeGrant) SQLRevokeStatement() string {
 	return stmt
 }
 
-func (t *ProcedurePrivilegeGrant) SQLPartialRevokePrivilegesStatement(privilegesToRevoke []string) string {
+func (t *ProcedurePrivilegeGrant) SQLPartialRevokePrivilegesStatement(privilegesToRevoke []string, revokeGrantOption bool) string {
 	privs := privilegesToRevoke
-	if t.Grant && !containsAllPrivilege(privilegesToRevoke) {
+	if revokeGrantOption && !containsAllPrivilege(privilegesToRevoke) {
 		privs = append(privs, "GRANT OPTION")
 	}
 	return fmt.Sprintf("REVOKE %s ON %s %s.%s FROM %s", strings.Join(privs, ", "), t.ObjectT, t.GetDatabase(), t.GetCallableName(), t.UserOrRole.SQLString())
@@ -350,8 +350,9 @@ func resourceGrant() *schema.Resource {
 
 			"database": {
 				Type:     schema.TypeString,
-				Required: true,
+				Optional: true,
 				ForceNew: true,
+				Default:  "*",
 			},
 
 			"table": {
@@ -593,6 +594,10 @@ func updatePrivileges(ctx context.Context, db *sql.DB, d *schema.ResourceData, g
 	newPrivs := newPrivsIf.(*schema.Set)
 	grantIfs := newPrivs.Difference(oldPrivs).List()
 	revokeIfs := oldPrivs.Difference(newPrivs).List()
+	oldGrantOptionIf, newGrantOptionIf := d.GetChange("grant")
+	oldGrantOption := oldGrantOptionIf.(bool)
+	newGrantOption := newGrantOptionIf.(bool)
+	revokeGrantOption := oldGrantOption && !newGrantOption
 
 	// Normalize the privileges to revoke
 	privsToRevoke := []string{}
@@ -607,7 +612,7 @@ func updatePrivileges(ctx context.Context, db *sql.DB, d *schema.ResourceData, g
 		if !ok {
 			return fmt.Errorf("grant does not support partial privilege revokes")
 		}
-		sqlCommand := partialRevoker.SQLPartialRevokePrivilegesStatement(privsToRevoke)
+		sqlCommand := partialRevoker.SQLPartialRevokePrivilegesStatement(privsToRevoke, revokeGrantOption)
 		log.Printf("[DEBUG] SQL for partial revoke: %s", sqlCommand)
 
 		if _, err := db.ExecContext(ctx, sqlCommand); err != nil {
@@ -665,7 +670,8 @@ func isNonExistingGrant(err error) bool {
 }
 
 func ImportGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
-	userHostDatabaseTable := strings.Split(d.Id(), "@")
+	importRoleGrant := strings.HasSuffix(d.Id(), ";r")
+	userHostDatabaseTable := strings.Split(strings.TrimSuffix(d.Id(), ";r"), "@")
 
 	if len(userHostDatabaseTable) != 4 && len(userHostDatabaseTable) != 5 {
 		return nil, fmt.Errorf("wrong ID format %s - expected user@host@database@table (and optionally ending @ to signify grant option) where some parts can be empty)", d.Id())
@@ -681,11 +687,19 @@ func ImportGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 		Host: host,
 	}
 
-	desiredGrant := &TablePrivilegeGrant{
-		Database:   database,
-		Table:      table,
-		Grant:      grantOption,
-		UserOrRole: userOrRole,
+	var desiredGrant MySQLGrant
+	if importRoleGrant {
+		desiredGrant = &RoleGrant{
+			Grant:      grantOption,
+			UserOrRole: userOrRole,
+		}
+	} else {
+		desiredGrant = &TablePrivilegeGrant{
+			Database:   database,
+			Table:      table,
+			Grant:      grantOption,
+			UserOrRole: userOrRole,
+		}
 	}
 
 	db, err := getDatabaseFromMeta(ctx, meta)
@@ -701,6 +715,12 @@ func ImportGrant(ctx context.Context, d *schema.ResourceData, meta interface{}) 
 		if grantsConflict(desiredGrant, foundGrant) {
 			res := resourceGrant().Data(nil)
 			setDataFromGrant(foundGrant, res)
+			if importRoleGrant {
+				// Role grants do not carry database/table, but preserve the import id's
+				// values so existing imported resources do not force replacement.
+				res.Set("database", database)
+				res.Set("table", table)
+			}
 			return []*schema.ResourceData{res}, nil
 		}
 	}
@@ -737,8 +757,7 @@ func setDataFromGrant(grant MySQLGrant, d *schema.ResourceData) *schema.Resource
 			d.Set("privileges", grantWithPriv.GetPrivileges())
 		} else {
 			currentPrivs := setToArray(currentPriv.(*schema.Set))
-			currentPrivs = normalizePerms(currentPrivs)
-			if !reflect.DeepEqual(currentPrivs, grantWithPriv.GetPrivileges()) {
+			if !arePrivilegesSetsEqual(currentPrivs, grantWithPriv.GetPrivileges()) {
 				d.Set("privileges", grantWithPriv.GetPrivileges())
 			}
 		}
@@ -854,7 +873,7 @@ func parseDatabaseQualifiedObject(objectRef string) (string, string, error) {
 }
 
 var (
-	kRequireRegex = regexp.MustCompile(`.*REQUIRE\s+(.*)`)
+	kRequireRegex = regexp.MustCompile(`.*\bREQUIRE\s+(.+?)(?:\s+WITH\s+(?:GRANT|ADMIN)\s+OPTION)?$`)
 
 	kGrantRegex = regexp.MustCompile(`\bGRANT OPTION\b|\bADMIN OPTION\b`)
 
@@ -1085,13 +1104,16 @@ func normalizePerms(perms []string) []string {
 	for _, perm := range perms {
 		// Remove leading and trailing backticks and spaces
 		permNorm := strings.Trim(perm, "` ")
-		permUcase := strings.ToUpper(permNorm)
 
 		// Normalize ALL and ALLPRIVILEGES to ALL PRIVILEGES
-		if kReAllPrivileges.MatchString(permUcase) {
-			permUcase = "ALL PRIVILEGES"
+		if kReAllPrivileges.MatchString(strings.ToUpper(permNorm)) {
+			permNorm = "ALL PRIVILEGES"
 		}
-		permSortedColumns := normalizeColumnOrder(permUcase)
+		switch strings.ToUpper(permNorm) {
+		case "RESOURCE_GROUP_ADMIN", "RESOURCE_GROUP_USER":
+			permNorm = strings.ToUpper(permNorm)
+		}
+		permSortedColumns := normalizeColumnOrder(permNorm)
 
 		ret = append(ret, permSortedColumns)
 	}
@@ -1103,6 +1125,23 @@ func normalizePerms(perms []string) []string {
 	sort.Strings(ret)
 
 	return ret
+}
+
+func arePrivilegesSetsEqual(a, b []string) bool {
+	normA := normalizePerms(a)
+	normB := normalizePerms(b)
+
+	if len(normA) != len(normB) {
+		return false
+	}
+
+	for i := range normA {
+		if !strings.EqualFold(normA[i], normB[i]) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func setToArray(s interface{}) []string {
