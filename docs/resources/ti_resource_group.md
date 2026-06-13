@@ -47,6 +47,17 @@ resource "mysql_ti_resource_group" "oltp" {
 }
 ```
 
+### Resource group with v8.5 runaway query controls
+
+```hcl
+resource "mysql_ti_resource_group" "oltp_guardrail" {
+  name           = "oltp_guardrail"
+  resource_units = 2000
+  priority       = "high"
+  query_limit    = "PROCESSED_KEYS=1000000, RU=2000, ACTION=SWITCH_GROUP(rg_quarantine), WATCH=PLAN DURATION='30m'"
+}
+```
+
 ## Argument Reference
 
 The following arguments are supported:
@@ -55,7 +66,7 @@ The following arguments are supported:
 * `resource_units` - (Required) The number of Request Units per second (RU_PER_SEC) allocated to this resource group. This controls the throughput capacity. When reading existing TiDB resource groups, the provider maps TiDB's `UNLIMITED` value to `2147483647`.
 * `priority` - (Optional) The priority level of the resource group. Must be one of `high`, `medium`, or `low`. Defaults to `medium`.
 * `burstable` - (Optional) Whether the resource group can burst beyond its allocated RU_PER_SEC when there is spare capacity. Defaults to `false`.
-* `query_limit` - (Optional) Runaway query control settings. When set, queries matching the criteria are automatically handled. Format: `EXEC_ELAPSED='<duration>', ACTION=<KILL|COOLDOWN|DRYRUN>, WATCH=<EXACT|SIMILAR|PLAN> DURATION='<duration>'`. When empty (default), no query limit is applied.
+* `query_limit` - (Optional) Runaway query control settings. When set, queries matching the criteria are automatically handled. This is the body of TiDB's `QUERY_LIMIT=(...)` clause. Supported TiDB criteria include `EXEC_ELAPSED='<duration>'`, `PROCESSED_KEYS=<count>`, and `RU=<count>`. Supported actions include `DRYRUN`, `COOLDOWN`, `KILL`, and, in TiDB v8.4.0 and later including v8.5.x, `SWITCH_GROUP(<resource_group>)`. The `WATCH` clause can use `EXACT`, `SIMILAR`, or `PLAN` with an optional `DURATION='<duration>'`. When empty (default), no query limit is applied.
 
 ## Attributes Reference
 
