@@ -1,4 +1,6 @@
 TEST?=./mysql/...
+UNIT_TEST?=./internal/... ./mysql
+UNIT_TEST_TIMEOUT?=5m
 GOFMT_FILES?=$$(find . -name '*.go' |grep -v vendor)
 WEBSITE_REPO=github.com/hashicorp/terraform-website
 PKG_NAME=mysql
@@ -30,7 +32,9 @@ HOSTNAME=registry.terraform.io
 NAMESPACE=zph
 NAME=mysql
 VERSION=9.9.9
-TESTCONTAINERS_RUNNER=cd $(CURDIR) && PATH="$(CURDIR)/bin:${PATH}" PARALLEL="$${PARALLEL:-1}" go run scripts/test-runner.go --package "$(TEST)" $(if $(VERBOSE),--verbose,)
+TESTCONTAINERS_TIMEOUT?=30m
+TESTCONTAINERS_RUNNER=cd $(CURDIR) && PATH="$(CURDIR)/bin:${PATH}" PARALLEL="$${PARALLEL:-1}" go run scripts/test-runner.go --package "$(TEST)" --timeout "$(TESTCONTAINERS_TIMEOUT)" $(if $(VERBOSE),--verbose,)
+MATRIX_POLICY_ARGS=--github-actions --fail-on-red $(if $(MATRIX_POLICY_SUMMARY_FILE),--summary-file "$(MATRIX_POLICY_SUMMARY_FILE)",)
 ## on linux base os
 TERRAFORM_PLUGINS_DIRECTORY=~/.terraform.d/plugins/${HOSTNAME}/${NAMESPACE}/${NAME}/${VERSION}/${OS_ARCH}
 
@@ -44,10 +48,13 @@ help: ## Show this help message
 	@echo 'Examples:'
 	@echo '  make build              Build the provider'
 	@echo '  make release            Create a release PR branch (PR-based workflow)'
-	@echo '  make testversion8.0    Run tests against MySQL 8.0'
-	@echo '  make testtidb8.5.5     Run tests against TiDB 8.5.5'
-	@echo '  make test VERBOSE=1   Run test matrix and stream go test output'
-	@echo '  make acceptance        Run all acceptance tests'
+	@echo '  make test-unit          Run unit tests without testcontainers'
+	@echo '  make test-integration   Run testcontainers integration matrix'
+	@echo '  make testcontainers-db DB=mysql VERSION=8.0'
+	@echo '  make eol-versions      Check matrix patch drift and EOL warnings'
+	@echo '  make eol-versions-ci   Enforce matrix version policy for CI'
+	@echo '  make test VERBOSE=1    Run unit and integration tests, streaming integration output'
+	@echo '  make acceptance        Run integration tests sequentially'
 	@echo '  make testcontainers-matrix  Run test matrix across all database versions'
 
 default: help
@@ -86,12 +93,16 @@ build-tiup-playground-image: ## Pre-build TiUP Playground Docker image for cachi
 	@docker build -f Dockerfile.tiup-playground -t terraform-provider-mysql-tiup-playground:latest .
 	@echo "✓ TiUP Playground image built successfully: terraform-provider-mysql-tiup-playground:latest"
 
-test: testcontainers-matrix ## Run all acceptance tests
-test-sequential: acceptance
+test: test-unit test-integration ## Run unit tests, then integration tests
+test-unit: fmtcheck ## Run unit tests that do not require testcontainers or external database servers
+	@go test $(UNIT_TEST) $(if $(TESTARGS),-run "$(TESTARGS)",) -timeout=$(UNIT_TEST_TIMEOUT)
 
-# Run testcontainers tests with a matrix of all database versions
+test-integration: testcontainers-matrix ## Run testcontainers integration tests
+test-sequential: acceptance ## Run testcontainers integration tests sequentially
+
+# Run testcontainers integration tests with a matrix of all database versions
 # Usage: make testcontainers-matrix TESTARGS="TestAccUser"
-testcontainers-matrix: fmtcheck bin/terraform ## Run test matrix across all database versions
+testcontainers-matrix: fmtcheck bin/terraform ## Run integration test matrix across all database versions
 	@PARALLEL=$(if $(VERBOSE),1,4); $(TESTCONTAINERS_RUNNER) $(TESTARGS)
 
 # Run testcontainers tests for a specific database image
@@ -100,8 +111,20 @@ testcontainers-matrix: fmtcheck bin/terraform ## Run test matrix across all data
 testcontainers-image: fmtcheck bin/terraform ## Run tests for a specific database image (set DOCKER_IMAGE)
 	@$(TESTCONTAINERS_RUNNER) --image "$(DOCKER_IMAGE)" $(TESTARGS)
 
-testcontainers-matrix-check: ## Check matrix image patch drift and EOL warnings
+testcontainers-db: fmtcheck bin/terraform ## Run tests for a database/version pair (set DB and VERSION)
+	@if [ -z "$(DB)" ] || [ -z "$(VERSION)" ]; then \
+		echo "ERROR: set DB and VERSION. Example: make testcontainers-db DB=mysql VERSION=8.0"; \
+		exit 1; \
+	fi
+	@$(TESTCONTAINERS_RUNNER) --db "$(DB)" --version "$(VERSION)" $(TESTARGS)
+
+eol-versions: ## Check matrix image patch drift and EOL warnings
 	@go run scripts/update-test-matrix.go
+
+eol-versions-ci: ## Enforce matrix version policy for CI
+	@go run scripts/update-test-matrix.go $(MATRIX_POLICY_ARGS)
+
+testcontainers-matrix-check: eol-versions-ci ## Enforce matrix version policy for CI
 
 testcontainers-matrix-update: ## Update matrix image patch versions in known files
 	@go run scripts/update-test-matrix.go --write
@@ -114,30 +137,30 @@ bin/terraform: ## Download Terraform binary
 testacc: fmtcheck bin/terraform ## Run acceptance tests (requires MYSQL_ENDPOINT env vars)
 	PATH="$(CURDIR)/bin:${PATH}" TF_ACC=1 go test $(TEST) -v $(TESTARGS) -timeout=90s
 
-acceptance: fmtcheck bin/terraform ## Run all acceptance tests across all database versions
+acceptance: fmtcheck bin/terraform ## Run integration test matrix sequentially
 	@PARALLEL=1; $(TESTCONTAINERS_RUNNER) $(TESTARGS)
 
 # MySQL test targets - use testcontainers
 # Preferred format: test-mysql-VERSION (e.g., test-mysql-8.0)
 test-mysql-%: ## Run tests against MySQL version (e.g., test-mysql-8.0)
-	@$(MAKE) testversion$*
+	@$(MAKE) testcontainers-db DB=mysql VERSION="$*"
 
 testversion%: ## Run tests against MySQL version (e.g., testversion8.0) [backwards compatible]
-	@$(TESTCONTAINERS_RUNNER) --db mysql --version "$*" --timeout 30m $(TESTARGS)
+	@$(MAKE) testcontainers-db DB=mysql VERSION="$*"
 
 testversion: ## Run tests against MySQL version (set MYSQL_VERSION)
-	@$(TESTCONTAINERS_RUNNER) --db mysql --version "$(MYSQL_VERSION)" --timeout 30m $(TESTARGS)
+	@$(MAKE) testcontainers-db DB=mysql VERSION="$(MYSQL_VERSION)"
 
 # Percona test targets - use testcontainers
 # Preferred format: test-percona-VERSION (e.g., test-percona-8.0)
 test-percona-%: ## Run tests against Percona version (e.g., test-percona-8.0)
-	@$(MAKE) testpercona$*
+	@$(MAKE) testcontainers-db DB=percona VERSION="$*"
 
 testpercona%: ## Run tests against Percona version (e.g., testpercona8.0) [backwards compatible]
-	@$(TESTCONTAINERS_RUNNER) --db percona --version "$*" --timeout 30m $(TESTARGS)
+	@$(MAKE) testcontainers-db DB=percona VERSION="$*"
 
 testpercona: ## Run tests against Percona version (set MYSQL_VERSION)
-	@$(TESTCONTAINERS_RUNNER) --db percona --version "$(MYSQL_VERSION)" --timeout 30m $(TESTARGS)
+	@$(MAKE) testcontainers-db DB=percona VERSION="$(MYSQL_VERSION)"
 
 testrdsdb%: ## Run tests against RDS MySQL version (requires MYSQL_ENDPOINT env vars)
 	$(MAKE) MYSQL_VERSION=$* MYSQL_USERNAME=${MYSQL_USERNAME} MYSQL_HOST=$(shell echo ${MYSQL_ENDPOINT} | cut -d: -f1) MYSQL_PASSWORD=${MYSQL_PASSWORD} MYSQL_PORT=$(shell echo ${MYSQL_ENDPOINT} | cut -d: -f2) testrdsdb
@@ -150,24 +173,24 @@ testrdsdb: ## Run tests against Amazon RDS (requires MYSQL_ENDPOINT env vars)
 # TiDB test targets - use testcontainers
 # Preferred format: test-tidb-VERSION (e.g., test-tidb-8.5.5)
 test-tidb-%: ## Run tests against TiDB version (e.g., test-tidb-8.5.5)
-	@$(MAKE) testtidb$*
+	@$(MAKE) testcontainers-db DB=tidb VERSION="$*"
 
 testtidb%: ## Run tests against TiDB version (e.g., testtidb8.5.5) [backwards compatible]
-	@$(TESTCONTAINERS_RUNNER) --db tidb --version "$*" --timeout 30m $(TESTARGS)
+	@$(MAKE) testcontainers-db DB=tidb VERSION="$*"
 
 testtidb: ## Run tests against TiDB version (set MYSQL_VERSION)
-	@$(TESTCONTAINERS_RUNNER) --db tidb --version "$(MYSQL_VERSION)" --timeout 30m $(TESTARGS)
+	@$(MAKE) testcontainers-db DB=tidb VERSION="$(MYSQL_VERSION)"
 
 # MariaDB test targets - use testcontainers
 # Preferred format: test-mariadb-VERSION (e.g., test-mariadb-10.10)
 test-mariadb-%: ## Run tests against MariaDB version (e.g., test-mariadb-10.10)
-	@$(MAKE) testmariadb$*
+	@$(MAKE) testcontainers-db DB=mariadb VERSION="$*"
 
 testmariadb%: ## Run tests against MariaDB version (e.g., testmariadb10.10) [backwards compatible]
-	@$(TESTCONTAINERS_RUNNER) --db mariadb --version "$*" --timeout 30m $(TESTARGS)
+	@$(MAKE) testcontainers-db DB=mariadb VERSION="$*"
 
 testmariadb: ## Run tests against MariaDB version (set MYSQL_VERSION)
-	@$(TESTCONTAINERS_RUNNER) --db mariadb --version "$(MYSQL_VERSION)" --timeout 30m $(TESTARGS)
+	@$(MAKE) testcontainers-db DB=mariadb VERSION="$(MYSQL_VERSION)"
 
 vet: ## Run go vet
 	@echo "go vet ."
@@ -362,4 +385,4 @@ release-local: ## Create a release locally (for testing - use 'make release' for
 release: ## Create a release PR branch (tag, push branch and tag, then create PR to merge to default branch)
 	@go run scripts/make-release.go
 
-.PHONY: help build test testacc vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag release release-local
+.PHONY: help build test test-unit test-integration test-sequential testcontainers-matrix testcontainers-image testcontainers-db eol-versions eol-versions-ci testcontainers-matrix-check testcontainers-matrix-update testacc acceptance vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag release release-local

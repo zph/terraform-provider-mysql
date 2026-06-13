@@ -14,6 +14,8 @@ import (
 )
 
 func TestPdConfigVar_basic(t *testing.T) {
+	skipIfAcceptanceTestsDisabled(t)
+
 	varName := "log.level"
 	varValue := "warn"
 	varType := "pd"
@@ -87,6 +89,8 @@ func TestPdConfigVar_basic(t *testing.T) {
 }
 
 func TestTiKvConfigVar_basic(t *testing.T) {
+	skipIfAcceptanceTestsDisabled(t)
+
 	varName := "split.qps-threshold"
 	varValue := "1000"
 	varType := "tikv"
@@ -126,6 +130,14 @@ func TestTiKvConfigVar_basic(t *testing.T) {
 			},
 		},
 	})
+}
+
+func skipIfAcceptanceTestsDisabled(t *testing.T) {
+	t.Helper()
+
+	if os.Getenv(resource.EnvTfAcc) == "" {
+		t.Skipf("Acceptance tests skipped unless env %q set", resource.EnvTfAcc)
+	}
 }
 
 func testAccConfigVarExists(varName string, varValue string, varType string) resource.TestCheckFunc {

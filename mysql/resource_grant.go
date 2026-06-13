@@ -854,7 +854,7 @@ func parseDatabaseQualifiedObject(objectRef string) (string, string, error) {
 }
 
 var (
-	kRequireRegex = regexp.MustCompile(`.*REQUIRE\s+(.*)`)
+	kRequireRegex = regexp.MustCompile(`.*\bREQUIRE\s+(.+?)(?:\s+WITH\s+(?:GRANT|ADMIN)\s+OPTION)?$`)
 
 	kGrantRegex = regexp.MustCompile(`\bGRANT OPTION\b|\bADMIN OPTION\b`)
 
