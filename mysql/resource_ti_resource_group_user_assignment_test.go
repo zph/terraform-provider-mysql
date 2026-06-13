@@ -45,7 +45,7 @@ func testAccResourceGroupUserAssignmentExists(username string, resourceGroupName
 			return err
 		}
 
-		user, resourceGroup, err := readUserFromDB(db, username)
+		user, resourceGroup, err := readUserFromDB(db, username, "%")
 		if err != nil {
 			return err
 		}
@@ -83,6 +83,7 @@ resource "mysql_ti_resource_group" "test" {
 
 resource "mysql_ti_resource_group_user_assignment" "test" {
 	user = "${mysql_user.test.user}"
+	host = "${mysql_user.test.host}"
 	resource_group = "${mysql_ti_resource_group.test.name}"
 }
 `, varUsername, varResourceGroupName, varResourceUnits, varQueryLimit)

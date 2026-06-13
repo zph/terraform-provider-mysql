@@ -51,6 +51,7 @@ help: ## Show this help message
 	@echo '  make test-unit          Run unit tests without testcontainers'
 	@echo '  make test-integration   Run testcontainers integration matrix'
 	@echo '  make testcontainers-db DB=mysql VERSION=8.0'
+	@echo '  make clean-testcontainers Remove stopped testcontainers artifacts'
 	@echo '  make eol-versions      Check matrix patch drift and EOL warnings'
 	@echo '  make eol-versions-ci   Enforce matrix version policy for CI'
 	@echo '  make test VERBOSE=1    Run unit and integration tests, streaming integration output'
@@ -62,7 +63,7 @@ default: help
 build: fmtcheck ## Build the provider
 	go install
 
-clean: ## Aggressively clear Docker cache and test artifacts
+clean: clean-testcontainers ## Aggressively clear Docker cache and test artifacts
 	@echo "Clearing Docker cache and test artifacts..."
 	@# Remove testcontainers-related images (mysql, percona, mariadb, tidb)
 	@docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "(mysql|percona|mariadb|tidb|pingcap)" | xargs -r docker rmi -f 2>/dev/null || true
@@ -83,6 +84,25 @@ clean: ## Aggressively clear Docker cache and test artifacts
 	@# Clear Docker's content-addressable storage for problematic images (if possible)
 	@echo "Docker cache cleared. Note: For MySQL 5.7 and Percona on Apple Silicon,"
 	@echo "you may need to restart Docker Desktop to fully clear manifest cache."
+
+clean-testcontainers: ## Remove stopped testcontainers containers, networks, volumes, images, and logs
+	@echo "Cleaning testcontainers artifacts..."
+	@found=0; \
+	for runtime in docker podman; do \
+		if command -v $$runtime >/dev/null 2>&1; then \
+			found=1; \
+			echo "Cleaning $$runtime testcontainers artifacts..."; \
+			TMPDIR="$${TMPDIR:-/tmp}" $$runtime container prune --filter label=org.testcontainers=true -f 2>/dev/null || true; \
+			TMPDIR="$${TMPDIR:-/tmp}" $$runtime network prune --filter label=org.testcontainers=true -f 2>/dev/null || true; \
+			TMPDIR="$${TMPDIR:-/tmp}" $$runtime volume prune --filter label=org.testcontainers=true -f 2>/dev/null || true; \
+			TMPDIR="$${TMPDIR:-/tmp}" $$runtime image prune -a --filter label=org.testcontainers=true -f 2>/dev/null || true; \
+		fi; \
+	done; \
+	if [ $$found -eq 0 ]; then \
+		echo "No docker or podman CLI found; skipping container runtime cleanup."; \
+	fi
+	@rm -rf /tmp/testcontainers-* /private/tmp/testcontainers-* 2>/dev/null || true
+	@echo "Testcontainers artifacts cleaned."
 
 build-tiup-playground-image: ## Pre-build TiUP Playground Docker image for caching
 	@echo "Building TiUP Playground Docker image..."
@@ -385,4 +405,4 @@ release-local: ## Create a release locally (for testing - use 'make release' for
 release: ## Create a release PR branch (tag, push branch and tag, then create PR to merge to default branch)
 	@go run scripts/make-release.go
 
-.PHONY: help build test test-unit test-integration test-sequential testcontainers-matrix testcontainers-image testcontainers-db eol-versions eol-versions-ci testcontainers-matrix-check testcontainers-matrix-update testacc acceptance vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag release release-local
+.PHONY: help build clean clean-testcontainers test test-unit test-integration test-sequential testcontainers-matrix testcontainers-image testcontainers-db eol-versions eol-versions-ci testcontainers-matrix-check testcontainers-matrix-update testacc acceptance vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag release release-local

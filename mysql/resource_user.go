@@ -106,6 +106,79 @@ func resourceUser() *schema.Resource {
 				Type:     schema.TypeBool,
 				Optional: true,
 			},
+
+			// TiDB supports binding users to resource groups directly in CREATE/ALTER USER.
+			// See https://docs.pingcap.com/tidb/stable/sql-statement-create-user/.
+			"resource_group": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				DiffSuppressFunc: NewEmptyStringSuppressFunc,
+			},
+
+			// TiDB CREATE/ALTER USER supports MAX_USER_CONNECTIONS, account locking,
+			// comments, JSON attributes, and password lifecycle options.
+			// See https://docs.pingcap.com/tidb/stable/sql-statement-alter-user/.
+			"max_user_connections": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Computed: true,
+			},
+
+			"account_locked": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Computed: true,
+			},
+
+			"comment": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				DiffSuppressFunc: NewEmptyStringSuppressFunc,
+			},
+
+			"attribute_json": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				ValidateFunc:     validation.StringIsJSON,
+				DiffSuppressFunc: NewEmptyStringSuppressFunc,
+			},
+
+			"password_expire": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				DiffSuppressFunc: NewEmptyStringSuppressFunc,
+			},
+
+			"password_history": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				DiffSuppressFunc: NewEmptyStringSuppressFunc,
+			},
+
+			"password_reuse_interval": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				DiffSuppressFunc: NewEmptyStringSuppressFunc,
+			},
+
+			"failed_login_attempts": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Computed: true,
+			},
+
+			"password_lock_time": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				DiffSuppressFunc: NewEmptyStringSuppressFunc,
+			},
 		},
 	}
 }
@@ -218,6 +291,10 @@ func CreateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 		if err != nil {
 			return diag.Errorf("cannot use retain_current_password: %v", err)
 		}
+	}
+
+	if createObj == "USER" {
+		stmtSQL = appendTiDBUserOptionClauses(stmtSQL, buildTiDBUserOptionClauses(d, false))
 	}
 
 	log.Println("[DEBUG] Executing statement:", stmtSQL)
@@ -336,6 +413,22 @@ func UpdateUser(ctx context.Context, d *schema.ResourceData, meta interface{}) d
 		}
 	}
 
+	if tiDBUserOptionsChanged(d) {
+		clauses := buildTiDBUserOptionClauses(d, true)
+		if len(clauses) > 0 {
+			stmtSQL := fmt.Sprintf("ALTER USER '%s'@'%s' %s",
+				d.Get("user").(string),
+				d.Get("host").(string),
+				strings.Join(clauses, " "))
+
+			log.Println("[DEBUG] Executing query:", stmtSQL)
+			_, err := db.ExecContext(ctx, stmtSQL)
+			if err != nil {
+				return diag.Errorf("failed setting TiDB user options: %v", err)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -407,6 +500,7 @@ func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) dia
 			} else {
 				d.Set("auth_string_hashed", m[4])
 			}
+			setTiDBUserOptionsFromCreateStatement(createUserStmt, d)
 			return nil
 		}
 
@@ -487,4 +581,151 @@ func NewEmptyStringSuppressFunc(k, old, new string, d *schema.ResourceData) bool
 	}
 
 	return false
+}
+
+func appendTiDBUserOptionClauses(stmtSQL string, clauses []string) string {
+	if len(clauses) == 0 {
+		return stmtSQL
+	}
+
+	return stmtSQL + " " + strings.Join(clauses, " ")
+}
+
+func tiDBUserOptionsChanged(d *schema.ResourceData) bool {
+	for _, key := range []string{
+		"resource_group",
+		"max_user_connections",
+		"account_locked",
+		"comment",
+		"attribute_json",
+		"password_expire",
+		"password_history",
+		"password_reuse_interval",
+		"failed_login_attempts",
+		"password_lock_time",
+	} {
+		if d.HasChange(key) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func buildTiDBUserOptionClauses(d *schema.ResourceData, includeClears bool) []string {
+	clauses := []string{}
+
+	if value, ok := d.GetOk("max_user_connections"); ok {
+		clauses = append(clauses, fmt.Sprintf("WITH MAX_USER_CONNECTIONS %d", value.(int)))
+	} else if includeClears && d.HasChange("max_user_connections") {
+		clauses = append(clauses, "WITH MAX_USER_CONNECTIONS 0")
+	}
+
+	if value, ok := d.GetOk("password_expire"); ok {
+		clauses = append(clauses, "PASSWORD EXPIRE "+strings.ToUpper(value.(string)))
+	}
+
+	if value, ok := d.GetOk("password_history"); ok {
+		clauses = append(clauses, "PASSWORD HISTORY "+strings.ToUpper(value.(string)))
+	}
+
+	if value, ok := d.GetOk("password_reuse_interval"); ok {
+		clauses = append(clauses, "PASSWORD REUSE INTERVAL "+strings.ToUpper(value.(string)))
+	}
+
+	if value, ok := d.GetOk("failed_login_attempts"); ok {
+		clauses = append(clauses, fmt.Sprintf("FAILED_LOGIN_ATTEMPTS %d", value.(int)))
+	}
+
+	if value, ok := d.GetOk("password_lock_time"); ok {
+		clauses = append(clauses, "PASSWORD_LOCK_TIME "+strings.ToUpper(value.(string)))
+	}
+
+	if value, ok := d.GetOkExists("account_locked"); ok {
+		if value.(bool) {
+			clauses = append(clauses, "ACCOUNT LOCK")
+		} else {
+			clauses = append(clauses, "ACCOUNT UNLOCK")
+		}
+	}
+
+	if value, ok := d.GetOk("comment"); ok {
+		clauses = append(clauses, "COMMENT "+quoteSQLString(value.(string)))
+	} else if includeClears && d.HasChange("comment") {
+		clauses = append(clauses, "COMMENT ''")
+	}
+
+	if value, ok := d.GetOk("attribute_json"); ok {
+		clauses = append(clauses, "ATTRIBUTE "+quoteSQLString(value.(string)))
+	} else if includeClears && d.HasChange("attribute_json") {
+		clauses = append(clauses, "ATTRIBUTE '{}'")
+	}
+
+	if value, ok := d.GetOk("resource_group"); ok {
+		clauses = append(clauses, "RESOURCE GROUP "+quoteIdentifier(value.(string)))
+	} else if includeClears && d.HasChange("resource_group") {
+		clauses = append(clauses, "RESOURCE GROUP `default`")
+	}
+
+	return clauses
+}
+
+var sqlStringQuoteReplacer = strings.NewReplacer(`\`, `\\`, `'`, `''`)
+
+func quoteSQLString(value string) string {
+	return "'" + sqlStringQuoteReplacer.Replace(value) + "'"
+}
+
+func setTiDBUserOptionsFromCreateStatement(createUserStmt string, d *schema.ResourceData) {
+	if match := regexp.MustCompile(`RESOURCE GROUP [` + "`" + `']?([^` + "`" + `'\s]+)[` + "`" + `']?`).FindStringSubmatch(createUserStmt); len(match) == 2 {
+		d.Set("resource_group", match[1])
+	}
+
+	if match := regexp.MustCompile(`WITH MAX_USER_CONNECTIONS ([0-9]+)`).FindStringSubmatch(createUserStmt); len(match) == 2 {
+		var value int
+		if _, err := fmt.Sscanf(match[1], "%d", &value); err == nil {
+			d.Set("max_user_connections", value)
+		}
+	}
+
+	if strings.Contains(createUserStmt, " ACCOUNT LOCK") {
+		d.Set("account_locked", true)
+	} else if strings.Contains(createUserStmt, " ACCOUNT UNLOCK") {
+		d.Set("account_locked", false)
+	}
+
+	if match := regexp.MustCompile(`COMMENT '((?:''|[^'])*)'`).FindStringSubmatch(createUserStmt); len(match) == 2 {
+		d.Set("comment", unquoteSQLString(match[1]))
+	}
+
+	if match := regexp.MustCompile(`ATTRIBUTE '((?:''|[^'])*)'`).FindStringSubmatch(createUserStmt); len(match) == 2 {
+		d.Set("attribute_json", unquoteSQLString(match[1]))
+	}
+
+	if match := regexp.MustCompile(`PASSWORD EXPIRE (DEFAULT|NEVER|INTERVAL [0-9]+ DAY)`).FindStringSubmatch(createUserStmt); len(match) == 2 {
+		d.Set("password_expire", strings.ToLower(match[1]))
+	}
+
+	if match := regexp.MustCompile(`PASSWORD HISTORY (DEFAULT|[0-9]+)`).FindStringSubmatch(createUserStmt); len(match) == 2 {
+		d.Set("password_history", strings.ToLower(match[1]))
+	}
+
+	if match := regexp.MustCompile(`PASSWORD REUSE INTERVAL (DEFAULT|[0-9]+ DAY)`).FindStringSubmatch(createUserStmt); len(match) == 2 {
+		d.Set("password_reuse_interval", strings.ToLower(match[1]))
+	}
+
+	if match := regexp.MustCompile(`FAILED_LOGIN_ATTEMPTS ([0-9]+)`).FindStringSubmatch(createUserStmt); len(match) == 2 {
+		var value int
+		if _, err := fmt.Sscanf(match[1], "%d", &value); err == nil {
+			d.Set("failed_login_attempts", value)
+		}
+	}
+
+	if match := regexp.MustCompile(`PASSWORD_LOCK_TIME (UNBOUNDED|[0-9]+)`).FindStringSubmatch(createUserStmt); len(match) == 2 {
+		d.Set("password_lock_time", strings.ToLower(match[1]))
+	}
+}
+
+func unquoteSQLString(value string) string {
+	return strings.ReplaceAll(value, "''", "'")
 }
