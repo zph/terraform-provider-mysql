@@ -34,6 +34,7 @@ NAME=mysql
 VERSION=9.9.9
 TESTCONTAINERS_TIMEOUT?=30m
 TESTCONTAINERS_RUNNER=cd $(CURDIR) && PATH="$(CURDIR)/bin:${PATH}" PARALLEL="$${PARALLEL:-1}" go run scripts/test-runner.go --package "$(TEST)" --timeout "$(TESTCONTAINERS_TIMEOUT)" $(if $(VERBOSE),--verbose,)
+MATRIX_POLICY_ARGS=--github-actions --fail-on-red $(if $(MATRIX_POLICY_SUMMARY_FILE),--summary-file "$(MATRIX_POLICY_SUMMARY_FILE)",)
 ## on linux base os
 TERRAFORM_PLUGINS_DIRECTORY=~/.terraform.d/plugins/${HOSTNAME}/${NAMESPACE}/${NAME}/${VERSION}/${OS_ARCH}
 
@@ -121,7 +122,7 @@ eol-versions: ## Check matrix image patch drift and EOL warnings
 	@go run scripts/update-test-matrix.go
 
 eol-versions-ci: ## Enforce matrix version policy for CI
-	@go run scripts/update-test-matrix.go --github-actions --fail-on-red
+	@go run scripts/update-test-matrix.go $(MATRIX_POLICY_ARGS)
 
 testcontainers-matrix-check: eol-versions-ci ## Enforce matrix version policy for CI
 

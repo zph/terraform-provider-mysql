@@ -69,6 +69,7 @@ func main() {
 	failOnWarning := flag.Bool("fail-on-warning", false, "exit non-zero when drift or EOL warnings are found")
 	failOnRed := flag.Bool("fail-on-red", false, "exit non-zero when any row has a red status")
 	githubActions := flag.Bool("github-actions", false, "emit GitHub Actions warning/error annotations")
+	summaryFile := flag.String("summary-file", "", "write the Markdown matrix policy summary to this file")
 	flag.Parse()
 
 	client := &http.Client{Timeout: 30 * time.Second}
@@ -97,7 +98,7 @@ func main() {
 	stopSpinner()
 	printResultsTable(results)
 	if *githubActions {
-		reportGitHubActionsStatus(results)
+		reportGitHubActionsStatus(results, *summaryFile)
 	}
 
 	if *write && len(replacements) > 0 {
@@ -282,9 +283,9 @@ func (severity resultSeverity) Circle() string {
 	}
 }
 
-func reportGitHubActionsStatus(results []matrixCheckResult) {
+func reportGitHubActionsStatus(results []matrixCheckResult, summaryFile string) {
 	severity := maxResultSeverity(results)
-	if err := writeGitHubStepSummary(results, severity); err != nil {
+	if err := writeGitHubSummaries(githubStepSummary(results, severity), summaryFile); err != nil {
 		fmt.Fprintf(os.Stderr, "::warning title=Matrix version policy summary::%s\n", githubActionsEscape(err.Error()))
 	}
 
@@ -300,19 +301,30 @@ func reportGitHubActionsStatus(results []matrixCheckResult) {
 	}
 }
 
-func writeGitHubStepSummary(results []matrixCheckResult, severity resultSeverity) error {
-	path := os.Getenv("GITHUB_STEP_SUMMARY")
-	if path == "" {
-		return nil
+func writeGitHubSummaries(summary, summaryFile string) error {
+	if path := os.Getenv("GITHUB_STEP_SUMMARY"); path != "" {
+		if err := appendFile(path, summary); err != nil {
+			return err
+		}
 	}
 
+	if summaryFile != "" && summaryFile != os.Getenv("GITHUB_STEP_SUMMARY") {
+		if err := os.WriteFile(summaryFile, []byte(summary), 0o644); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func appendFile(path, content string) error {
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	_, err = file.WriteString(githubStepSummary(results, severity))
+	_, err = file.WriteString(content)
 	return err
 }
 
