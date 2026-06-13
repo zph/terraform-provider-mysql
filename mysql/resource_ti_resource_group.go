@@ -22,16 +22,9 @@ type ResourceGroup struct {
 	ResourceUnits int
 	Priority      string
 	Burstable     bool
-	BurstableMode string
 	QueryLimit    string
 	Background    string
 }
-
-const (
-	ResourceGroupBurstableModeOff       = "off"
-	ResourceGroupBurstableModeModerated = "moderated"
-	ResourceGroupBurstableModeUnlimited = "unlimited"
-)
 
 var CreateResourceGroupSQLPrefix = "CREATE RESOURCE GROUP IF NOT EXISTS"
 var UpdateResourceGroupSQLPrefix = "ALTER RESOURCE GROUP"
@@ -63,10 +56,6 @@ func (rg *ResourceGroup) buildSQLQuery(prefix string) string {
 }
 
 func (rg *ResourceGroup) burstableSQLClause() string {
-	if rg.BurstableMode != "" {
-		return fmt.Sprintf(`BURSTABLE = %s`, strings.ToUpper(rg.BurstableMode))
-	}
-
 	return fmt.Sprintf(`BURSTABLE = %t`, rg.Burstable)
 }
 
@@ -119,15 +108,6 @@ func resourceTiResourceGroup() *schema.Resource {
 				Default:  DefaultResourceGroup.Burstable,
 				ForceNew: false,
 				Optional: true,
-			},
-			// TiDB v9.0 extends BURSTABLE from a boolean into OFF/MODERATED/UNLIMITED modes.
-			// See https://docs.pingcap.com/tidb/stable/sql-statement-create-resource-group/.
-			"burstable_mode": {
-				Type:         schema.TypeString,
-				ForceNew:     false,
-				Optional:     true,
-				Computed:     true,
-				ValidateFunc: validation.StringInSlice([]string{ResourceGroupBurstableModeOff, ResourceGroupBurstableModeModerated, ResourceGroupBurstableModeUnlimited}, false),
 			},
 			/*
 				QUERY_LIMIT=(EXEC_ELAPSED='60s', ACTION=KILL, WATCH=EXACT DURATION='10m')
@@ -257,8 +237,7 @@ func getResourceGroupFromDB(db *sql.DB, name string) (*ResourceGroup, error) {
 
 	/*
 		TiDB has changed information_schema.resource_groups across resource-control releases:
-		RU_PER_SEC can be numeric or UNLIMITED, BURSTABLE can be YES/NO or a v9 mode,
-		and BACKGROUND only exists on newer versions.
+		RU_PER_SEC can be numeric or UNLIMITED, and BACKGROUND only exists on newer versions.
 		See https://docs.pingcap.com/tidb/stable/sql-statement-create-resource-group/.
 	*/
 	query := `SELECT * FROM information_schema.resource_groups WHERE NAME = ?`
@@ -286,23 +265,17 @@ func getResourceGroupFromDB(db *sql.DB, name string) (*ResourceGroup, error) {
 	}
 	rg.ResourceUnits = resourceUnits
 
-	rg.Burstable, rg.BurstableMode = parseResourceGroupBurstable(stringMapValue(row, "BURSTABLE"))
+	rg.Burstable = parseResourceGroupBurstable(stringMapValue(row, "BURSTABLE"))
 
 	return &rg, nil
 }
 
 func NewResourceGroupFromResourceData(d *schema.ResourceData) ResourceGroup {
-	burstableMode := ""
-	if rawMode, ok := d.GetOk("burstable_mode"); ok {
-		burstableMode = strings.ToLower(rawMode.(string))
-	}
-
 	return ResourceGroup{
 		Name:          d.Get("name").(string),
 		ResourceUnits: d.Get("resource_units").(int),
 		Priority:      strings.ToUpper(d.Get("priority").(string)),
 		Burstable:     d.Get("burstable").(bool),
-		BurstableMode: burstableMode,
 		QueryLimit:    d.Get("query_limit").(string),
 		Background:    d.Get("background").(string),
 	}
@@ -313,7 +286,6 @@ func setResourceGroupOnResourceData(rg ResourceGroup, d *schema.ResourceData) {
 	d.Set("resource_units", rg.ResourceUnits)
 	d.Set("priority", rg.Priority)
 	d.Set("burstable", rg.Burstable)
-	d.Set("burstable_mode", rg.BurstableMode)
 	d.Set("query_limit", rg.QueryLimit)
 	d.Set("background", rg.Background)
 }
@@ -332,19 +304,13 @@ func parseResourceGroupResourceUnits(raw string) (int, error) {
 	return parsed, nil
 }
 
-func parseResourceGroupBurstable(raw string) (bool, string) {
+func parseResourceGroupBurstable(raw string) bool {
 	switch strings.ToUpper(strings.TrimSpace(raw)) {
 	case "YES", "TRUE", "1":
-		return true, ""
+		return true
 	case "NO", "FALSE", "0":
-		return false, ""
-	case "OFF":
-		return false, ResourceGroupBurstableModeOff
-	case "MODERATED":
-		return true, ResourceGroupBurstableModeModerated
-	case "UNLIMITED":
-		return true, ResourceGroupBurstableModeUnlimited
+		return false
 	default:
-		return false, ""
+		return false
 	}
 }

@@ -72,17 +72,17 @@ func TestResourceGroupBuildSQLQueryRunawayQueryControls(t *testing.T) {
 	}
 }
 
-func TestResourceGroupBuildSQLQueryTiDB9BurstableModeAndBackground(t *testing.T) {
+func TestResourceGroupBuildSQLQueryBackground(t *testing.T) {
 	rg := ResourceGroup{
 		Name:          "default",
 		ResourceUnits: 2147483647,
 		Priority:      "MEDIUM",
-		BurstableMode: ResourceGroupBurstableModeUnlimited,
+		Burstable:     true,
 		Background:    `TASK_TYPES='br,ddl', UTILIZATION_LIMIT=30`,
 	}
 
 	got := rg.buildSQLQuery(UpdateResourceGroupSQLPrefix)
-	want := "ALTER RESOURCE GROUP default RU_PER_SEC = 2147483647 PRIORITY = MEDIUM QUERY_LIMIT=NULL BACKGROUND=(TASK_TYPES='br,ddl', UTILIZATION_LIMIT=30) BURSTABLE = UNLIMITED ;"
+	want := "ALTER RESOURCE GROUP default RU_PER_SEC = 2147483647 PRIORITY = MEDIUM QUERY_LIMIT=NULL BACKGROUND=(TASK_TYPES='br,ddl', UTILIZATION_LIMIT=30) BURSTABLE = true ;"
 	if got != want {
 		t.Fatalf("buildSQLQuery() = %q, want %q", got, want)
 	}
@@ -97,28 +97,14 @@ func TestResourceGroupParsesTiDBResourceGroupReadValues(t *testing.T) {
 		t.Fatalf("resourceUnits = %d, want 2147483647", resourceUnits)
 	}
 
-	burstable, mode := parseResourceGroupBurstable("UNLIMITED")
+	burstable := parseResourceGroupBurstable("YES")
 	if !burstable {
-		t.Fatal("burstable = false, want true")
-	}
-	if mode != ResourceGroupBurstableModeUnlimited {
-		t.Fatalf("mode = %q, want %q", mode, ResourceGroupBurstableModeUnlimited)
+		t.Fatal("burstable = false, want true for YES")
 	}
 
-	burstable, mode = parseResourceGroupBurstable("YES")
-	if !burstable {
-		t.Fatal("legacy burstable = false, want true")
-	}
-	if mode != "" {
-		t.Fatalf("legacy mode = %q, want empty", mode)
-	}
-
-	burstable, mode = parseResourceGroupBurstable("OFF")
+	burstable = parseResourceGroupBurstable("NO")
 	if burstable {
-		t.Fatal("burstable = true, want false")
-	}
-	if mode != ResourceGroupBurstableModeOff {
-		t.Fatalf("mode = %q, want %q", mode, ResourceGroupBurstableModeOff)
+		t.Fatal("burstable = true, want false for NO")
 	}
 }
 
