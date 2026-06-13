@@ -121,7 +121,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: read
+      pull-requests: write
     steps:
       - name: Checkout Git repo
         uses: actions/checkout@v4
@@ -201,11 +201,11 @@ jobs:
           script: |
             const exitCode = Number(process.env.MATRIX_POLICY_EXIT_CODE || '1') || 1;
             const commentOutcome = process.env.MATRIX_POLICY_COMMENT_OUTCOME || 'skipped';
-            const destination = context.eventName === 'pull_request'
+            const destination = context.eventName === 'pull_request' && commentOutcome === 'success'
               ? 'See the sticky Matrix Version Policy PR comment and this job summary for the full table.'
               : 'See this job summary for the full table.';
             const commentNote = context.eventName === 'pull_request' && commentOutcome !== 'success'
-              ? ` PR comment step outcome: ${commentOutcome}.`
+              ? ` PR comment was not written; comment step outcome: ${commentOutcome}.`
               : '';
             core.setFailed(`Matrix version policy failed because the version table contains red rows. ${destination}${commentNote}`);
             process.exitCode = exitCode;
