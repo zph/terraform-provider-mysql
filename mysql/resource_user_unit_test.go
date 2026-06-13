@@ -47,6 +47,49 @@ func TestParseWithClauseSetting(t *testing.T) {
 	}
 }
 
+func TestParseMaxUserConnectionsFromCreateUserStatement(t *testing.T) {
+	tests := []struct {
+		name      string
+		statement string
+		wantValue int
+		wantFound bool
+	}{
+		{
+			name:      "present",
+			statement: "CREATE USER `limited_user`@`%` IDENTIFIED BY PASSWORD 'x' WITH MAX_USER_CONNECTIONS 20",
+			wantValue: 20,
+			wantFound: true,
+		},
+		{
+			name:      "case insensitive",
+			statement: "CREATE USER `limited_user`@`%` with max_user_connections 10",
+			wantValue: 10,
+			wantFound: true,
+		},
+		{
+			name:      "absent means unlimited default",
+			statement: "CREATE USER `limited_user`@`%` IDENTIFIED BY PASSWORD 'x'",
+			wantValue: 0,
+			wantFound: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotValue, gotFound, err := parseMaxUserConnectionsFromCreateUserStatement(tt.statement)
+			if err != nil {
+				t.Fatalf("parseMaxUserConnectionsFromCreateUserStatement() error = %v", err)
+			}
+			if gotValue != tt.wantValue {
+				t.Fatalf("value = %d, want %d", gotValue, tt.wantValue)
+			}
+			if gotFound != tt.wantFound {
+				t.Fatalf("found = %t, want %t", gotFound, tt.wantFound)
+			}
+		})
+	}
+}
+
 func TestRedactCreateUserArgs(t *testing.T) {
 	got := redactCreateUserArgs([]interface{}{"app", "%", "password", "hash"}, "password", "hash")
 	want := []interface{}{"app", "%", "<SENSITIVE>", "<SENSITIVE>"}

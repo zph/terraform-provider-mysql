@@ -424,6 +424,31 @@ func testAccUserResourceLimitsMaxConn(user, host string, expectedMaxConn int) re
 			return err
 		}
 
+		isTiDB, _, _, err := serverTiDB(db)
+		if err != nil {
+			return err
+		}
+		if isTiDB {
+			var createUserStmt string
+			err = db.QueryRowContext(ctx, "SHOW CREATE USER ?@?", user, host).Scan(&createUserStmt)
+			if err != nil {
+				return fmt.Errorf("error reading TiDB user resource limits: %s", err)
+			}
+
+			maxUserConn, found, err := parseMaxUserConnectionsFromCreateUserStatement(createUserStmt)
+			if err != nil {
+				return fmt.Errorf("error parsing TiDB user resource limits: %s", err)
+			}
+			if !found {
+				maxUserConn = 0
+			}
+			if maxUserConn != expectedMaxConn {
+				return fmt.Errorf("expected max_user_connections %d, got %d", expectedMaxConn, maxUserConn)
+			}
+
+			return nil
+		}
+
 		var maxUserConn int
 		query := fmt.Sprintf("SELECT max_user_connections FROM mysql.user WHERE user='%s' AND host='%s'", user, host)
 		err = db.QueryRow(query).Scan(&maxUserConn)

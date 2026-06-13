@@ -655,6 +655,20 @@ func parseWithClauseSetting(d *schema.ResourceData, withClause, fieldName, setti
 	}
 }
 
+func parseMaxUserConnectionsFromCreateUserStatement(createUserStmt string) (int, bool, error) {
+	match := regexp.MustCompile(`(?i)\bMAX_USER_CONNECTIONS\s+([0-9]+)\b`).FindStringSubmatch(createUserStmt)
+	if len(match) != 2 {
+		return 0, false, nil
+	}
+
+	value, err := strconv.Atoi(match[1])
+	if err != nil {
+		return 0, false, err
+	}
+
+	return value, true, nil
+}
+
 func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	db, err := getDatabaseFromMeta(ctx, meta)
 	if err != nil {
