@@ -50,6 +50,8 @@ help: ## Show this help message
 	@echo '  make test-unit          Run unit tests without testcontainers'
 	@echo '  make test-integration   Run testcontainers integration matrix'
 	@echo '  make testcontainers-db DB=mysql VERSION=8.0'
+	@echo '  make eol-versions      Check matrix patch drift and EOL warnings'
+	@echo '  make eol-versions-ci   Enforce matrix version policy for CI'
 	@echo '  make test VERBOSE=1    Run unit and integration tests, streaming integration output'
 	@echo '  make acceptance        Run integration tests sequentially'
 	@echo '  make testcontainers-matrix  Run test matrix across all database versions'
@@ -115,8 +117,13 @@ testcontainers-db: fmtcheck bin/terraform ## Run tests for a database/version pa
 	fi
 	@$(TESTCONTAINERS_RUNNER) --db "$(DB)" --version "$(VERSION)" $(TESTARGS)
 
-testcontainers-matrix-check: ## Check matrix image patch drift and EOL warnings
+eol-versions: ## Check matrix image patch drift and EOL warnings
 	@go run scripts/update-test-matrix.go
+
+eol-versions-ci: ## Enforce matrix version policy for CI
+	@go run scripts/update-test-matrix.go --github-actions --fail-on-red
+
+testcontainers-matrix-check: eol-versions-ci ## Enforce matrix version policy for CI
 
 testcontainers-matrix-update: ## Update matrix image patch versions in known files
 	@go run scripts/update-test-matrix.go --write
@@ -377,4 +384,4 @@ release-local: ## Create a release locally (for testing - use 'make release' for
 release: ## Create a release PR branch (tag, push branch and tag, then create PR to merge to default branch)
 	@go run scripts/make-release.go
 
-.PHONY: help build test test-unit test-integration test-sequential testcontainers-matrix testcontainers-image testcontainers-db testcontainers-matrix-check testcontainers-matrix-update testacc acceptance vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag release release-local
+.PHONY: help build test test-unit test-integration test-sequential testcontainers-matrix testcontainers-image testcontainers-db eol-versions eol-versions-ci testcontainers-matrix-check testcontainers-matrix-update testacc acceptance vet fmt fmtcheck errcheck vendor-status test-compile website website-test tag format-tag release release-local

@@ -115,6 +115,23 @@ jobs:
       - name: Run unit tests via Makefile
         run: make test-unit
 
+  matrix-version-policy:
+    name: Matrix Version Policy
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Git repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
+      - name: Check matrix versions
+        run: make eol-versions-ci
+
   tests:
     name: Acceptance Matrix
     runs-on: ubuntu-22.04
@@ -179,7 +196,7 @@ jobs:
 
   release:
     name: 'Terraform Provider Release'
-    needs: [tests]
+    needs: [tests, matrix-version-policy]
     if: startsWith(github.ref, 'refs/tags/v')
     uses: hashicorp/ghaction-terraform-provider-release/.github/workflows/community.yml@v5
     secrets:
