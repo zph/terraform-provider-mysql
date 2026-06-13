@@ -283,12 +283,121 @@ func (severity resultSeverity) Circle() string {
 }
 
 func reportGitHubActionsStatus(results []matrixCheckResult) {
-	switch maxResultSeverity(results) {
-	case severityRed:
-		fmt.Fprintf(os.Stderr, "::error title=Matrix version policy::%s\n", githubActionsEscape(resultSummary(results, severityRed)))
-	case severityYellow:
-		fmt.Fprintf(os.Stderr, "::warning title=Matrix version policy::%s\n", githubActionsEscape(resultSummary(results, severityYellow)))
+	severity := maxResultSeverity(results)
+	if err := writeGitHubStepSummary(results, severity); err != nil {
+		fmt.Fprintf(os.Stderr, "::warning title=Matrix version policy summary::%s\n", githubActionsEscape(err.Error()))
 	}
+
+	switch severity {
+	case severityRed:
+		for _, result := range resultsWithSeverity(results, severityRed) {
+			emitGitHubActionsAnnotation("error", result)
+		}
+	case severityYellow:
+		for _, result := range resultsWithSeverity(results, severityYellow) {
+			emitGitHubActionsAnnotation("warning", result)
+		}
+	}
+}
+
+func writeGitHubStepSummary(results []matrixCheckResult, severity resultSeverity) error {
+	path := os.Getenv("GITHUB_STEP_SUMMARY")
+	if path == "" {
+		return nil
+	}
+
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(githubStepSummary(results, severity))
+	return err
+}
+
+func githubStepSummary(results []matrixCheckResult, severity resultSeverity) string {
+	var builder strings.Builder
+	builder.WriteString("## Matrix Version Policy\n\n")
+
+	switch severity {
+	case severityRed:
+		builder.WriteString("**Failing:** at least one active supported database line is missing from the test matrix.\n\n")
+	case severityYellow:
+		builder.WriteString("**Warning:** matrix entries need review, but no active supported line is missing.\n\n")
+	default:
+		builder.WriteString("All matrix versions are current and supported.\n\n")
+	}
+
+	nonGreen := nonGreenResults(results)
+	if len(nonGreen) == 0 {
+		return builder.String()
+	}
+
+	builder.WriteString("| Status | Database | Cycle | Current | Latest | EOL Date | Notes |\n")
+	builder.WriteString("| --- | --- | --- | --- | --- | --- | --- |\n")
+	for _, result := range nonGreen {
+		builder.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s | %s |\n",
+			resultSeverityFor(result).Circle(),
+			markdownCell(result.Entry.Database.Label()),
+			markdownCell(result.Entry.Cycle),
+			markdownCell(result.Entry.Version),
+			markdownCell(result.Latest),
+			markdownCell(result.EOL),
+			markdownCell(resultNotes(result)),
+		))
+	}
+	builder.WriteString("\n")
+	return builder.String()
+}
+
+func nonGreenResults(results []matrixCheckResult) []matrixCheckResult {
+	filtered := make([]matrixCheckResult, 0, len(results))
+	for _, result := range results {
+		if resultSeverityFor(result) == severityGreen {
+			continue
+		}
+		filtered = append(filtered, result)
+	}
+	return filtered
+}
+
+func resultsWithSeverity(results []matrixCheckResult, severity resultSeverity) []matrixCheckResult {
+	filtered := make([]matrixCheckResult, 0, len(results))
+	for _, result := range results {
+		if resultSeverityFor(result) == severity {
+			filtered = append(filtered, result)
+		}
+	}
+	return filtered
+}
+
+func emitGitHubActionsAnnotation(kind string, result matrixCheckResult) {
+	fmt.Fprintf(os.Stderr, "::%s file=%s,title=%s::%s\n",
+		kind,
+		githubActionsPropertyEscape(fileTestMatrix),
+		githubActionsPropertyEscape(annotationTitle(kind, result)),
+		githubActionsEscape(annotationMessage(result)),
+	)
+}
+
+func annotationTitle(kind string, result matrixCheckResult) string {
+	switch kind {
+	case "error":
+		return fmt.Sprintf("Missing %s %s in test matrix", result.Entry.Database.Label(), result.Entry.Cycle)
+	default:
+		return fmt.Sprintf("Review %s %s in test matrix", result.Entry.Database.Label(), result.Entry.Cycle)
+	}
+}
+
+func annotationMessage(result matrixCheckResult) string {
+	return fmt.Sprintf("status=%s current=%s latest=%s eol=%s notes=%s",
+		resultSeverityFor(result).Circle(),
+		result.Entry.Version,
+		result.Latest,
+		result.EOL,
+		resultNotes(result),
+	)
 }
 
 func resultSummary(results []matrixCheckResult, severity resultSeverity) string {
@@ -316,10 +425,24 @@ func resultSummary(results []matrixCheckResult, severity resultSeverity) string 
 	}
 }
 
+func markdownCell(value string) string {
+	value = strings.ReplaceAll(value, "\r", " ")
+	value = strings.ReplaceAll(value, "\n", " ")
+	value = strings.ReplaceAll(value, "|", "\\|")
+	return value
+}
+
 func githubActionsEscape(message string) string {
 	message = strings.ReplaceAll(message, "%", "%25")
 	message = strings.ReplaceAll(message, "\r", "%0D")
 	message = strings.ReplaceAll(message, "\n", "%0A")
+	return message
+}
+
+func githubActionsPropertyEscape(message string) string {
+	message = githubActionsEscape(message)
+	message = strings.ReplaceAll(message, ":", "%3A")
+	message = strings.ReplaceAll(message, ",", "%2C")
 	return message
 }
 

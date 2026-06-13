@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/zph/terraform-provider-mysql/v3/internal/testmatrix"
@@ -79,5 +80,42 @@ func TestResultSummaryEscapesGitHubActionsMessage(t *testing.T) {
 	want := "patch 100%25%0Asecond line%0D"
 	if message != want {
 		t.Fatalf("githubActionsEscape() = %q, want %q", message, want)
+	}
+}
+
+func TestGitHubActionsPropertyEscape(t *testing.T) {
+	message := githubActionsPropertyEscape("matrix: mysql, 100%\n")
+	want := "matrix%3A mysql%2C 100%25%0A"
+	if message != want {
+		t.Fatalf("githubActionsPropertyEscape() = %q, want %q", message, want)
+	}
+}
+
+func TestGitHubStepSummaryIncludesNonGreenRows(t *testing.T) {
+	results := []matrixCheckResult{
+		{Entry: testmatrix.Entry{Database: testmatrix.MySQL, Cycle: "8.0", Version: "8.0"}, Latest: "8.0", EOL: "2032-04-30"},
+		{Entry: testmatrix.Entry{Database: testmatrix.TiDB, Cycle: "8.5", Version: "8.5.5"}, Latest: "8.5.6", EOL: "2028-12-19", PatchWarning: true},
+		{Entry: testmatrix.Entry{Database: testmatrix.MariaDB, Cycle: "11.8", Version: "-"}, Latest: "11.8.8", EOL: "2028-06-04", NewerLine: true},
+	}
+
+	summary := githubStepSummary(results, severityRed)
+	mustContain(t, summary, "## Matrix Version Policy")
+	mustContain(t, summary, "**Failing:**")
+	mustContain(t, summary, "| 🔴 | MariaDB | 11.8 | - | 11.8.8 | 2028-06-04 | 🔴/🟢 |")
+	mustContain(t, summary, "| 🟡 | TiDB | 8.5 | 8.5.5 | 8.5.6 | 2028-12-19 | 🟡/🟢 |")
+	mustNotContain(t, summary, "| 🟢 | MySQL | 8.0 |")
+}
+
+func mustContain(t *testing.T, haystack, needle string) {
+	t.Helper()
+	if !strings.Contains(haystack, needle) {
+		t.Fatalf("expected %q to contain %q", haystack, needle)
+	}
+}
+
+func mustNotContain(t *testing.T, haystack, needle string) {
+	t.Helper()
+	if strings.Contains(haystack, needle) {
+		t.Fatalf("expected %q not to contain %q", haystack, needle)
 	}
 }
