@@ -1109,6 +1109,10 @@ func normalizePerms(perms []string) []string {
 		if kReAllPrivileges.MatchString(strings.ToUpper(permNorm)) {
 			permNorm = "ALL PRIVILEGES"
 		}
+		switch strings.ToUpper(permNorm) {
+		case "RESOURCE_GROUP_ADMIN", "RESOURCE_GROUP_USER":
+			permNorm = strings.ToUpper(permNorm)
+		}
 		permSortedColumns := normalizeColumnOrder(permNorm)
 
 		ret = append(ret, permSortedColumns)

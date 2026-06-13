@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 
@@ -27,6 +28,13 @@ func resourceTiResourceGroupUserAssignment() *schema.Resource {
 				Required: true,
 				ForceNew: true,
 			},
+			// TiDB ALTER USER accepts an optional user host just like CREATE USER.
+			// See https://docs.pingcap.com/tidb/stable/sql-statement-alter-user/.
+			"host": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+			},
 			"resource_group": {
 				Type:     schema.TypeString,
 				Required: true,
@@ -43,12 +51,13 @@ func CreateOrUpdateResourceGroupUser(ctx context.Context, d *schema.ResourceData
 
 	// TODO: should this be the d.Id()?
 	user := d.Get("user").(string)
+	host := d.Get("host").(string)
 	resourceGroup := d.Get("resource_group").(string)
 
 	var warnLevel, warnMessage string
 	var warnCode int = 0
 
-	currentUser, _, err := readUserFromDB(db, user)
+	currentUser, _, err := readUserFromDB(db, user, host)
 	if err != nil {
 		d.SetId("")
 		return diag.Errorf(`error during get user (%s): %s`, user, err)
@@ -59,7 +68,7 @@ func CreateOrUpdateResourceGroupUser(ctx context.Context, d *schema.ResourceData
 		return diag.Errorf(`must create user first before assigning to resource group | getting user %s | error %s`, currentUser, err)
 	}
 
-	sql := fmt.Sprintf("ALTER USER `%s` RESOURCE GROUP `%s`", user, resourceGroup)
+	sql := fmt.Sprintf("ALTER USER %s RESOURCE GROUP %s", formatTiDBUserAccount(user, host), quoteIdentifier(resourceGroup))
 	log.Printf("[DEBUG] SQL: %s\n", sql)
 
 	_, err = db.ExecContext(ctx, sql)
@@ -74,7 +83,7 @@ func CreateOrUpdateResourceGroupUser(ctx context.Context, d *schema.ResourceData
 		return diag.Errorf("error setting value: %s -> %s Error: %s", user, resourceGroup, warnMessage)
 	}
 
-	d.SetId(user)
+	d.SetId(formatTiDBResourceGroupUserAssignmentID(user, host))
 	return nil
 }
 
@@ -86,7 +95,8 @@ func ReadResourceGroupUser(ctx context.Context, d *schema.ResourceData, meta int
 		return diag.FromErr(err)
 	}
 
-	user, resourceGroup, err = readUserFromDB(db, d.Id())
+	userID, hostID := parseTiDBResourceGroupUserAssignmentID(d.Id())
+	user, resourceGroup, err = readUserFromDB(db, userID, hostID)
 	if err != nil {
 		d.SetId("")
 		return diag.Errorf(`error getting user %s`, err)
@@ -100,6 +110,7 @@ func ReadResourceGroupUser(ctx context.Context, d *schema.ResourceData, meta int
 	}
 
 	d.Set("user", user)
+	d.Set("host", hostID)
 	d.Set("resource_group", resourceGroup)
 
 	return nil
@@ -107,13 +118,14 @@ func ReadResourceGroupUser(ctx context.Context, d *schema.ResourceData, meta int
 
 func DeleteResourceGroupUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	user := d.Get("user").(string)
+	host := d.Get("host").(string)
 
 	db, err := getDatabaseFromMeta(ctx, meta)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	deleteQuery := fmt.Sprintf("ALTER USER `%s` RESOURCE GROUP `default`", user)
+	deleteQuery := fmt.Sprintf("ALTER USER %s RESOURCE GROUP `default`", formatTiDBUserAccount(user, host))
 	_, err = db.Exec(deleteQuery)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return diag.Errorf("error during drop resource group (%s): %s", d.Id(), err)
@@ -123,9 +135,15 @@ func DeleteResourceGroupUser(ctx context.Context, d *schema.ResourceData, meta i
 	return nil
 }
 
-func readUserFromDB(db *sql.DB, name string) (string, string, error) {
+func readUserFromDB(db *sql.DB, name string, host string) (string, string, error) {
 	selectUsersQuery := `SELECT USER, JSON_UNQUOTE(IFNULL(JSON_EXTRACT(User_attributes, "$.resource_group"), "")) as resource_group FROM mysql.user WHERE USER = ?`
-	row := db.QueryRow(selectUsersQuery, name)
+	args := []interface{}{name}
+	if host != "" {
+		selectUsersQuery += ` AND HOST = ?`
+		args = append(args, host)
+	}
+
+	row := db.QueryRow(selectUsersQuery, args...)
 
 	var user, resourceGroup string
 
@@ -138,4 +156,29 @@ func readUserFromDB(db *sql.DB, name string) (string, string, error) {
 	}
 
 	return user, resourceGroup, nil
+}
+
+func formatTiDBUserAccount(user string, host string) string {
+	if host == "" {
+		return quoteIdentifier(user)
+	}
+
+	return fmt.Sprintf("%s@%s", quoteIdentifier(user), quoteIdentifier(host))
+}
+
+func formatTiDBResourceGroupUserAssignmentID(user string, host string) string {
+	if host == "" {
+		return user
+	}
+
+	return user + "@" + host
+}
+
+func parseTiDBResourceGroupUserAssignmentID(id string) (string, string) {
+	parts := strings.SplitN(id, "@", 2)
+	if len(parts) != 2 {
+		return id, ""
+	}
+
+	return parts[0], parts[1]
 }

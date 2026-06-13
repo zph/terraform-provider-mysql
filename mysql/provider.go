@@ -241,8 +241,9 @@ func Provider() *schema.Provider {
 		},
 
 		DataSourcesMap: map[string]*schema.Resource{
-			"mysql_databases": dataSourceDatabases(),
-			"mysql_tables":    dataSourceTables(),
+			"mysql_databases":           dataSourceDatabases(),
+			"mysql_tables":              dataSourceTables(),
+			"mysql_ti_placement_labels": dataSourceTiPlacementLabels(),
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
@@ -257,6 +258,7 @@ func Provider() *schema.Provider {
 			"mysql_ti_resource_group": resourceTiResourceGroup(),
 			"mysql_ti_resource_group_user_assignment": resourceTiResourceGroupUserAssignment(),
 			"mysql_ti_placement_policy":               resourceTiPlacementPolicy(),
+			"mysql_ti_placement_range_policy":         resourceTiPlacementRangePolicy(),
 			"mysql_rds_config":                        resourceRDSConfig(),
 			"mysql_default_roles":                     resourceDefaultRoles(),
 		},

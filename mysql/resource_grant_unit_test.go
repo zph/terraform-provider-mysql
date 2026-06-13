@@ -111,6 +111,31 @@ func TestParseGrantFromRowTableGrant(t *testing.T) {
 	}
 }
 
+func TestParseGrantFromRowTiDBResourceControlPrivileges(t *testing.T) {
+	grant, err := parseGrantFromRow("GRANT RESOURCE_GROUP_ADMIN, RESOURCE_GROUP_USER ON *.* TO 'ops'@'%'")
+	if err != nil {
+		t.Fatalf("parseGrantFromRow returned error: %s", err)
+	}
+
+	tableGrant, ok := grant.(*TablePrivilegeGrant)
+	if !ok {
+		t.Fatalf("parseGrantFromRow returned %T, want *TablePrivilegeGrant", grant)
+	}
+	if tableGrant.Database != "*" {
+		t.Fatalf("Database = %q, want *", tableGrant.Database)
+	}
+	if tableGrant.Table != "*" {
+		t.Fatalf("Table = %q, want *", tableGrant.Table)
+	}
+	wantPrivileges := []string{"RESOURCE_GROUP_ADMIN", "RESOURCE_GROUP_USER"}
+	if !reflect.DeepEqual(tableGrant.Privileges, wantPrivileges) {
+		t.Fatalf("Privileges = %#v, want %#v", tableGrant.Privileges, wantPrivileges)
+	}
+	if !tableGrant.UserOrRole.Equals(UserOrRole{Name: "ops", Host: "%"}) {
+		t.Fatalf("UserOrRole = %#v", tableGrant.UserOrRole)
+	}
+}
+
 func TestParseGrantFromRowProcedureGrant(t *testing.T) {
 	grant, err := parseGrantFromRow("GRANT EXECUTE ON PROCEDURE `app_db`.`rotate_keys` TO 'app'@'localhost'")
 	if err != nil {
@@ -240,6 +265,33 @@ func TestParseResourceFromDataTableGrantDefaultsDatabase(t *testing.T) {
 		t.Fatalf("Table = %q, want *", tableGrant.Table)
 	}
 	if got := tableGrant.SQLGrantStatement(); got != "GRANT select ON *.* TO 'app'@'%'" {
+		t.Fatalf("SQLGrantStatement() = %q", got)
+	}
+}
+
+func TestParseResourceFromDataTiDBResourceControlPrivileges(t *testing.T) {
+	d := schema.TestResourceDataRaw(t, resourceGrant().Schema, map[string]interface{}{
+		"user":       "ops",
+		"host":       "%",
+		"database":   "*",
+		"table":      "*",
+		"privileges": []interface{}{"resource_group_user", "resource_group_admin"},
+	})
+
+	grant, diagErr := parseResourceFromData(d)
+	if diagErr.HasError() {
+		t.Fatalf("parseResourceFromData returned diagnostics: %s", diagErr[0].Summary)
+	}
+
+	tableGrant, ok := grant.(*TablePrivilegeGrant)
+	if !ok {
+		t.Fatalf("parseResourceFromData returned %T, want *TablePrivilegeGrant", grant)
+	}
+	wantPrivileges := []string{"RESOURCE_GROUP_ADMIN", "RESOURCE_GROUP_USER"}
+	if !reflect.DeepEqual(tableGrant.Privileges, wantPrivileges) {
+		t.Fatalf("Privileges = %#v, want %#v", tableGrant.Privileges, wantPrivileges)
+	}
+	if got := tableGrant.SQLGrantStatement(); got != "GRANT RESOURCE_GROUP_ADMIN, RESOURCE_GROUP_USER ON *.* TO 'ops'@'%'" {
 		t.Fatalf("SQLGrantStatement() = %q", got)
 	}
 }
