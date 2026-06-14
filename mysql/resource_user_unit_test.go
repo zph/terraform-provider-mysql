@@ -12,9 +12,10 @@ func TestTiDBVersionSupportsMaxUserConnections(t *testing.T) {
 		want    bool
 	}{
 		{version: "8.5.4", want: false},
-		{version: "8.5.5", want: true},
-		{version: "v8.5.5", want: true},
-		{version: "8.5.6", want: true},
+		{version: "8.5.5", want: false},
+		{version: "8.5.6", want: false},
+		{version: "8.5.7", want: true},
+		{version: "v8.5.7", want: true},
 		{version: "9.0.0", want: true},
 	}
 

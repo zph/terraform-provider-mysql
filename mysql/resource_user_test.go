@@ -338,7 +338,7 @@ func TestAccUser_resourceLimitsErrorOnUnsupportedTiDB(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config:      testAccUserConfig_resourceLimitsUnsupportedTiDB,
-				ExpectError: regexp.MustCompile("MAX_USER_CONNECTIONS is only supported on TiDB 8.5.5 or newer"),
+				ExpectError: regexp.MustCompile("MAX_USER_CONNECTIONS is only supported on TiDB 8.5.7 or newer"),
 			},
 		},
 	})

@@ -129,6 +129,15 @@ These resources use TiDB-specific SQL extensions and are not compatible with sta
 
 The placement attachment resources are intentionally modeled differently from normal create/delete resources because TiDB exposes placement assignment as DDL on existing objects, not as standalone attachment objects. For database, table, partition, and range placement resources, Terraform destroy resets the explicit assignment with `PLACEMENT POLICY=default`; it does not drop the underlying object.
 
+The best-practice operating model is to manage cluster-wide default placement with PD placement rules, and use SQL placement policies for specific exception objects such as databases, tables, and partitions. This keeps global placement behavior centralized in PD while still allowing Terraform to manage object-level exceptions where TiDB exposes direct policy-name readback.
+
+The provider's TiDB placement resources are designed around that model:
+
+* Use `mysql_ti_placement_policy` to define named SQL policies.
+* Use `mysql_ti_database_placement_policy`, `mysql_ti_table_placement_policy`, and `mysql_ti_partition_placement_policy` to attach those policies to exception objects.
+* Treat `mysql_ti_placement_range_policy` as an advanced compatibility resource for existing `ALTER RANGE` usage, not the preferred way to manage cluster-wide defaults.
+* Manage PD placement rules outside this provider, for example with TiUP/PD operational tooling, until this provider has a dedicated PD placement-rule resource.
+
 TiDB readback is incomplete and scope-dependent:
 
 * Database, table, and partition resources read direct policy assignments from `information_schema.schemata`, `information_schema.tables`, and `information_schema.partitions`.
@@ -138,8 +147,8 @@ TiDB readback is incomplete and scope-dependent:
 
 Known upstream TiDB issues and history that affect this design:
 
-* PingCAP added machine-readable table and partition placement readback in [pingcap/tidb#28798](https://github.com/pingcap/tidb/pull/28798), and schema-level readback was requested in [pingcap/tidb#29758](https://github.com/pingcap/tidb/issues/29758). This is why the provider uses the `TIDB_PLACEMENT_POLICY_NAME` columns where available.
-* PingCAP later removed the separate `TIDB_DIRECT_PLACEMENT` catalog columns in [pingcap/tidb#31741](https://github.com/pingcap/tidb/pull/31741). The provider therefore treats `TIDB_PLACEMENT_POLICY_NAME` as direct-assignment readback and represents `NULL` as `default`.
+* TiDB added machine-readable table and partition placement readback in [pingcap/tidb#28798](https://github.com/pingcap/tidb/pull/28798), and schema-level readback was requested in [pingcap/tidb#29758](https://github.com/pingcap/tidb/issues/29758). This is why the provider uses the `TIDB_PLACEMENT_POLICY_NAME` columns where available.
+* TiDB later removed the separate `TIDB_DIRECT_PLACEMENT` catalog columns in [pingcap/tidb#31741](https://github.com/pingcap/tidb/pull/31741). The provider therefore treats `TIDB_PLACEMENT_POLICY_NAME` as direct-assignment readback and represents `NULL` as `default`.
 * `ALTER RANGE ... PLACEMENT POLICY` has an open TiDB permission-check bug in [pingcap/tidb#62420](https://github.com/pingcap/tidb/issues/62420). The provider relies on the connected TiDB user's server-side permissions and cannot compensate for missing checks inside TiDB.
 * `ALTER RANGE meta` has an open RawKV range-overlap bug in [pingcap/tidb#63133](https://github.com/pingcap/tidb/issues/63133), with an open fix PR in [pingcap/tidb#63236](https://github.com/pingcap/tidb/pull/63236). Users who use RawKV should be careful with meta range placement on affected TiDB versions.
 * Historical range placement defects include `ALTER RANGE meta` failing with invalid rule content ([pingcap/tidb#60888](https://github.com/pingcap/tidb/issues/60888), fixed by [pingcap/tidb#60889](https://github.com/pingcap/tidb/pull/60889)) and range assignments not updating after policy changes or blocking unrelated drops ([pingcap/tidb#51712](https://github.com/pingcap/tidb/issues/51712), [pingcap/tidb#52257](https://github.com/pingcap/tidb/issues/52257), fixed by [pingcap/tidb#52254](https://github.com/pingcap/tidb/pull/52254)). These are version-sensitive TiDB behaviors, not provider state-model issues.

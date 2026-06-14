@@ -135,7 +135,7 @@ func resourceUser() *schema.Resource {
 				Type:         schema.TypeInt,
 				Optional:     true,
 				ValidateFunc: validation.IntAtLeast(0),
-				Description:  "Maximum number of simultaneous connections for the user (0 = unlimited). Supported on MySQL, MariaDB, and TiDB 8.5.5 or newer.",
+				Description:  "Maximum number of simultaneous connections for the user (0 = unlimited). Supported on MySQL, MariaDB, and TiDB 8.5.7 or newer.",
 			},
 
 			"max_statement_time": {
@@ -206,7 +206,7 @@ func resourceUser() *schema.Resource {
 	}
 }
 
-const tiDBMaxUserConnectionsMinVersion = "8.5.5"
+const tiDBMaxUserConnectionsMinVersion = "8.5.7"
 
 func checkRetainCurrentPasswordSupport(ctx context.Context, meta interface{}) error {
 	ver, _ := version.NewVersion("8.0.14")
@@ -249,10 +249,9 @@ func checkMaxUserConnectionsSupport(ctx context.Context, meta interface{}) error
 		return nil
 	}
 
-	// TiDB added MAX_USER_CONNECTIONS on master in pingcap/tidb#59197.
-	// The first explicit 8.5 release branch backport is pingcap/tidb#67337,
-	// merged as commit 6c7aaa0c8d548cdfaa2c99e216337752de48009f to
-	// release-8.5-20260323-v8.5.5.
+	// TiDB added MAX_USER_CONNECTIONS before v8.5.7, but provider support is
+	// gated to v8.5.7+ because earlier 8.5.x builds accept the syntax without
+	// consistently exposing usable persisted/readback behavior.
 	supported, err := tidbVersionSupportsMaxUserConnections(tidbVersion)
 	if err != nil {
 		return err

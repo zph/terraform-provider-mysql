@@ -87,6 +87,14 @@ resource "mysql_ti_partition_placement_policy" "orders_p0" {
 
 TiDB placement policies are attached to existing objects with DDL such as `ALTER DATABASE`, `ALTER TABLE`, `ALTER TABLE ... PARTITION`, and `ALTER RANGE`. TiDB does not expose a separate "placement attachment" object that Terraform can create or delete. For that reason, the provider models database, table, partition, and range placement assignment as attachment resources.
 
+The best-practice operating model is:
+
+* Use PD placement rules for cluster-wide default placement behavior.
+* Use SQL placement policies for exception objects such as databases, tables, and partitions.
+* Avoid using SQL range policies as the primary source of truth for cluster-wide defaults when exact policy-name drift detection matters.
+
+For example, use PD placement rules to keep ordinary data away from a dedicated TiKV label, then use `mysql_ti_table_placement_policy` or `mysql_ti_partition_placement_policy` to place specific exception objects on that label. This works better with Terraform because TiDB exposes direct policy-name metadata for databases, tables, and partitions.
+
 Destroying an attachment resource does not drop the underlying database, table, partition, or range. Instead, the provider runs the matching TiDB reset DDL with `PLACEMENT POLICY=default`. On TiDB this removes the explicit placement attachment for that scope. It does not restore any previous policy, and for tables or partitions it can cause the object to inherit placement from a broader scope such as a table, database, range, or global default.
 
 Readback is also uneven across TiDB placement scopes:

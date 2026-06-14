@@ -14,6 +14,8 @@ The `mysql_ti_placement_range_policy` resource applies a TiDB placement policy t
 
 ~> **Note:** Destroying this resource resets the range placement policy to TiDB's `default` policy.
 
+~> **Operational guidance:** As a best practice, manage cluster-wide default placement with PD placement rules, and use SQL placement policies for exception objects such as databases, tables, and partitions. Use this range resource primarily for existing `ALTER RANGE` workflows or explicit advanced cases where the readback limitations are acceptable.
+
 ## TiDB Semantics
 
 This resource is an attachment workaround for TiDB's range placement DDL. TiDB does not provide a separate range-placement attachment object, so the provider manages the direct assignment with `ALTER RANGE ... PLACEMENT POLICY`.

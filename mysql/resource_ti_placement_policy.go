@@ -332,7 +332,7 @@ func getPlacementPolicyFromDB(db *sql.DB, name string) (*PlacementPolicy, error)
 	}
 
 	// SURVIVAL_PREFERENCES is accepted by CREATE/ALTER PLACEMENT POLICY, but
-	// PingCAP's documented information_schema.placement_policies columns do not expose it.
+	// TiDB's information_schema.placement_policies columns do not expose it.
 	// See https://docs.pingcap.com/tidb/stable/information-schema-placement-policies/.
 	return &pp, nil
 }
