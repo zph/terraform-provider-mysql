@@ -216,9 +216,9 @@ func databaseConfigSQL(verb string, d *schema.ResourceData, db *sql.DB) (string,
 
 	if isTiDB {
 		if placementPolicy != "" {
-			placementPolicyClause = placementPolicyKeyword + quoteIdentifier(placementPolicy)
+			placementPolicyClause = placementPolicyKeyword + tiDBPlacementPolicyClause(placementPolicy)
 		} else {
-			placementPolicyClause = placementPolicyKeyword + quoteIdentifier(placementPolicyDefault)
+			placementPolicyClause = placementPolicyKeyword + tiDBPlacementPolicyClause(placementPolicyDefault)
 		}
 	} else if placementPolicy != "" {
 		return "", fmt.Errorf("placement_policy is only supported for TiDB")

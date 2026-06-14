@@ -14,3 +14,22 @@ func TestTiDBPlacementRangeTarget(t *testing.T) {
 		}
 	}
 }
+
+func TestParseTiPlacementRangePolicyID(t *testing.T) {
+	rangeName, placementPolicy, err := parseTiPlacementRangePolicyID("global:regional")
+	if err != nil {
+		t.Fatalf("parseTiPlacementRangePolicyID returned error: %s", err)
+	}
+	if rangeName != "global" || placementPolicy != "regional" {
+		t.Fatalf("range ID parsed as %q:%q, want global:regional", rangeName, placementPolicy)
+	}
+}
+
+func TestParseTiPlacementRangePolicyIDRejectsInvalidIDs(t *testing.T) {
+	if _, _, err := parseTiPlacementRangePolicyID("global"); err == nil {
+		t.Fatal("expected range placement import ID without policy to fail")
+	}
+	if _, _, err := parseTiPlacementRangePolicyID("table:regional"); err == nil {
+		t.Fatal("expected unsupported range name to fail")
+	}
+}
