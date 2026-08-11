@@ -27,6 +27,7 @@ const (
 	VersionPercona57 = "5.7"
 	VersionPercona80 = "8.0"
 	VersionPercona84 = "8.4"
+	VersionPercona97 = "9.7"
 )
 
 type Entry struct {
@@ -47,6 +48,7 @@ var Entries = []Entry{
 	{Database: MySQL, Cycle: "9.7", Version: "9.7.0", DockerRepo: "library/mysql", EOLProduct: "mysql", EOLCycle: "9.7"},
 	{Database: Percona, Cycle: "8.0", Version: "8.0.46-37", DockerRepo: "percona/percona-server", BuildSuffix: true, EOLProduct: "mysql", EOLCycle: "8.0", EOLProxyFor: "Percona Server"},
 	{Database: Percona, Cycle: "8.4", Version: "8.4.8-8", DockerRepo: "percona/percona-server", BuildSuffix: true, EOLProduct: "mysql", EOLCycle: "8.4", EOLProxyFor: "Percona Server"},
+	{Database: Percona, Cycle: "9.7", Version: "9.7.1-1", DockerRepo: "percona/percona-server", BuildSuffix: true, EOLProduct: "mysql", EOLCycle: "9.7", EOLProxyFor: "Percona Server"},
 	{Database: MariaDB, Cycle: "10.11", Version: "10.11.18", DockerRepo: "library/mariadb", EOLProduct: "mariadb", EOLCycle: "10.11"},
 	{Database: MariaDB, Cycle: "11.4", Version: "11.4.12", DockerRepo: "library/mariadb", EOLProduct: "mariadb", EOLCycle: "11.4"},
 	{Database: MariaDB, Cycle: "11.8", Version: "11.8.8", DockerRepo: "library/mariadb", EOLProduct: "mariadb", EOLCycle: "11.8"},
@@ -158,7 +160,7 @@ func IsVersionInSeries(version, series string) bool {
 }
 
 func UsesPerconaServerImage(version string) bool {
-	return IsVersionInSeries(version, VersionPercona80) || IsVersionInSeries(version, VersionPercona84)
+	return IsVersionInSeries(version, VersionPercona80) || IsVersionInSeries(version, VersionPercona84) || IsVersionInSeries(version, VersionPercona97)
 }
 
 func ImageIsInSeries(image, prefix, series string) bool {
