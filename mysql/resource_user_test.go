@@ -429,28 +429,18 @@ func testAccUserResourceLimitsMaxConn(user, host string, expectedMaxConn int) re
 			return err
 		}
 		if isTiDB {
-			var createUserStmt string
-			err = db.QueryRowContext(ctx, "SHOW CREATE USER ?@?", user, host).Scan(&createUserStmt)
+			// TiDB never echoes MAX_USER_CONNECTIONS in SHOW CREATE USER. Builds
+			// carrying pingcap/tidb#59197 persist it in a mysql.user column and
+			// give a real readback (asserted via the generic path below); the
+			// upstream v8.5.x Docker images do not have the column, so there the
+			// signal is a successful apply plus Terraform state.
+			hasColumn, err := tidbUserTableHasMaxUserConnections(ctx, db)
 			if err != nil {
-				return fmt.Errorf("error reading TiDB user resource limits: %s", err)
+				return fmt.Errorf("error probing TiDB max_user_connections column: %s", err)
 			}
-
-			maxUserConn, found, err := parseMaxUserConnectionsFromCreateUserStatement(createUserStmt)
-			if err != nil {
-				return fmt.Errorf("error parsing TiDB user resource limits: %s", err)
-			}
-			if !found {
-				// TiDB 8.5.x accepts MAX_USER_CONNECTIONS syntax, but does not
-				// expose the setting via SHOW CREATE USER or mysql.user. In that
-				// case the acceptance signal is successful apply plus Terraform
-				// state; validate only when TiDB starts exposing readback.
+			if !hasColumn {
 				return nil
 			}
-			if maxUserConn != expectedMaxConn {
-				return fmt.Errorf("expected max_user_connections %d, got %d", expectedMaxConn, maxUserConn)
-			}
-
-			return nil
 		}
 
 		var maxUserConn int

@@ -135,7 +135,7 @@ func resourceUser() *schema.Resource {
 				Type:         schema.TypeInt,
 				Optional:     true,
 				ValidateFunc: validation.IntAtLeast(0),
-				Description:  "Maximum number of simultaneous connections for the user (0 = unlimited). Supported on MySQL, MariaDB, and TiDB 8.5.5 or newer.",
+				Description:  "Maximum number of simultaneous connections for the user (0 = unlimited). Read back for drift detection on MySQL and MariaDB. On TiDB the clause is accepted only on 8.5.5 or newer; readback engages when the build exposes the mysql.user.max_user_connections column (detected at runtime, since not all 8.5.x builds carry it), otherwise it is applied best-effort and write-only.",
 			},
 
 			"max_statement_time": {
@@ -233,6 +233,52 @@ func tidbVersionSupportsMaxUserConnections(tidbVersion string) (bool, error) {
 	minVersion, _ := version.NewVersion(tiDBMaxUserConnectionsMinVersion)
 
 	return currentVersion.GreaterThanOrEqual(minVersion), nil
+}
+
+// tidbUserTableHasMaxUserConnections reports whether the running TiDB build
+// exposes the mysql.user.max_user_connections column. TiDB does not echo the
+// resource-limit clause in SHOW CREATE USER, and column presence does not
+// track the version string: builds carrying pingcap/tidb#59197 (e.g. custom
+// 8.5.5 builds) have the column, while the upstream v8.5.x Docker images at
+// bootstrap version 227 do not. Probe information_schema rather than gating on
+// the version so readback engages exactly on the builds that support it.
+func tidbUserTableHasMaxUserConnections(ctx context.Context, db *sql.DB) (bool, error) {
+	var count int
+	const stmt = "SELECT COUNT(*) FROM information_schema.columns WHERE TABLE_SCHEMA = 'mysql' AND TABLE_NAME = 'user' AND LOWER(COLUMN_NAME) = 'max_user_connections'"
+	if err := db.QueryRowContext(ctx, stmt).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// readTiDBMaxUserConnections refreshes max_user_connections from the mysql.user
+// column when the running TiDB build exposes it, giving a true readback path
+// (0 = unlimited) for drift detection. On builds without the column, and on
+// non-TiDB servers, it is a no-op and the value stays as last applied.
+func readTiDBMaxUserConnections(ctx context.Context, db *sql.DB, d *schema.ResourceData) error {
+	isTiDB, _, _, err := serverTiDB(db)
+	if err != nil {
+		return err
+	}
+	if !isTiDB {
+		return nil
+	}
+
+	hasColumn, err := tidbUserTableHasMaxUserConnections(ctx, db)
+	if err != nil {
+		return err
+	}
+	if !hasColumn {
+		return nil
+	}
+
+	var maxUserConn int
+	const stmt = "SELECT max_user_connections FROM mysql.user WHERE User = ? AND Host = ?"
+	if err := db.QueryRowContext(ctx, stmt, d.Get("user").(string), d.Get("host").(string)).Scan(&maxUserConn); err != nil {
+		return err
+	}
+
+	return d.Set("max_user_connections", maxUserConn)
 }
 
 func checkMaxUserConnectionsSupport(ctx context.Context, meta interface{}) error {
@@ -655,20 +701,6 @@ func parseWithClauseSetting(d *schema.ResourceData, withClause, fieldName, setti
 	}
 }
 
-func parseMaxUserConnectionsFromCreateUserStatement(createUserStmt string) (int, bool, error) {
-	match := regexp.MustCompile(`(?i)\bMAX_USER_CONNECTIONS\s+([0-9]+)\b`).FindStringSubmatch(createUserStmt)
-	if len(match) != 2 {
-		return 0, false, nil
-	}
-
-	value, err := strconv.Atoi(match[1])
-	if err != nil {
-		return 0, false, err
-	}
-
-	return value, true, nil
-}
-
 func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	db, err := getDatabaseFromMeta(ctx, meta)
 	if err != nil {
@@ -746,6 +778,9 @@ func ReadUser(ctx context.Context, d *schema.ResourceData, meta interface{}) dia
 			}
 
 			setTiDBUserOptionsFromCreateStatement(createUserStmt, d)
+			if err := readTiDBMaxUserConnections(ctx, db, d); err != nil {
+				return diag.Errorf("failed reading TiDB max_user_connections: %v", err)
+			}
 			return nil
 		}
 
