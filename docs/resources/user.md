@@ -88,6 +88,7 @@ resource "mysql_user" "app" {
 
 ```hcl
 # MySQL, MariaDB, and TiDB 8.5.5+: set MAX_USER_CONNECTIONS
+# (read back on MySQL/MariaDB, and on TiDB builds exposing the mysql.user column)
 resource "mysql_user" "limited" {
   user                 = "app_user"
   host                 = "%"
@@ -119,7 +120,7 @@ The following arguments are supported:
 * `retain_old_password` - (Optional) When `true`, the old password is retained when changing the password. Defaults to `false`. This use MySQL Dual Password Support feature and requires MySQL version 8.0.14 or newer. See [MySQL Dual Password documentation](https://dev.mysql.com/doc/refman/8.0/en/password-management.html#dual-passwords) for more.
 * `tls_option` - (Optional) An TLS-Option for the `CREATE USER` or `ALTER USER` statement. The value is suffixed to `REQUIRE`. A value of 'SSL' will generate a `CREATE USER ... REQUIRE SSL` statement. See the [MYSQL `CREATE USER` documentation](https://dev.mysql.com/doc/refman/5.7/en/create-user.html) for more. Ignored if MySQL version is under 5.7.0.
 * `resource_group` - (Optional, Computed, TiDB) Assigns the user to a TiDB resource group using `CREATE/ALTER USER ... RESOURCE GROUP`.
-* `max_user_connections` - (Optional) Maximum number of simultaneous connections for the user. A value of `0` means unlimited. Supported on MySQL, MariaDB, and TiDB 8.5.5 or newer. TiDB support was introduced by [pingcap/tidb#59197](https://github.com/pingcap/tidb/pull/59197) and backported to the TiDB 8.5.5 release branch by [pingcap/tidb#67337](https://github.com/pingcap/tidb/pull/67337), commit [`6c7aaa0`](https://github.com/pingcap/tidb/commit/6c7aaa0c8d548cdfaa2c99e216337752de48009f). When this argument is removed from configuration, the limit is reset to `0`.
+* `max_user_connections` - (Optional) Maximum number of simultaneous connections for the user. A value of `0` means unlimited. On MySQL and MariaDB the value is persisted in `mysql.user` and read back for drift detection. On TiDB the clause is accepted only on 8.5.5 or newer (older versions are rejected by the provider). TiDB never echoes the value in `SHOW CREATE USER`; instead, builds carrying [pingcap/tidb#59197](https://github.com/pingcap/tidb/pull/59197) persist it in a `mysql.user.max_user_connections` column. The provider detects that column at runtime — not all 8.5.x builds carry it (for example the upstream `pingcap/tidb:v8.5.6` image does not) — and reads the value back for drift detection when present, otherwise applies it best-effort and write-only. When this argument is removed from configuration, the limit is reset to `0`.
 * `max_statement_time` - (Optional) Maximum execution time for statements in seconds. A value of `0` means unlimited. Supports fractional values for subsecond precision, for example `0.01` for 10 milliseconds. Only supported on MariaDB 10.1.1 or newer; MySQL and TiDB do not support this account option.
 * `account_locked` - (Optional, Computed) Sets `ACCOUNT LOCK` or `ACCOUNT UNLOCK`.
 * `comment` - (Optional, Computed, TiDB) Sets the TiDB user `COMMENT` value.

@@ -55,7 +55,7 @@ var Entries = []Entry{
 	{Database: TiDB, Cycle: "7.1", Version: "7.1.6", DockerRepo: "pingcap/tidb", TagPrefix: "v"},
 	{Database: TiDB, Cycle: "7.5", Version: "7.5.7", DockerRepo: "pingcap/tidb", TagPrefix: "v"},
 	{Database: TiDB, Cycle: "8.1", Version: "8.1.2", DockerRepo: "pingcap/tidb", TagPrefix: "v"},
-	{Database: TiDB, Cycle: "8.5", Version: "8.5.6", DockerRepo: "pingcap/tidb", TagPrefix: "v"},
+	{Database: TiDB, Cycle: "8.5", Version: "8.5.7", DockerRepo: "pingcap/tidb", TagPrefix: "v"},
 }
 
 type GitHubActionsMatrix struct {
