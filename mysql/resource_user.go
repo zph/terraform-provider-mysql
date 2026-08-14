@@ -232,7 +232,11 @@ func tidbVersionSupportsMaxUserConnections(tidbVersion string) (bool, error) {
 	}
 	minVersion, _ := version.NewVersion(tiDBMaxUserConnectionsMinVersion)
 
-	return currentVersion.GreaterThanOrEqual(minVersion), nil
+	// TiDB appends a build date and commit hash (e.g. "v8.5.5-YYYYMMDD-<hash>");
+	// go-version parses that trailing segment as a semver prerelease, and a
+	// prerelease sorts below the release (8.5.5-<build> < 8.5.5). Compare on the
+	// core X.Y.Z so genuine 8.5.5 builds are accepted.
+	return currentVersion.Core().GreaterThanOrEqual(minVersion), nil
 }
 
 // tidbUserTableHasMaxUserConnections reports whether the running TiDB build
