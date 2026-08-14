@@ -16,6 +16,14 @@ func TestTiDBVersionSupportsMaxUserConnections(t *testing.T) {
 		{version: "v8.5.5", want: true},
 		{version: "8.5.6", want: true},
 		{version: "9.0.0", want: true},
+		// Real TiDB builds append a date/hash that serverTiDB carries through
+		// (e.g. VERSION() "8.0.11-TiDB-v8.5.5-20250115-a1b2c3d" yields this).
+		// go-version reads the suffix as a prerelease, so the comparison must
+		// run on the core version rather than reject a genuine 8.5.5.
+		{version: "v8.5.5-20250115-a1b2c3d", want: true},
+		{version: "8.5.5-20250115-a1b2c3d", want: true},
+		{version: "v8.5.4-20250115-a1b2c3d", want: false},
+		{version: "v8.5.6-20250115-a1b2c3d", want: true},
 	}
 
 	for _, tt := range tests {
